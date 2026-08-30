@@ -1,0 +1,466 @@
+<Window x:Class="JuChuang.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:JuChuang.Controls"
+        mc:Ignorable="d"
+        Title="聚窗"
+        Icon="Assets/app.ico"
+        Width="1440"
+        Height="900"
+        MinWidth="1120"
+        MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Background="{StaticResource WindowBackgroundBrush}"
+        FontFamily="Microsoft YaHei UI, Microsoft YaHei, Segoe UI"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        SourceInitialized="Window_SourceInitialized">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0"
+                            ResizeBorderThickness="7"
+                            CornerRadius="10"
+                            GlassFrameThickness="0" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="ToolbarButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="15,0" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+            <Setter Property="Background" Value="#FBFCFD" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#F0F3F6" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#CED4DC" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#E7EBEF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="WindowControlButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="#344054" />
+            <Setter Property="Cursor" Value="Arrow" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ControlBorder" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ControlBorder" Property="Background" Value="#ECEEF1" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ControlBorder" Property="Background" Value="#DDE0E5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccountItemStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="8,2" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid>
+                            <Border x:Name="Card"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="7">
+                                <ContentPresenter />
+                            </Border>
+                            <Rectangle x:Name="AccentBar"
+                                       Width="3"
+                                       RadiusX="1.5"
+                                       RadiusY="1.5"
+                                       Fill="{StaticResource AccentBrush}"
+                                       Margin="0,10"
+                                       HorizontalAlignment="Left"
+                                       Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="#ECEFF3" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="{StaticResource SelectionBrush}" />
+                                <Setter TargetName="AccentBar" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccountCloseButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="#98A2B3" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ToolTip" Value="关闭这个客户端" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="CloseBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CloseBorder" Property="Background" Value="#FEECEC" />
+                                <Setter Property="Foreground" Value="#D92D20" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Background="{StaticResource WindowBackgroundBrush}"
+            BorderBrush="#D5D9DE"
+            BorderThickness="1"
+            CornerRadius="10">
+        <Grid ClipToBounds="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="42" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="{StaticResource ChromeSurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    CornerRadius="10,10,0,0"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="320" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="138" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                        <Image Source="Assets/app-logo.png" Width="24" Height="24" Stretch="Uniform" />
+                        <TextBlock Text="聚窗" Margin="10,0,0,0" FontSize="17" FontWeight="SemiBold"
+                                   Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="一窗聚合多媒，矩阵高效出海" Margin="12,1,0,0" FontSize="13"
+                                   Foreground="#7C8491" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                        <Button x:Name="AddWeChatButton" Style="{StaticResource ToolbarButtonStyle}"
+                                Content="添加微信" Click="NewWeChat_Click"
+                                ToolTip="启动并接入一个新的微信窗口" />
+                        <Button x:Name="AddWhatsAppMenuItem" Style="{StaticResource ToolbarButtonStyle}"
+                                Content="添加 WhatsApp" Click="AddWhatsApp_Click"
+                                ToolTip="启动并接入 WhatsApp 桌面客户端" />
+                        <Button x:Name="PopOutButton" Style="{StaticResource ToolbarButtonStyle}" IsEnabled="False"
+                                Click="PopOutButton_Click" ToolTip="将当前客户端恢复为桌面独立窗口">
+                            <TextBlock x:Name="PopOutButtonText" Text="弹出窗口" VerticalAlignment="Center" />
+                        </Button>
+                        <Button Style="{StaticResource ToolbarButtonStyle}" Click="ReconnectAll_Click"
+                                Content="全部接入"
+                                ToolTip="把容器外的微信和 WhatsApp 主窗口全部接入" />
+                        <Button Style="{StaticResource ToolbarButtonStyle}" Click="ScanClients_Click"
+                                Content="扫描客户端"
+                                ToolTip="扫描当前正在运行的本地客户端" />
+                        <Button Style="{StaticResource ToolbarButtonStyle}" Margin="0"
+                                Content="关于" Click="About_Click" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource WindowControlButtonStyle}" ToolTip="最小化" Click="Minimize_Click">
+                            <Path Width="10" Height="10" Stretch="Uniform" Stroke="#344054" StrokeThickness="1.4"
+                                  Data="M1,5 H9" />
+                        </Button>
+                        <Button x:Name="MaximizeButton" Style="{StaticResource WindowControlButtonStyle}"
+                                ToolTip="最大化" Click="Maximize_Click">
+                            <Path x:Name="MaximizeGlyph" Width="10" Height="10" Stretch="Uniform" Stroke="#344054"
+                                  StrokeThickness="1.2" StrokeLineJoin="Miter" Data="M1,1 H9 V9 H1 Z" />
+                        </Button>
+                        <Button ToolTip="关闭" Click="Close_Click">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource WindowControlButtonStyle}">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#E81123" />
+                                            <Setter Property="Foreground" Value="#FFFFFF" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <Path Width="10" Height="10" Stretch="Uniform"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M1,1 L9,9 M9,1 L1,9" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="SidebarColumn" Width="292" MinWidth="220" MaxWidth="460" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{StaticResource SidebarSurfaceBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="48" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Margin="20,0,0,0" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{StaticResource SidebarHeaderBrush}" VerticalAlignment="Center">
+                            <Run Text="账号与窗口" /><Run Text=" · " /><Run Text="{Binding Entries.Count, Mode=OneWay}" />
+                        </TextBlock>
+                        <ListBox x:Name="AccountsList" Grid.Row="1" ItemsSource="{Binding Entries}"
+                                 SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+                                 SelectionChanged="AccountsList_SelectionChanged"
+                                 ItemContainerStyle="{StaticResource AccountItemStyle}"
+                                 Background="Transparent" BorderThickness="0" Padding="0,0,0,8"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Height="76" Margin="12,0,8,0">
+                                        <Grid.ContextMenu>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem Header="重命名账号" Click="RenameEntry_Click" />
+                                                <Separator />
+                                                <MenuItem Header="关闭客户端" CommandParameter="{Binding}" Click="CloseEntry_Click" />
+                                            </ContextMenu>
+                                        </Grid.ContextMenu>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="52" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="30" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Width="44" Height="44" VerticalAlignment="Center">
+                                            <Ellipse x:Name="WeChatFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
+                                                <Ellipse.Fill>
+                                                    <ImageBrush ImageSource="pack://application:,,,/Assets/wechat-icon.jpg" Stretch="UniformToFill" />
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
+                                                <Ellipse.Fill>
+                                                    <ImageBrush ImageSource="pack://application:,,,/Assets/whatsapp-icon.png" Stretch="UniformToFill" />
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <Ellipse x:Name="AvatarImage" Visibility="Collapsed">
+                                                <Ellipse.Fill>
+                                                    <ImageBrush ImageSource="{Binding AvatarPath}" Stretch="UniformToFill"
+                                                                AlignmentX="Center" AlignmentY="Center" />
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <!-- 未读角标：头像左上角。
+                                                 AlertDisplayMode=Count 显示数字；Dot 显示纯红点；None 整体隐藏。
+                                                 数字来自 BadgeDetector 截图识别（高置信度模板匹配结果）。 -->
+                                            <Border x:Name="UnreadBadge" MinWidth="14" Height="14" Padding="5,0"
+                                                    Background="#F04438" BorderBrush="#FFFFFF" BorderThickness="1.5"
+                                                    CornerRadius="7" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                    Margin="-3,-3,0,0" Visibility="Collapsed">
+                                                <TextBlock x:Name="UnreadBadgeText" Text="{Binding MessageAlertText}" FontSize="10"
+                                                           FontWeight="SemiBold" Foreground="#FFFFFF"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <!-- 纯红点（无数字）：AlertDisplayMode=Dot 时叠加覆盖在角标上。 -->
+                                            <Ellipse x:Name="UnreadDot" Width="12" Height="12"
+                                                     Fill="#F04438" Stroke="#FFFFFF" StrokeThickness="1.5"
+                                                     HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                     Margin="-3,-3,0,0" Visibility="Collapsed" />
+                                        </Grid>
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" />
+                                            <TextBlock Text="{Binding ClientLabel}" Margin="0,2,0,0" FontSize="13"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                <Ellipse Width="6" Height="6" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Status}" Margin="6,0,0,0" FontSize="13"
+                                                           Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Button x:Name="EntryCloseButton" Grid.Column="2"
+                                                Style="{StaticResource AccountCloseButtonStyle}"
+                                                CommandParameter="{Binding}" Content="×" Click="CloseEntry_Click"
+                                                VerticalAlignment="Center" Opacity="0" />
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding HasAvatar}" Value="False" />
+                                                <Condition Binding="{Binding Kind}" Value="WeChat" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter TargetName="WeChatFallbackIcon" Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding HasAvatar}" Value="False" />
+                                                <Condition Binding="{Binding Kind}" Value="WhatsApp" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter TargetName="WhatsAppFallbackIcon" Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                        <DataTrigger Binding="{Binding HasAvatar}" Value="True">
+                                            <Setter TargetName="AvatarImage" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding HasMessageAlert}" Value="True">
+                                            <Setter TargetName="UnreadBadge" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AlertDisplayMode}" Value="Dot">
+                                            <Setter TargetName="UnreadDot" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="UnreadBadge" Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AlertDisplayMode}" Value="Count">
+                                            <Setter TargetName="UnreadDot" Property="Visibility" Value="Collapsed" />
+                                            <Setter TargetName="UnreadBadge" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AlertDisplayMode}" Value="None">
+                                            <Setter TargetName="UnreadDot" Property="Visibility" Value="Collapsed" />
+                                            <Setter TargetName="UnreadBadge" Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter TargetName="EntryCloseButton" Property="Opacity" Value="1" />
+                                            <Setter TargetName="UnreadBadge" Property="Opacity" Value="0" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <GridSplitter Grid.Column="1"
+                              Width="5"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="Transparent"
+                              Cursor="SizeWE"
+                              ShowsPreview="False"
+                              DragDelta="SidebarSplitter_DragDelta"
+                              DragCompleted="SidebarSplitter_DragCompleted" />
+
+                <Grid Grid.Column="2" Background="{StaticResource WorkspaceSurfaceBrush}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="44" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Background="{StaticResource ChromeSurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,0,0,1">
+                        <Grid Margin="20,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="CurrentTitleText" Text="等待客户端" FontSize="15.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
+                                <Ellipse x:Name="CurrentStatusDot" Width="7" Height="7" Margin="11,1,6,0"
+                                         Fill="#98A2B3" VerticalAlignment="Center" />
+                                <TextBlock x:Name="CurrentStatusText" Text="尚未接入" FontSize="12.5"
+                                           Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Padding="10,4" Background="#EBF3FF" BorderBrush="#D2E4FF"
+                                    BorderThickness="1" CornerRadius="7" VerticalAlignment="Center">
+                                <TextBlock Text="本地客户端" Foreground="{StaticResource AccentBrush}" FontSize="10.5" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <Grid x:Name="ClientArea" Grid.Row="1" ClipToBounds="True"
+                          SnapsToDevicePixels="True" Background="{StaticResource WorkspaceSurfaceBrush}">
+                        <!-- 通铺式嵌入：原生窗口直接铺满整个工作区，不做卡片包装
+                             （无留白/无边框/无圆角/无投影）。窗口左右紧贴侧栏与外壳，
+                             视觉上作为界面的一部分存在，而非悬浮的独立卡片。 -->
+                        <controls:ExternalWindowHost x:Name="WindowHost" Visibility="Collapsed" />
+                        <Grid x:Name="EmptyState" Background="{StaticResource WorkspaceSurfaceBrush}">
+                            <StackPanel Width="420" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Width="56" Height="56" Background="#EAF2FF" CornerRadius="16">
+                                    <Path Width="22" Height="22" Stretch="Uniform" Stroke="{StaticResource AccentBrush}"
+                                          StrokeThickness="1.4" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Data="M2,2 H12 V12 H2 Z M5,5 H9 V9 H5 Z" />
+                                </Border>
+                                <TextBlock x:Name="EmptyStateTitle" Text="还没有接入客户端窗口" Margin="0,16,0,0"
+                                           FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}"
+                                           TextAlignment="Center" />
+                                <TextBlock x:Name="EmptyStateDescription"
+                                           Text="点击顶部“添加微信”，程序会自动发现并嵌入本地客户端。"
+                                           Margin="0,8,0,0" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap" TextAlignment="Center" LineHeight="20" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <Border Grid.Row="2" Background="{StaticResource ChromeSurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,10,10">
+                <Grid Margin="16,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8" Fill="#12B76A" />
+                        <TextBlock x:Name="WindowCountText" Text="已连接 0 个窗口" Margin="8,0,0,0"
+                                   FontSize="11.5" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="11.5"
+                               Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="本地运行 · 不读取聊天数据" FontSize="11.5"
+                               Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

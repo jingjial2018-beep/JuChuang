@@ -1,0 +1,36 @@
+# Build outputs
+bin/
+obj/
+publish/
+app/
+artifacts/
+releases/
+TestResults/
+*.exe
+*.dll
+*.zip
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local diagnostics and runtime data
+*.log
+*.tmp
+*.dmp
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
