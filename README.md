@@ -18,6 +18,20 @@
 
 当前稳定版本：**v0.3.9**
 
+## 软件界面
+
+### 微信多账号统一管理
+
+在同一界面中管理多个微信窗口，并集中查看账号状态与未读提醒。
+
+![聚窗微信多账号统一管理界面](docs/images/wechat-multi-account.png)
+
+### WhatsApp 桌面客户端接入
+
+将 WhatsApp 桌面客户端接入聚窗，在账号列表中统一切换和查看提醒。
+
+![聚窗 WhatsApp 桌面客户端接入界面](docs/images/whatsapp-window-management.png)
+
 ## 主要功能
 
 - 同时管理多个微信 4.x 窗口和 WhatsApp 桌面客户端。
@@ -148,6 +162,7 @@ dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
 JuChuang/
 ├─ Assets/                    应用图标与客户端图标
 ├─ Controls/                  外部窗口托管控件
+├─ docs/images/               GitHub 项目介绍截图
 ├─ Models/                    客户端窗口与界面状态模型
 ├─ Services/                  窗口发现、启动、资料读取和角标识别
 ├─ Tests/BadgeProbe/          未读角标识别回归测试
