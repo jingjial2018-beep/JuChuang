@@ -40,6 +40,17 @@ public sealed class ExternalWindowHost : HwndHost
     public bool IsReady => _hostHandle != IntPtr.Zero;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
 
+    /// <summary>
+    /// True only while the manager itself or its displayed native client owns
+    /// the foreground. Background overlays must not compete with Chrome or
+    /// another unrelated application for global Z order.
+    /// </summary>
+    public bool IsManagerContextForeground
+        => WindowActivityPolicy.IsManagerContextForeground(
+            NativeMethods.GetForegroundWindow(),
+            GetOwnerRoot(),
+            _currentHandle);
+
     public bool AttachWindow(IntPtr handle, bool makeActive)
     {
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
@@ -74,6 +85,13 @@ public sealed class ExternalWindowHost : HwndHost
             {
                 NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, ownerRoot);
             }
+            var attachZOrderFlags = WindowActivityPolicy.ShouldPromoteHostedWindow(
+                IsZOrderSuppressed,
+                NativeMethods.GetForegroundWindow(),
+                ownerRoot,
+                handle)
+                ? 0u
+                : NativeMethods.SWP_NOZORDER;
             NativeMethods.SetWindowPos(
                 handle,
                 NativeMethods.HWND_TOP,
@@ -81,7 +99,7 @@ public sealed class ExternalWindowHost : HwndHost
                 0,
                 1,
                 1,
-                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
+                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
             // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
             // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
@@ -119,7 +137,9 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
             NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
-            var zOrderFlags = IsZOrderSuppressed ? NativeMethods.SWP_NOZORDER : 0u;
+            var zOrderFlags = ShouldPromoteCurrentWindow()
+                ? 0u
+                : NativeMethods.SWP_NOZORDER;
             NativeMethods.SetWindowPos(handle, NativeMethods.HWND_TOP, 0, 0, 0, 0,
                 NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
                 | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
@@ -212,9 +232,12 @@ public sealed class ExternalWindowHost : HwndHost
 
         ResizeCurrentWindow();
         NativeMethods.ShowWindow(_currentHandle, NativeMethods.SW_SHOW);
+        var zOrderFlags = ShouldPromoteCurrentWindow()
+            ? 0u
+            : NativeMethods.SWP_NOZORDER;
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP, 0, 0, 0, 0,
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
-            | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
         ScheduleActivation(_currentHandle);
     }
 
@@ -232,6 +255,13 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     private bool IsZOrderSuppressed => _zOrderSuppressionCount > 0;
+
+    private bool ShouldPromoteCurrentWindow()
+        => WindowActivityPolicy.ShouldPromoteHostedWindow(
+            IsZOrderSuppressed,
+            NativeMethods.GetForegroundWindow(),
+            GetOwnerRoot(),
+            _currentHandle);
 
     public bool DetachWindow(IntPtr handle, bool bringToFront = true)
     {
@@ -311,7 +341,9 @@ public sealed class ExternalWindowHost : HwndHost
         // 原生窗口以直角原样铺满工作区，左右紧贴侧栏与外壳，视觉上是界面的一部分。
         // 但仍用 SetWindowRgn 裁掉超出客户区的不可见缩放边框与 DWM 阴影，避免溢出。
         var cornerRadius = 0;
-        var zOrderFlags = IsZOrderSuppressed ? NativeMethods.SWP_NOZORDER : 0u;
+        var zOrderFlags = ShouldPromoteCurrentWindow()
+            ? 0u
+            : NativeMethods.SWP_NOZORDER;
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
             origin.X - insets.Left, origin.Y - insets.Top, width, height,
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED

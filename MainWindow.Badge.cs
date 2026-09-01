@@ -21,6 +21,7 @@ public partial class MainWindow
     private readonly BadgeDetector _badgeDetector = new();
     private int _badgeScanInProgress; // 0 = 空闲，1 = 扫描中（防止重入）
     private readonly HashSet<ClientWindowEntry> _queuedImmediateBadgeScans = [];
+    private bool _foregroundCalibrationPending;
 
     // 每个账号的"上一次稳定结果"（用于"连续两次一致才更新"的状态同步）
     private readonly Dictionary<ClientWindowEntry, BadgeStableState> _badgeStableState = new();
@@ -45,6 +46,24 @@ public partial class MainWindow
         _badgePollTimer?.Stop();
         _badgePollTimer = null;
         _queuedImmediateBadgeScans.Clear();
+        _foregroundCalibrationPending = false;
+    }
+
+    /// <summary>
+    /// 聚窗重新回到前台时补做一次校准。后台期间不再周期性调用
+    /// PrintWindow(PW_RENDERFULLCONTENT)，避免打断 Chrome/DWM 的 GPU 合成。
+    /// </summary>
+    private void TriggerForegroundBadgeCalibration()
+    {
+        if (_isClosing || _isPreviewMode || _badgePollTimer is null)
+        {
+            return;
+        }
+
+        _foregroundCalibrationPending = true;
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() => BadgePollTimer_Tick(null, EventArgs.Empty)));
     }
 
     /// <summary>
@@ -76,6 +95,7 @@ public partial class MainWindow
                 {
                     Interlocked.Exchange(ref _badgeScanInProgress, 0);
                     DrainQueuedImmediateBadgeScan();
+                    SchedulePendingForegroundCalibration();
                 }
             }));
     }
@@ -87,13 +107,26 @@ public partial class MainWindow
             return;
         }
 
+        // PrintWindow(PW_RENDERFULLCONTENT) forces a synchronous read-back from
+        // hardware-accelerated WeChat/WhatsApp surfaces. Repeating it while an
+        // unrelated app is foreground can stall DWM and make Chromium windows
+        // visibly flash. Shell attention events still use the immediate path;
+        // periodic full calibration resumes as soon as the user returns.
+        if (!WindowHost.IsManagerContextForeground)
+        {
+            _foregroundCalibrationPending = true;
+            return;
+        }
+
         if (Interlocked.CompareExchange(ref _badgeScanInProgress, 1, 0) != 0)
         {
+            _foregroundCalibrationPending = true;
             return;
         }
 
         try
         {
+            _foregroundCalibrationPending = false;
             var targets = Entries
                 .Where(entry => entry.IsAttached && entry.Handle != IntPtr.Zero)
                 .ToArray();
@@ -114,7 +147,22 @@ public partial class MainWindow
         {
             Interlocked.Exchange(ref _badgeScanInProgress, 0);
             DrainQueuedImmediateBadgeScan();
+            SchedulePendingForegroundCalibration();
         }
+    }
+
+    private void SchedulePendingForegroundCalibration()
+    {
+        if (!_foregroundCalibrationPending
+            || !WindowHost.IsManagerContextForeground
+            || Volatile.Read(ref _badgeScanInProgress) != 0)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() => BadgePollTimer_Tick(null, EventArgs.Empty)));
     }
 
     private void DrainQueuedImmediateBadgeScan()

@@ -24,6 +24,32 @@ if (args.Length == 7 && args[0].Equals("--crop", StringComparison.OrdinalIgnoreC
 }
 
 var failures = new List<string>();
+
+var foregroundPolicySamples = new (string Name, bool Suppressed, IntPtr Foreground,
+    IntPtr Manager, IntPtr Hosted, bool Expected)[]
+{
+    ("Manager foreground promotes overlay", false, (IntPtr)10, (IntPtr)10, (IntPtr)20, true),
+    ("Hosted client foreground promotes overlay", false, (IntPtr)20, (IntPtr)10, (IntPtr)20, true),
+    ("Chrome foreground never promotes overlay", false, (IntPtr)30, (IntPtr)10, (IntPtr)20, false),
+    ("Modal suppression blocks promotion", true, (IntPtr)10, (IntPtr)10, (IntPtr)20, false),
+    ("Missing foreground blocks promotion", false, IntPtr.Zero, (IntPtr)10, (IntPtr)20, false),
+};
+
+foreach (var sample in foregroundPolicySamples)
+{
+    var actual = WindowActivityPolicy.ShouldPromoteHostedWindow(
+        sample.Suppressed,
+        sample.Foreground,
+        sample.Manager,
+        sample.Hosted);
+    var passed = actual == sample.Expected;
+    Console.WriteLine($"{sample.Name}: expected={sample.Expected}, actual={actual} => {(passed ? "PASS" : "FAIL")}");
+    if (!passed)
+    {
+        failures.Add(sample.Name);
+    }
+}
+
 var samples = new (string Name, ClientKind Kind, Bitmap Bitmap, double DpiScale, bool HasAlert, int Number)[]
 {
     ("WeChat 1", ClientKind.WeChat, CreateWeChatSample("1", 32), 1.0, true, 1),

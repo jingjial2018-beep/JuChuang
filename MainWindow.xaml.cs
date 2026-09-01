@@ -62,6 +62,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _scanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _scanTimer.Tick += ScanTimer_Tick;
         StateChanged += MainWindow_StateChanged;
+        Activated += (_, _) => TriggerForegroundBadgeCalibration();
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
     }
