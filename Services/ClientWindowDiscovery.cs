@@ -115,7 +115,7 @@ public static class ClientWindowDiscovery
             .ToArray();
     }
 
-    private static bool TryGetKind(string processName, string title, string windowClass, out ClientKind kind)
+    internal static bool TryGetKind(string processName, string title, string windowClass, out ClientKind kind)
     {
         var normalizedProcess = processName.ToLowerInvariant();
         var normalizedTitle = title.ToLowerInvariant();
@@ -132,7 +132,11 @@ public static class ClientWindowDiscovery
             return true;
         }
 
-        if (normalizedProcess.Contains("whatsapp") || normalizedTitle.Contains("whatsapp"))
+        // 只认进程名，不认窗口标题：真实 WhatsApp 客户端（WhatsApp.Root.exe / 旧版
+        // WhatsApp.exe）进程名必含 "whatsapp"；若再按标题匹配，Chrome 打开的网页标题
+        // 只要含 "whatsapp"（例如本项目仓库名"…与 WhatsApp 多窗口管理器"）就会被误判为
+        // WhatsApp 客户端，随后被 AttachWindow 移到屏幕左上角、无法点击。
+        if (normalizedProcess.Contains("whatsapp"))
         {
             kind = ClientKind.WhatsApp;
             return true;

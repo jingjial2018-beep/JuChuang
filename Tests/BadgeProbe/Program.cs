@@ -25,6 +25,38 @@ if (args.Length == 7 && args[0].Equals("--crop", StringComparison.OrdinalIgnoreC
 
 var failures = new List<string>();
 
+var discoverySamples = new (string Name, string ProcessName, string Title,
+    string WindowClass, bool ExpectedMatch, ClientKind ExpectedKind)[]
+{
+    ("Chrome title containing WhatsApp is ignored", "chrome",
+        "JuChuang - Windows 11 WeChat and WhatsApp manager - Google Chrome",
+        "Chrome_WidgetWin_1", false, default),
+    ("WhatsApp desktop process is accepted", "WhatsApp.Root", "WhatsApp",
+        "Chrome_WidgetWin_1", true, ClientKind.WhatsApp),
+    ("WeChat main window is accepted", "Weixin", "微信",
+        "Qt51514QWindowIcon", true, ClientKind.WeChat),
+    ("WeChat built-in browser is ignored", "Weixin", "微信",
+        "Chrome_WidgetWin_0", false, default),
+};
+
+foreach (var sample in discoverySamples)
+{
+    var matched = ClientWindowDiscovery.TryGetKind(
+        sample.ProcessName,
+        sample.Title,
+        sample.WindowClass,
+        out var kind);
+    var passed = matched == sample.ExpectedMatch
+                 && (!matched || kind == sample.ExpectedKind);
+    Console.WriteLine(
+        $"{sample.Name}: expected=({sample.ExpectedMatch},{sample.ExpectedKind}), " +
+        $"actual=({matched},{kind}) => {(passed ? "PASS" : "FAIL")}");
+    if (!passed)
+    {
+        failures.Add(sample.Name);
+    }
+}
+
 var foregroundPolicySamples = new (string Name, bool Suppressed, IntPtr Foreground,
     IntPtr Manager, IntPtr Hosted, bool Expected)[]
 {
