@@ -205,10 +205,17 @@ public partial class MainWindow
             if (detection.Confidence != BadgeConfidenceLevel.NoBadge)
             {
                 // 受限区域内发现角标后立即显示，保证一次 4 秒校准即可同步。
+                // 只有已经建立过稳定基线后，才把“从无未读变为有未读”或
+                // “高置信度数字增加”视为新消息提醒；首次启动同步历史未读时不闪任务栏。
+                var shouldNotify = ShouldNotifyFromStableBadge(entry, stable.Stable, detection);
                 ApplyDetection(entry, detection);
                 stable.Stable = detection;
                 stable.Pending = null;
                 stable.PendingSince = null;
+                if (shouldNotify)
+                {
+                    NotifyAccountAttention(entry);
+                }
             }
             else if (stable.Pending.HasValue && IsResultEqual(stable.Pending.Value, detection))
             {
@@ -273,6 +280,31 @@ public partial class MainWindow
                 entry.AlertDisplayMode = AlertDisplayMode.None;
                 break;
         }
+    }
+
+    private static bool ShouldNotifyFromStableBadge(
+        ClientWindowEntry entry,
+        BadgeResult? previousStable,
+        BadgeResult current)
+    {
+        if (ReferenceEquals(entry, null)
+            || previousStable is null
+            || current.Confidence == BadgeConfidenceLevel.NoBadge)
+        {
+            return false;
+        }
+
+        var previous = previousStable.Value;
+        if (previous.Confidence == BadgeConfidenceLevel.NoBadge)
+        {
+            return true;
+        }
+
+        // 只有两个结果都能可靠读到数字时才根据“数字增加”判断新消息。
+        // Dot -> Count 可能只是识别置信度提升，不能因此重复提醒。
+        return previous.Confidence == BadgeConfidenceLevel.High
+            && current.Confidence == BadgeConfidenceLevel.High
+            && current.Number > previous.Number;
     }
 
     /// <summary>比较两次识别结果是否一致（用于状态同步）。</summary>
