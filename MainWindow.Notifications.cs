@@ -89,15 +89,26 @@ public partial class MainWindow
         }
 
         // Shell 只告诉我们“这个窗口请求关注”，并不携带真实未读数。
-        // 先显示红点，随后由角标 OCR 用真实数字替换，避免每次闪烁都错误 +1。
+        // 先显示红点，随后由角标识别用真实数字替换，避免每次闪烁都错误 +1。
         entry.MessageAlertCount = 0;
         entry.AlertDisplayMode = AlertDisplayMode.Dot;
+        NotifyAccountAttention(entry);
+    }
+
+    /// <summary>
+    /// 把“某个账号请求注意”统一映射到聚窗自身的提醒。
+    /// 不读取消息正文；任务栏闪烁与账号红点/数字是两条独立显示通道。
+    /// </summary>
+    private void NotifyAccountAttention(ClientWindowEntry entry)
+    {
+        if (_isClosing || ReferenceEquals(entry, SelectedEntry))
+        {
+            return;
+        }
+
         StatusMessageText.Text = $"{entry.DisplayName} 收到新消息。";
         SystemSounds.Exclamation.Play();
 
-        // HSHELL_FLASH 只是一个"可能有消息"的信号（微信 4.x 实际很少触发），
-        // 真正的未读数需要靠截图识别来确认。立即对这条账号做一次截图识别，
-        // 用真实数字覆盖临时红点。
         var managerHandle = new WindowInteropHelper(this).Handle;
         if (managerHandle == IntPtr.Zero)
         {
@@ -106,22 +117,29 @@ public partial class MainWindow
 
         if (WindowState == WindowState.Minimized)
         {
+            // 聚窗最小化时默认隐藏到托盘。收到消息后只把“已最小化”的窗口重新
+            // 暴露到任务栏，不恢复、不抢前台，这样才能获得和微信类似的任务栏闪烁。
+            if (!IsVisible)
+            {
+                Show();
+            }
+
             _notifyIcon?.ShowBalloonTip(
                 3000,
                 "聚窗",
                 $"{entry.DisplayName} 收到新消息。",
                 WinForms.ToolTipIcon.Info);
-            return;
         }
 
         var flashInfo = new NativeMethods.FLASHWINFO
         {
             Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.FLASHWINFO>(),
             Window = managerHandle,
-            Flags = NativeMethods.FLASHW_ALL | NativeMethods.FLASHW_TIMERNOFG,
+            Flags = NativeMethods.FLASHW_TRAY | NativeMethods.FLASHW_TIMERNOFG,
             Count = uint.MaxValue,
             Timeout = 0
         };
         NativeMethods.FlashWindowEx(ref flashInfo);
     }
+
 }
