@@ -857,7 +857,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 : $"{version.Major}.{version.Minor}.{version.Build}";
             MessageBox.Show(
                 this,
-                $"聚窗 {displayVersion}\n一窗聚合多媒，矩阵高效出海\n\n" +
+                $"聚窗 {displayVersion}\n\n" +
                 "统一管理本地微信与 WhatsApp 窗口。\n" +
                 "微信版本从当前本地客户端自动读取。\n" +
                 "嵌入窗口固定在容器内，只能通过顶部“弹出窗口”恢复独立窗口。\n" +
