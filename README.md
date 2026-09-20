@@ -16,7 +16,7 @@
 
 聚窗不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也不向第三方服务器上传聊天数据。客户端仍由其原生程序负责显示和交互，聚窗只负责 Windows 窗口托管与本地状态提示。
 
-当前稳定版本：**v0.3.11**
+当前稳定版本：**v0.3.12**
 
 ## 软件界面
 
@@ -61,12 +61,12 @@
 
 ## 下载与使用
 
-请从 GitHub 仓库的 **Releases** 页面下载 v0.3.11，不要从不明来源获取修改版程序。
+请从 GitHub 仓库的 **Releases** 页面下载 v0.3.12，不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JuChuang-v0.3.11-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JuChuang-v0.3.11-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JuChuang-v0.3.12-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JuChuang-v0.3.12-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
@@ -172,6 +172,15 @@ JuChuang/
 ```
 
 ## 版本记录
+
+### v0.3.12
+
+- 主界面进一步页面化：灰色导航/工具壳 + 连续白色客户端页面。
+- 隐藏底部状态栏，让微信与 WhatsApp 内容直接延伸到窗口底部。
+- 右侧工作区保持零卡片、零留白和零额外边框。
+- 托管期间通过 DWM 关闭 Windows 11 圆角和系统边框色，减少悬浮窗口感。
+- 客户端弹出时恢复原生 DWM 外观。
+- 保留顶层 HWND、`WS_CAPTION`、`WS_THICKFRAME` 与现有托管机制，稳定性优先。
 
 ### v0.3.11
 
