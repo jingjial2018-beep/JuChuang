@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - JuChuang.csproj
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -36,6 +37,32 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
+      - name: Validate code-signing secrets
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PFX_BASE64)) {
+            throw "Missing Actions secret: WINDOWS_SIGNING_PFX_BASE64"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PFX_PASSWORD)) {
+            throw "Missing Actions secret: WINDOWS_SIGNING_PFX_PASSWORD"
+          }
+
+      - name: Prepare code-signing certificate
+        id: signing
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "juchuang-codesign.pfx"
+          [IO.File]::WriteAllBytes(
+            $certPath,
+            [Convert]::FromBase64String($env:WINDOWS_SIGNING_PFX_BASE64)
+          )
+          "cert_path=$certPath" >> $env:GITHUB_OUTPUT
+
       - name: Restore
         run: dotnet restore .\JuChuang.csproj
 
@@ -57,6 +84,56 @@ jobs:
             -p:PublishReadyToRun=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -o .\artifacts\self-contained
+
+      - name: Authenticode sign Windows executables
+        id: codesign
+        env:
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if ([string]::IsNullOrWhiteSpace($signTool)) {
+            throw "signtool.exe was not found on the Windows runner."
+          }
+
+          $targets = @(
+            Get-ChildItem ".\artifacts\framework-dependent" -Filter "*.exe" -File,
+            Get-ChildItem ".\artifacts\self-contained" -Filter "*.exe" -File
+          ) | Where-Object { $_ -ne $null }
+
+          if ($targets.Count -lt 2) {
+            throw "Expected signed executable in both publish outputs, but found $($targets.Count)."
+          }
+
+          foreach ($target in $targets) {
+            & $signTool sign `
+              /fd SHA256 `
+              /f "${{ steps.signing.outputs.cert_path }}" `
+              /p "$env:WINDOWS_SIGNING_PFX_PASSWORD" `
+              /tr "http://timestamp.digicert.com" `
+              /td SHA256 `
+              "$($target.FullName)"
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Authenticode signing failed for $($target.FullName)"
+            }
+
+            & $signTool verify /pa /all /v "$($target.FullName)"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Authenticode verification failed for $($target.FullName)"
+            }
+
+            $signature = Get-AuthenticodeSignature "$($target.FullName)"
+            if ($signature.Status -ne "Valid") {
+              throw "PowerShell Authenticode validation failed for $($target.FullName): $($signature.Status)"
+            }
+          }
+
+          $primary = Get-AuthenticodeSignature $targets[0].FullName
+          "signer_subject=$($primary.SignerCertificate.Subject)" >> $env:GITHUB_OUTPUT
 
       - name: Package ZIP files
         id: package
@@ -81,6 +158,10 @@ jobs:
           $notes += "`r`n`r`n### SHA-256`r`n"
           $notes += "- FrameworkDependent: ${{ steps.package.outputs.framework_hash }}`r`n"
           $notes += "- SelfContained: ${{ steps.package.outputs.self_contained_hash }}`r`n"
+          $notes += "`r`n### Windows Authenticode`r`n"
+          $notes += "- Signature: Valid`r`n"
+          $notes += "- Signer: ${{ steps.codesign.outputs.signer_subject }}`r`n"
+          $notes += "- Timestamp: DigiCert RFC3161`r`n"
           Set-Content -Path .\artifacts\release-notes.md -Value $notes -Encoding utf8
 
       - name: Create GitHub Release
@@ -100,4 +181,13 @@ jobs:
               --target "${{ github.sha }}" `
               --title "聚窗 v$version" `
               --notes-file .\artifacts\release-notes.md
+          }
+
+      - name: Remove signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          $certPath = "${{ steps.signing.outputs.cert_path }}"
+          if (![string]::IsNullOrWhiteSpace($certPath) -and (Test-Path $certPath)) {
+            Remove-Item $certPath -Force
           }
