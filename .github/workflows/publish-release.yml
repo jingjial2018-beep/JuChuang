@@ -1,0 +1,103 @@
+name: Publish Windows Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - JuChuang.csproj
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-windows-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content .\JuChuang.csproj
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "Version is missing from JuChuang.csproj" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore .\JuChuang.csproj
+
+      - name: Publish framework-dependent
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:PublishReadyToRun=true `
+            -o .\artifacts\framework-dependent
+
+      - name: Publish self-contained
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:PublishReadyToRun=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o .\artifacts\self-contained
+
+      - name: Package ZIP files
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $framework = "JuChuang-v$version-FrameworkDependent-win-x64.zip"
+          $selfContained = "JuChuang-v$version-SelfContained-win-x64.zip"
+          Compress-Archive -Path .\artifacts\framework-dependent\* -DestinationPath ".\artifacts\$framework" -Force
+          Compress-Archive -Path .\artifacts\self-contained\* -DestinationPath ".\artifacts\$selfContained" -Force
+          $frameworkHash = (Get-FileHash ".\artifacts\$framework" -Algorithm SHA256).Hash
+          $selfContainedHash = (Get-FileHash ".\artifacts\$selfContained" -Algorithm SHA256).Hash
+          "framework=$framework" >> $env:GITHUB_OUTPUT
+          "self_contained=$selfContained" >> $env:GITHUB_OUTPUT
+          "framework_hash=$frameworkHash" >> $env:GITHUB_OUTPUT
+          "self_contained_hash=$selfContainedHash" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $notes = Get-Content .\RELEASE_NOTES.md -Raw
+          $notes += "`r`n`r`n### SHA-256`r`n"
+          $notes += "- FrameworkDependent: `${{ steps.package.outputs.framework_hash }}``r`n"
+          $notes += "- SelfContained: `${{ steps.package.outputs.self_contained_hash }}``r`n"
+          Set-Content -Path .\artifacts\release-notes.md -Value $notes -Encoding utf8
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $version = "${{ steps.version.outputs.version }}"
+          $framework = ".\artifacts\${{ steps.package.outputs.framework }}"
+          $selfContained = ".\artifacts\${{ steps.package.outputs.self_contained }}"
+          if (gh release view $tag --repo "${{ github.repository }}" 2>$null) {
+            gh release upload $tag $framework $selfContained --clobber --repo "${{ github.repository }}"
+          } else {
+            gh release create $tag $framework $selfContained `
+              --repo "${{ github.repository }}" `
+              --target "${{ github.sha }}" `
+              --title "聚窗 v$version" `
+              --notes-file .\artifacts\release-notes.md
+          }
