@@ -197,7 +197,7 @@
                                    Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,18,0">
                         <Button x:Name="AddWeChatButton" Style="{StaticResource ToolbarButtonStyle}"
                                 Content="添加微信" Click="NewWeChat_Click"
                                 ToolTip="启动并接入一个新的微信窗口" />
