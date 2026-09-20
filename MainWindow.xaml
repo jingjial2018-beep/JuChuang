@@ -16,7 +16,7 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         Background="{StaticResource WindowBackgroundBrush}"
-        FontFamily="Microsoft YaHei UI, Microsoft YaHei, Segoe UI"
+        FontFamily="Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei, Segoe UI"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display"
@@ -186,7 +186,7 @@
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="320" />
+                        <ColumnDefinition Width="160" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="138" />
                     </Grid.ColumnDefinitions>
@@ -195,8 +195,6 @@
                         <Image Source="Assets/app-logo.png" Width="24" Height="24" Stretch="Uniform" />
                         <TextBlock Text="聚窗" Margin="10,0,0,0" FontSize="17" FontWeight="SemiBold"
                                    Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="一窗聚合多媒，矩阵高效出海" Margin="12,1,0,0" FontSize="13"
-                                   Foreground="#7C8491" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
@@ -277,7 +275,7 @@
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="76" Margin="12,0,8,0">
+                                    <Grid Height="84" Margin="12,0,8,0">
                                         <Grid.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                 <MenuItem Header="重命名账号" Click="RenameEntry_Click" />
@@ -286,22 +284,22 @@
                                             </ContextMenu>
                                         </Grid.ContextMenu>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="52" />
+                                            <ColumnDefinition Width="60" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="30" />
                                         </Grid.ColumnDefinitions>
-                                        <Grid Width="44" Height="44" VerticalAlignment="Center">
-                                            <Ellipse x:Name="WeChatFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
+                                        <Grid Width="52" Height="52" VerticalAlignment="Center" ClipToBounds="False">
+                                            <Ellipse x:Name="WeChatFallbackIcon" Width="48" Height="48" Visibility="Collapsed">
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="pack://application:,,,/Assets/wechat-icon.jpg" Stretch="UniformToFill" />
                                                 </Ellipse.Fill>
                                             </Ellipse>
-                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
+                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="48" Height="48" Visibility="Collapsed">
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="pack://application:,,,/Assets/whatsapp-icon.png" Stretch="UniformToFill" />
                                                 </Ellipse.Fill>
                                             </Ellipse>
-                                            <Ellipse x:Name="AvatarImage" Visibility="Collapsed">
+                                            <Ellipse x:Name="AvatarImage" Width="48" Height="48" Visibility="Collapsed">
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="{Binding AvatarPath}" Stretch="UniformToFill"
                                                                 AlignmentX="Center" AlignmentY="Center" />
@@ -310,19 +308,19 @@
                                             <!-- 未读角标：头像左上角。
                                                  AlertDisplayMode=Count 显示数字；Dot 显示纯红点；None 整体隐藏。
                                                  数字来自 BadgeDetector 截图识别（高置信度模板匹配结果）。 -->
-                                            <Border x:Name="UnreadBadge" MinWidth="14" Height="14" Padding="5,0"
+                                            <Border x:Name="UnreadBadge" MinWidth="20" Height="20" Padding="5,0"
                                                     Background="#F04438" BorderBrush="#FFFFFF" BorderThickness="1.5"
-                                                    CornerRadius="7" HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                    Margin="-3,-3,0,0" Visibility="Collapsed">
-                                                <TextBlock x:Name="UnreadBadgeText" Text="{Binding MessageAlertText}" FontSize="10"
+                                                    CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                    Margin="-2,-2,0,0" Visibility="Collapsed" Panel.ZIndex="10">
+                                                <TextBlock x:Name="UnreadBadgeText" Text="{Binding MessageAlertText}" FontSize="11"
                                                            FontWeight="SemiBold" Foreground="#FFFFFF"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Border>
                                             <!-- 纯红点（无数字）：AlertDisplayMode=Dot 时叠加覆盖在角标上。 -->
-                                            <Ellipse x:Name="UnreadDot" Width="12" Height="12"
+                                            <Ellipse x:Name="UnreadDot" Width="10" Height="10"
                                                      Fill="#F04438" Stroke="#FFFFFF" StrokeThickness="1.5"
                                                      HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                     Margin="-3,-3,0,0" Visibility="Collapsed" />
+                                                     Margin="-1,-1,0,0" Visibility="Collapsed" Panel.ZIndex="10" />
                                         </Grid>
                                         <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold"
@@ -377,7 +375,6 @@
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
                                             <Setter TargetName="EntryCloseButton" Property="Opacity" Value="1" />
-                                            <Setter TargetName="UnreadBadge" Property="Opacity" Value="0" />
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
