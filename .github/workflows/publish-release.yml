@@ -79,8 +79,8 @@ jobs:
         run: |
           $notes = Get-Content .\RELEASE_NOTES.md -Raw
           $notes += "`r`n`r`n### SHA-256`r`n"
-          $notes += "- FrameworkDependent: `${{ steps.package.outputs.framework_hash }}``r`n"
-          $notes += "- SelfContained: `${{ steps.package.outputs.self_contained_hash }}``r`n"
+          $notes += "- FrameworkDependent: ${{ steps.package.outputs.framework_hash }}`r`n"
+          $notes += "- SelfContained: ${{ steps.package.outputs.self_contained_hash }}`r`n"
           Set-Content -Path .\artifacts\release-notes.md -Value $notes -Encoding utf8
 
       - name: Create GitHub Release
