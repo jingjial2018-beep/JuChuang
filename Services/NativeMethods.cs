@@ -53,9 +53,11 @@ internal static class NativeMethods
     internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     internal const int DWMWA_BORDER_COLOR = 34;
     internal const int DWMWA_CAPTION_COLOR = 35;
+    internal const int DWMWCP_DONOTROUND = 1;
     internal const int DWMWCP_ROUND = 2;
     internal const int DWMNCRP_USEWINDOWSTYLE = 0;
     internal const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
+    internal const int DwmColorNone = unchecked((int)0xFFFFFFFE);
     // v0.2.1 forced #E1E1E6. Treat that value as a legacy override and return
     // it to DWM's native theme so an already-running client also recovers.
     internal const int LegacyHostedClientChromeColorRef = 0x00E6E1E1;
@@ -427,6 +429,29 @@ internal static class NativeMethods
             hWnd,
             DWMWA_TRANSITIONS_FORCEDISABLED,
             ref disabled,
+            sizeof(int));
+    }
+
+    /// <summary>
+    /// Applies only low-risk visual overrides while a native client is hosted.
+    /// We deliberately keep the client's WS_CAPTION / WS_THICKFRAME and top-level
+    /// window relationship intact; this removes the Windows 11 floating-window
+    /// cues without changing input, popup, DPI, or client layout behavior.
+    /// </summary>
+    internal static void ApplyHostedVisualChrome(IntPtr hWnd)
+    {
+        var cornerPreference = DWMWCP_DONOTROUND;
+        DwmSetWindowAttribute(
+            hWnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            ref cornerPreference,
+            sizeof(int));
+
+        var borderColor = DwmColorNone;
+        DwmSetWindowAttribute(
+            hWnd,
+            DWMWA_BORDER_COLOR,
+            ref borderColor,
             sizeof(int));
     }
 }
