@@ -246,9 +246,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await Dispatcher.Yield(DispatcherPriority.Loaded);
         await Dispatcher.Yield(DispatcherPriority.Background);
         await ScanAndAttachAsync();
+        // 首次启动时某些 WebView/Store 客户端（尤其 WhatsApp）窗口已经可枚举，
+        // 但第一次跨进程托管可能正好撞上客户端自身的布局/恢复过程而失败。
+        // 只对“已经发现但尚未接入”的窗口做两次短暂重试，不启动新进程，
+        // 不改变已成功接入的窗口，避免用户必须手动点“嵌入窗口”。
+        for (var startupRetry = 0;
+             startupRetry < 2 && Entries.Any(entry => !entry.IsAttached && NativeMethods.IsWindow(entry.Handle));
+             startupRetry++)
+        {
+            await Task.Delay(350);
+            await ScanAndAttachAsync();
+        }
+
         if (Entries.Count > 0 && SelectedEntry is null)
         {
-            SelectedEntry = Entries[0];
+            SelectedEntry = Entries.FirstOrDefault(entry => entry.IsAttached) ?? Entries[0];
         }
 
         StatusMessageText.Text = Entries.Count == 0
@@ -403,6 +415,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             weChatAccounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
                             QueueWeChatAccountResolution(existingEntry, preferredAccount);
                         }
+                    }
+
+                    // 自动扫描只重试“接入失败”的窗口。用户主动“弹出窗口”会把句柄
+                    // 放进 _dismissedWindowHandles，因此不会被后台扫描重新抓回容器。
+                    if (!existingEntry.IsAttached
+                        && !_dismissedWindowHandles.Contains(existingEntry.Handle))
+                    {
+                        existingEntry.IsAttached = WindowHost.AttachWindow(
+                            existingEntry.Handle,
+                            makeActive: false);
+                        existingEntry.Status = existingEntry.IsAttached ? "已嵌入" : "接入失败";
                     }
 
                     continue;
@@ -719,6 +742,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (entry.IsAttached)
         {
+            // 明确记录“用户主动弹出”，后台 5 秒扫描不得自动重新接入。
+            _dismissedWindowHandles.Add(entry.Handle);
             WindowHost.DetachWindow(entry.Handle);
             entry.IsAttached = false;
             entry.Status = "独立窗口";
@@ -726,11 +751,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else
         {
+            // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
+            _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
             entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
             StatusMessageText.Text = entry.IsAttached
                 ? $"{entry.DisplayName} 已重新嵌入。"
-                : "窗口接入失败，请尝试“重新接入全部窗口”。";
+                : "窗口接入失败，聚窗会继续后台重试，也可使用“全部接入”。";
         }
 
         UpdateWindowCount();

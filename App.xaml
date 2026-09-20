@@ -3,20 +3,19 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <!-- 页面化壳层：灰色导航/工具区 + 连续白色客户端页面，弱化“窗口套窗口”。 -->
-        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#E7E8EB" />
+        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F3F4F6" />
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="ChromeSurfaceBrush" Color="#E9EAED" />
-        <SolidColorBrush x:Key="SidebarSurfaceBrush" Color="#EFF0F2" />
+        <SolidColorBrush x:Key="ChromeSurfaceBrush" Color="#F8F9FB" />
+        <SolidColorBrush x:Key="SidebarSurfaceBrush" Color="#F7F8FA" />
         <SolidColorBrush x:Key="WorkspaceSurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#202124" />
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#858A93" />
-        <SolidColorBrush x:Key="BorderBrush" Color="#D5D7DB" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#17191D" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#7A8391" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#E1E4E8" />
         <SolidColorBrush x:Key="WeChatBrush" Color="#07C160" />
-        <SolidColorBrush x:Key="SelectionBrush" Color="#E0E2E5" />
-        <SolidColorBrush x:Key="SelectionBorderBrush" Color="#E0E2E5" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#3A76D2" />
-        <SolidColorBrush x:Key="HoverBrush" Color="#E5E7EA" />
-        <SolidColorBrush x:Key="SidebarHeaderBrush" Color="#5F6570" />
+        <SolidColorBrush x:Key="SelectionBrush" Color="#DFECFA" />
+        <SolidColorBrush x:Key="SelectionBorderBrush" Color="#DFECFA" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#1677FF" />
+        <SolidColorBrush x:Key="HoverBrush" Color="#ECEFF3" />
+        <SolidColorBrush x:Key="SidebarHeaderBrush" Color="#596273" />
     </Application.Resources>
 </Application>

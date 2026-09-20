@@ -45,8 +45,16 @@ public static class ClientWindowDiscovery
                     return true;
                 }
 
+                // WhatsApp Store/WebView builds can briefly expose a normal main window
+                // before its title text is populated. Resolve the process first so a blank
+                // title does not make an otherwise valid WhatsApp main window invisible to
+                // the startup scan. WeChat keeps the stricter title requirement below.
+                var processName = TryGetProcessName(processId);
                 var title = ReadWindowTitle(handle);
-                if (string.IsNullOrWhiteSpace(title))
+                var processLooksLikeWhatsApp = processName.Contains(
+                    "whatsapp",
+                    StringComparison.OrdinalIgnoreCase);
+                if (string.IsNullOrWhiteSpace(title) && !processLooksLikeWhatsApp)
                 {
                     return true;
                 }
@@ -69,7 +77,6 @@ public static class ClientWindowDiscovery
                     return true;
                 }
 
-                var processName = TryGetProcessName(processId);
                 var windowClass = ReadWindowClass(handle);
                 var isForcedSelfTestTarget = selfTestTargetProcessId == processId
                     && title.Equals("聚窗窗口托管测试", StringComparison.Ordinal)

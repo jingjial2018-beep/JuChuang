@@ -27,18 +27,18 @@
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="0"
                             ResizeBorderThickness="7"
-                            CornerRadius="6"
+                            CornerRadius="10"
                             GlassFrameThickness="0" />
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
         <Style x:Key="ToolbarButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="Margin" Value="0,0,2,0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="15,0" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+            <Setter Property="Background" Value="#FBFCFD" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="Normal" />
@@ -50,7 +50,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="5"
+                                CornerRadius="8"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
@@ -58,10 +58,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#E7E9EC" />
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#F0F3F6" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#CED4DC" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#DDE0E4" />
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#E7EBEF" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42" />
@@ -73,8 +74,8 @@
         </Style>
 
         <Style x:Key="WindowControlButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="40" />
-            <Setter Property="Height" Value="40" />
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="#344054" />
@@ -100,7 +101,7 @@
 
         <Style x:Key="AccountItemStyle" TargetType="ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Margin" Value="6,2" />
+            <Setter Property="Margin" Value="8,2" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -113,7 +114,7 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="Transparent"
                                     BorderThickness="0"
-                                    CornerRadius="6">
+                                    CornerRadius="7">
                                 <ContentPresenter />
                             </Border>
                             <Rectangle x:Name="AccentBar"
@@ -127,11 +128,11 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Card" Property="Background" Value="#E9EBEE" />
+                                <Setter TargetName="Card" Property="Background" Value="#ECEFF3" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Card" Property="Background" Value="{StaticResource SelectionBrush}" />
-                                <!-- 搜狗式低对比选中态：不再额外显示强调色竖条。 -->
+                                <Setter TargetName="AccentBar" Property="Visibility" Value="Visible" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -167,34 +168,35 @@
     </Window.Resources>
 
     <Border Background="{StaticResource WindowBackgroundBrush}"
-            BorderBrush="#D7DADF"
+            BorderBrush="#D5D9DE"
             BorderThickness="1"
-            CornerRadius="6">
+            CornerRadius="10">
         <Grid ClipToBounds="True">
             <Grid.RowDefinitions>
-                <RowDefinition Height="44" />
+                <RowDefinition Height="48" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="0" />
+                <RowDefinition Height="42" />
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0"
                     Background="{StaticResource ChromeSurfaceBrush}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,0,0,1"
-                    CornerRadius="6,6,0,0"
+                    CornerRadius="10,10,0,0"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="252" />
+                        <ColumnDefinition Width="320" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="138" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                        <Image Source="Assets/app-logo.png" Width="20" Height="20" Stretch="Uniform" />
-                        <TextBlock Text="聚窗" Margin="8,0,0,0" FontSize="15" FontWeight="SemiBold"
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                        <Image Source="Assets/app-logo.png" Width="24" Height="24" Stretch="Uniform" />
+                        <TextBlock Text="聚窗" Margin="10,0,0,0" FontSize="17" FontWeight="SemiBold"
                                    Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="一窗聚合多媒，矩阵高效出海" Visibility="Collapsed" />
+                        <TextBlock Text="一窗聚合多媒，矩阵高效出海" Margin="12,1,0,0" FontSize="13"
+                                   Foreground="#7C8491" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
@@ -250,8 +252,8 @@
 
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="SidebarColumn" Width="252" MinWidth="208" MaxWidth="380" />
-                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition x:Name="SidebarColumn" Width="292" MinWidth="220" MaxWidth="460" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -259,12 +261,12 @@
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="40" />
+                            <RowDefinition Height="48" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Margin="14,0,0,0" FontSize="12.5" FontWeight="SemiBold"
+                        <TextBlock Grid.Row="0" Margin="20,0,0,0" FontSize="14" FontWeight="SemiBold"
                                    Foreground="{StaticResource SidebarHeaderBrush}" VerticalAlignment="Center">
-                            <Run Text="账号" /><Run Text=" · " /><Run Text="{Binding Entries.Count, Mode=OneWay}" />
+                            <Run Text="账号与窗口" /><Run Text=" · " /><Run Text="{Binding Entries.Count, Mode=OneWay}" />
                         </TextBlock>
                         <ListBox x:Name="AccountsList" Grid.Row="1" ItemsSource="{Binding Entries}"
                                  SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
@@ -275,7 +277,7 @@
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="66" Margin="10,0,6,0">
+                                    <Grid Height="76" Margin="12,0,8,0">
                                         <Grid.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                 <MenuItem Header="重命名账号" Click="RenameEntry_Click" />
@@ -284,17 +286,17 @@
                                             </ContextMenu>
                                         </Grid.ContextMenu>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="46" />
+                                            <ColumnDefinition Width="52" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="30" />
                                         </Grid.ColumnDefinitions>
-                                        <Grid Width="38" Height="38" VerticalAlignment="Center">
-                                            <Ellipse x:Name="WeChatFallbackIcon" Width="38" Height="38" Visibility="Collapsed">
+                                        <Grid Width="44" Height="44" VerticalAlignment="Center">
+                                            <Ellipse x:Name="WeChatFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="pack://application:,,,/Assets/wechat-icon.jpg" Stretch="UniformToFill" />
                                                 </Ellipse.Fill>
                                             </Ellipse>
-                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="38" Height="38" Visibility="Collapsed">
+                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="pack://application:,,,/Assets/whatsapp-icon.png" Stretch="UniformToFill" />
                                                 </Ellipse.Fill>
@@ -322,16 +324,16 @@
                                                      HorizontalAlignment="Left" VerticalAlignment="Top"
                                                      Margin="-3,-3,0,0" Visibility="Collapsed" />
                                         </Grid>
-                                        <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="Normal"
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold"
                                                        Foreground="{StaticResource PrimaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" />
-                                            <TextBlock Text="{Binding ClientLabel}" Margin="0,2,0,0" FontSize="11"
+                                            <TextBlock Text="{Binding ClientLabel}" Margin="0,2,0,0" FontSize="13"
                                                        Foreground="{StaticResource SecondaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis" />
                                             <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                                 <Ellipse Width="6" Height="6" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding Status}" Margin="5,0,0,0" FontSize="11.5"
+                                                <TextBlock Text="{Binding Status}" Margin="6,0,0,0" FontSize="13"
                                                            Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                                             </StackPanel>
                                         </StackPanel>
@@ -386,7 +388,7 @@
 
                 <GridSplitter Grid.Column="1"
                               Width="5"
-                              HorizontalAlignment="Center"
+                              HorizontalAlignment="Stretch"
                               VerticalAlignment="Stretch"
                               Background="Transparent"
                               Cursor="SizeWE"
@@ -394,13 +396,12 @@
                               DragDelta="SidebarSplitter_DragDelta"
                               DragCompleted="SidebarSplitter_DragCompleted" />
 
-                <!-- 右侧是连续页面区域：不再添加卡片、留白或独立容器边框。 -->
                 <Grid Grid.Column="2" Background="{StaticResource WorkspaceSurfaceBrush}">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="0" />
+                        <RowDefinition Height="44" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Border Grid.Row="0" Visibility="Collapsed" Background="{StaticResource ChromeSurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Grid.Row="0" Background="{StaticResource ChromeSurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="0,0,0,1">
                         <Grid Margin="20,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -444,10 +445,10 @@
                 </Grid>
             </Grid>
 
-            <Border Grid.Row="2" Visibility="Collapsed" Background="{StaticResource ChromeSurfaceBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0"
-                    CornerRadius="0">
-                <Grid Margin="12,0">
+            <Border Grid.Row="2" Background="{StaticResource ChromeSurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,10,10">
+                <Grid Margin="16,0">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="8" Height="8" Fill="#12B76A" />
