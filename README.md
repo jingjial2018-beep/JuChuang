@@ -14,7 +14,7 @@
 
 聚窗不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也不向第三方服务器上传聊天数据。客户端仍由其原生程序负责显示和交互，聚窗只负责 Windows 窗口托管与本地状态提示。
 
-当前稳定版本：**v0.3.14**
+当前稳定版本：**v0.3.15**
 
 ## 软件界面
 
@@ -59,12 +59,12 @@
 
 ## 下载与使用
 
-请从 GitHub 仓库的 **Releases** 页面下载 v0.3.14，不要从不明来源获取修改版程序。
+请从 GitHub 仓库的 **Releases** 页面下载 v0.3.15，不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JuChuang-v0.3.14-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JuChuang-v0.3.14-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JuChuang-v0.3.15-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JuChuang-v0.3.15-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
@@ -170,6 +170,13 @@ JuChuang/
 ```
 
 ## 版本记录
+
+### v0.3.15
+
+- 顶部功能按钮整组右对齐，Logo + “聚窗”保持左侧固定。
+- 功能区与窗口控制按钮保留间距，并随窗口宽度自适应。
+- 仅调整顶部布局，不改微信 / WhatsApp 托管、消息提醒、DPI、多开与输入逻辑。
+- 本版本按当前决定继续使用未签名发布包。
 
 ### v0.3.14
 
