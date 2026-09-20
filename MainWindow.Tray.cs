@@ -37,7 +37,7 @@ public partial class MainWindow
         _notifyIcon = new WinForms.NotifyIcon
         {
             Icon = _trayIcon ?? System.Drawing.SystemIcons.Application,
-            Text = "聚窗 - 一窗聚合多媒",
+            Text = "聚窗",
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => RestoreFromTray();
