@@ -3,19 +3,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F3F4F6" />
+        <!-- 搜狗式轻量壳层：浅灰应用背景 + 白/浅灰工作区，减少卡片与层级感。 -->
+        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F1F2F4" />
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="ChromeSurfaceBrush" Color="#F8F9FB" />
-        <SolidColorBrush x:Key="SidebarSurfaceBrush" Color="#F7F8FA" />
-        <SolidColorBrush x:Key="WorkspaceSurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#17191D" />
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#7A8391" />
-        <SolidColorBrush x:Key="BorderBrush" Color="#E1E4E8" />
+        <SolidColorBrush x:Key="ChromeSurfaceBrush" Color="#F4F5F7" />
+        <SolidColorBrush x:Key="SidebarSurfaceBrush" Color="#F2F3F5" />
+        <SolidColorBrush x:Key="WorkspaceSurfaceBrush" Color="#F5F5F5" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#202124" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#7A8088" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#D9DCE1" />
         <SolidColorBrush x:Key="WeChatBrush" Color="#07C160" />
-        <SolidColorBrush x:Key="SelectionBrush" Color="#DFECFA" />
-        <SolidColorBrush x:Key="SelectionBorderBrush" Color="#DFECFA" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#1677FF" />
-        <SolidColorBrush x:Key="HoverBrush" Color="#ECEFF3" />
-        <SolidColorBrush x:Key="SidebarHeaderBrush" Color="#596273" />
+        <SolidColorBrush x:Key="SelectionBrush" Color="#E6E8EB" />
+        <SolidColorBrush x:Key="SelectionBorderBrush" Color="#E6E8EB" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#3A76D2" />
+        <SolidColorBrush x:Key="HoverBrush" Color="#E9EBEE" />
+        <SolidColorBrush x:Key="SidebarHeaderBrush" Color="#626871" />
     </Application.Resources>
 </Application>
