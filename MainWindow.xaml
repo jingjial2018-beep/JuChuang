@@ -294,7 +294,7 @@
                                                     <ImageBrush ImageSource="pack://application:,,,/Assets/wechat-icon.jpg" Stretch="UniformToFill" />
                                                 </Ellipse.Fill>
                                             </Ellipse>
-                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="44" Height="44" Visibility="Collapsed">
+                                            <Ellipse x:Name="WhatsAppFallbackIcon" Width="38" Height="38" Visibility="Collapsed">
                                                 <Ellipse.Fill>
                                                     <ImageBrush ImageSource="pack://application:,,,/Assets/whatsapp-icon.png" Stretch="UniformToFill" />
                                                 </Ellipse.Fill>
