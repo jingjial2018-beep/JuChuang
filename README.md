@@ -4,8 +4,6 @@
 
 <h1 align="center">聚窗</h1>
 
-<p align="center">一窗聚合多媒，矩阵高效出海</p>
-
 <p align="center">
   Windows 11 本地微信与 WhatsApp 多窗口管理器
 </p>
@@ -16,7 +14,7 @@
 
 聚窗不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也不向第三方服务器上传聊天数据。客户端仍由其原生程序负责显示和交互，聚窗只负责 Windows 窗口托管与本地状态提示。
 
-当前稳定版本：**v0.3.13**
+当前稳定版本：**v0.3.14**
 
 ## 软件界面
 
@@ -61,12 +59,12 @@
 
 ## 下载与使用
 
-请从 GitHub 仓库的 **Releases** 页面下载 v0.3.13，不要从不明来源获取修改版程序。
+请从 GitHub 仓库的 **Releases** 页面下载 v0.3.14，不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JuChuang-v0.3.13-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JuChuang-v0.3.13-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JuChuang-v0.3.14-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JuChuang-v0.3.14-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
@@ -172,6 +170,15 @@ JuChuang/
 ```
 
 ## 版本记录
+
+### v0.3.14
+
+- 更换新的聚窗品牌 Logo，并同步用于窗口、EXE、任务栏和系统托盘图标。
+- 主界面字体改为 `Segoe UI Variable Text` 优先，中文继续回退 `Microsoft YaHei UI`。
+- 删除顶部与“关于”中的旧标语，托盘提示简化为“聚窗”。
+- 账号卡片增加高度和头像空间，改善多账号列表的拥挤感。
+- 优化未读数字 / 红点形状与层级，修复鼠标悬停后未读数字消失。
+- 仅调整 UI 与品牌资源，不改 v0.3.13 的窗口托管、DPI、多开、消息检测和 WhatsApp 自动接入机制。
 
 ### v0.3.13
 
