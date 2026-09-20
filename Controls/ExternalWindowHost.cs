@@ -80,9 +80,6 @@ public sealed class ExternalWindowHost : HwndHost
                 handle,
                 NativeMethods.GWL_EXSTYLE,
                 CreateOverlayExtendedStyle(state.ExtendedStyle));
-            // 仅移除 Windows 11 的圆角与 DWM 边框色，保留标题栏、厚边框和顶层 HWND。
-            // 弹出窗口时 DetachWindow 会用 ChromeState 恢复客户端原始 DWM 外观。
-            NativeMethods.ApplyHostedVisualChrome(handle);
             var ownerRoot = GetOwnerRoot();
             if (ownerRoot != IntPtr.Zero)
             {
@@ -103,8 +100,8 @@ public sealed class ExternalWindowHost : HwndHost
                 1,
                 1,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
-            // 保留客户端完整原生样式与标题栏，只清掉可能残留的旧裁剪区域。
-            // 后续由 ApplyClipRegion 使用直角区域裁掉 DWM 扩展边框与阴影。
+            // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
+            // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
             _hostedWindows.TryAdd(handle, state);
         }
@@ -238,9 +235,6 @@ public sealed class ExternalWindowHost : HwndHost
         var zOrderFlags = ShouldPromoteCurrentWindow()
             ? 0u
             : NativeMethods.SWP_NOZORDER;
-        // 某些自绘客户端在窗口状态或 DPI 变化后会重新提交 DWM 属性。
-        // 每次布局对齐时重申无圆角/无系统边框，避免悬浮感重新出现。
-        NativeMethods.ApplyHostedVisualChrome(_currentHandle);
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP, 0, 0, 0, 0,
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
             | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
