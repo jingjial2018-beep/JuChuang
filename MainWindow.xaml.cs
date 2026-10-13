@@ -321,6 +321,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RemoveEntry(ClientWindowEntry entry)
     {
+        DiagnosticLogService.WriteAccountEvent(entry, "entry-removed");
         entry.SessionState = ClientSessionState.Exited;
 
         if (entry.IsAttached)
@@ -413,6 +414,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ResetWeChatAccountBinding(ClientWindowEntry entry)
     {
         var processId = entry.ProcessId;
+        DiagnosticLogService.WriteAccountEvent(entry, "account-generation-reset");
         entry.AccountGeneration++;
         _resolvedWeChatAccounts.Remove(processId);
         _accountResolutionRetryAfter.Remove(processId);
@@ -664,6 +666,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         }
                     }
 
+                    DiagnosticLogService.WriteAccountEvent(rebindingEntry, "window-rebound");
                     TryCompletePendingLaunch(candidate, rebindingEntry);
                     if (ReferenceEquals(rebindingEntry, SelectedEntry))
                     {
@@ -975,6 +978,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             WindowHost.DetachWindow(entry.Handle);
             entry.IsAttached = false;
             entry.Status = "独立窗口";
+            DiagnosticLogService.WriteAccountEvent(entry, "manual-detach");
             StatusMessageText.Text = $"{entry.DisplayName} 已弹出到桌面。";
         }
         else
@@ -984,6 +988,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.IsManuallyDetached = false;
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
             entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+            DiagnosticLogService.WriteAccountEvent(
+                entry,
+                entry.IsAttached ? "manual-attach" : "manual-attach-failed");
             StatusMessageText.Text = entry.IsAttached
                 ? $"{entry.DisplayName} 已重新嵌入。"
                 : "窗口接入失败，聚窗会继续后台重试，也可使用“全部接入”。";
@@ -1271,6 +1278,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.ProfileDiagnosticCode = "ProfileCache";
             entry.ProfileDiagnosticDetail = "当前显示的是聚窗上一次确认过的本地账号资料，后台会继续尝试读取最新资料。";
             RefreshSelectedProfileStatus(entry);
+            DiagnosticLogService.WriteAccountEvent(entry, "profile-cache-restored");
         }
     }
 
@@ -1321,6 +1329,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             : GetProfileDiagnosticLabel(stage);
         entry.ProfileDiagnosticDetail = detail;
         RefreshSelectedProfileStatus(entry);
+        DiagnosticLogService.WriteAccountEvent(entry, "profile-diagnostic");
     }
 
     private async void QueueWeChatAccountResolution(
@@ -1460,6 +1469,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _accountResolutionFailures.Remove(processId);
             ApplyWeChatAccountIdentity(entry, account);
             RefreshSelectedProfileStatus(entry);
+            DiagnosticLogService.WriteAccountEvent(entry, "profile-live-resolved");
         }
         catch
         {
@@ -1519,6 +1529,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CurrentTitleText.Text = entry.DisplayName;
             RefreshSelectedProfileStatus(entry);
+        }
+    }
+
+    private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: ClientWindowEntry entry })
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(DiagnosticLogService.BuildClipboardReport(entry));
+            DiagnosticLogService.WriteAccountEvent(entry, "diagnostic-copied");
+            StatusMessageText.Text = $"{entry.DisplayName} 的诊断信息已复制到剪贴板。";
+        }
+        catch (Exception exception)
+        {
+            StatusMessageText.Text = $"复制诊断信息失败：{exception.Message}";
         }
     }
 
