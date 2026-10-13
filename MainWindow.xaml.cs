@@ -657,7 +657,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             candidate.WindowTitle,
             candidate.Kind,
             displayName,
-            candidate.ClientVersion);
+            candidate.ClientVersion,
+            MapSessionState(candidate.Role));
     }
 
     private async void NewWeChat_Click(object sender, RoutedEventArgs e)
@@ -701,6 +702,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             _dismissedWindowHandles.Clear();
+            _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WeChat);
             _selectNextKind = ClientKind.WeChat;
             await Task.Run(() => ClientLauncher.StartWeChat(executablePath));
             StatusMessageText.Text = "微信已启动，正在等待新窗口…";
@@ -708,7 +710,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            _selectNextKind = null;
+            ClearPendingLaunch(ClientKind.WeChat);
             ShowOwnedMessageBox($"无法启动微信：\n{exception.Message}", "聚窗",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -746,6 +748,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             StatusMessageText.Text = "正在准备 WhatsApp 客户端…";
             await Dispatcher.Yield(DispatcherPriority.Input);
             _dismissedWindowHandles.Clear();
+            _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WhatsApp);
             _selectNextKind = ClientKind.WhatsApp;
             await Task.Run(ClientLauncher.StartWhatsApp);
             StatusMessageText.Text = "WhatsApp 已启动，正在等待窗口…";
@@ -753,7 +756,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            _selectNextKind = null;
+            ClearPendingLaunch(ClientKind.WhatsApp);
             ShowOwnedMessageBox($"无法启动 WhatsApp：\n{exception.Message}", "聚窗",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -793,7 +796,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_selectNextKind == kind)
         {
-            _selectNextKind = null;
+            ClearPendingLaunch(kind);
             StatusMessageText.Text = "客户端可能仍在启动；窗口出现后会自动接入。";
         }
     }
@@ -1081,7 +1084,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ClientKind kind,
         string name,
         string? clientVersion = null)
-        => new(IntPtr.Zero, 0, string.Empty, string.Empty, kind, name, clientVersion)
+        => new(
+            IntPtr.Zero,
+            0,
+            string.Empty,
+            string.Empty,
+            kind,
+            name,
+            clientVersion,
+            ClientSessionState.Main)
         {
             Status = "已嵌入",
             IsOnline = true,
@@ -1093,6 +1104,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var previousIdentity = entry.IdentityKey;
         var identityChanged = !string.Equals(previousIdentity, account.Key, StringComparison.OrdinalIgnoreCase);
         entry.IdentityKey = account.Key;
+        entry.AccountId = account.AccountId;
+
+        // 同一 PID 退出旧账号再登录新账号时，HWND/进程可能复用。
+        // 身份已经变化就先清掉旧头像，避免新资料尚未解析完成时显示上一个账号。
+        if (identityChanged && previousIdentity is not null)
+        {
+            entry.AvatarPath = null;
+        }
 
         if (_settings.AccountNamesByIdentity.TryGetValue(account.Key, out var savedName)
             && !string.IsNullOrWhiteSpace(savedName))
