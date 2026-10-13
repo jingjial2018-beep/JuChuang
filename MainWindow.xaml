@@ -331,8 +331,10 @@
                                                        TextTrimming="CharacterEllipsis" />
                                             <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                                 <Ellipse Width="6" Height="6" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding Status}" Margin="6,0,0,0" FontSize="13"
-                                                           Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding StatusSummary}" Margin="6,0,0,0" FontSize="13"
+                                                           Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding ProfileDiagnosticText}" />
                                             </StackPanel>
                                         </StackPanel>
                                         <Button x:Name="EntryCloseButton" Grid.Column="2"
