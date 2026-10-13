@@ -8,13 +8,13 @@ namespace JuChuang;
 /// <summary>
 /// 未读消息角标轮询：
 /// 1) Shell/WinEvent 活动触发时立即检测对应账号
-/// 2) 同时按低频复查（~4s）所有账号，纠正漏报并确认已读后清零
+/// 2) 前台每 4 秒复查所有账号；后台每轮轮流复查一个微信账号
 /// 3) 发现未读立即更新；只有“角标消失”需要连续两次确认，避免动画帧误清
 /// </summary>
 public partial class MainWindow
 {
-    // 低频复查周期：HSHELL_FLASH 已是主触发源，这里只承担"纠漏+已读清零"职责。
-    // 4 秒能在"及时纠错"与"截图开销"间取得平衡（每个嵌入窗口每 4 秒截一次）。
+    // 前台每 4 秒校准；后台每轮只读一个微信账号，覆盖微信不发 Shell/WinEvent
+    // 的消息，同时避免过去“每轮截取所有后台窗口”带来的 DWM 抖动。
     private static readonly TimeSpan BadgePollInterval = TimeSpan.FromMilliseconds(4000);
 
     private DispatcherTimer? _badgePollTimer;
@@ -22,6 +22,7 @@ public partial class MainWindow
     private int _badgeScanInProgress; // 0 = 空闲，1 = 扫描中（防止重入）
     private readonly HashSet<ClientWindowEntry> _queuedImmediateBadgeScans = [];
     private bool _foregroundCalibrationPending;
+    private int _backgroundBadgeCursor;
 
     // 每个账号的"上一次稳定结果"（用于"连续两次一致才更新"的状态同步）
     private readonly Dictionary<ClientWindowEntry, BadgeStableState> _badgeStableState = new();
@@ -50,8 +51,8 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// JNest重新回到前台时补做一次校准。后台期间不再周期性调用
-    /// PrintWindow(PW_RENDERFULLCONTENT)，避免打断 Chrome/DWM 的 GPU 合成。
+    /// JNest重新回到前台时补做一次全量校准。后台只逐个复查微信，
+    /// 避免集中 PrintWindow(PW_RENDERFULLCONTENT) 打断 GPU 合成。
     /// </summary>
     private void TriggerForegroundBadgeCalibration()
     {
@@ -105,16 +106,10 @@ public partial class MainWindow
             return;
         }
 
-        // PrintWindow(PW_RENDERFULLCONTENT) forces a synchronous read-back from
-        // hardware-accelerated WeChat/WhatsApp surfaces. Repeating it while an
-        // unrelated app is foreground can stall DWM and make Chromium windows
-        // visibly flash. Shell attention events still use the immediate path;
-        // periodic full calibration resumes as soon as the user returns.
-        if (!WindowHost.IsManagerContextForeground)
-        {
-            _foregroundCalibrationPending = true;
-            return;
-        }
+        // PrintWindow 可阻塞客户端渲染。后台只轮流检查一个微信窗口；
+        // 全量校准仍等 JNest 回到前台后再做。
+        var managerForeground = WindowHost.IsManagerContextForeground;
+        if (!managerForeground) _foregroundCalibrationPending = true;
 
         if (Interlocked.CompareExchange(ref _badgeScanInProgress, 1, 0) != 0)
         {
@@ -124,9 +119,10 @@ public partial class MainWindow
 
         try
         {
-            _foregroundCalibrationPending = false;
+            if (managerForeground) _foregroundCalibrationPending = false;
             var targets = Entries
-                .Where(entry => entry.IsAttached && entry.Handle != IntPtr.Zero)
+                .Where(entry => entry.IsAttached && entry.Handle != IntPtr.Zero
+                    && (managerForeground || entry.Kind == ClientKind.WeChat))
                 .ToArray();
 
             if (targets.Length == 0)
@@ -134,8 +130,11 @@ public partial class MainWindow
                 return;
             }
 
-            // 定时复查仍用于纠漏和连续两次确认角标消失。
-            foreach (var entry in targets)
+            // 后台按账号轮转，避免同一轮集中截取多个微信窗口。
+            var selected = managerForeground
+                ? targets
+                : new[] { targets[_backgroundBadgeCursor++ % targets.Length] };
+            foreach (var entry in selected)
             {
                 if (!NativeMethods.IsWindow(entry.Handle)) continue;
                 await ScanSingleAsync(entry);
