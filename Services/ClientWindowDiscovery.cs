@@ -12,6 +12,7 @@ public sealed record WindowCandidate(
     string WindowTitle,
     string WindowClass,
     ClientKind Kind,
+    ClientWindowRole Role,
     long PixelArea,
     string? ClientVersion = null);
 
@@ -20,9 +21,10 @@ public static class ClientWindowDiscovery
     private static readonly string[] WeChatProcessHints = ["wechat", "weixin"];
     private static readonly ConcurrentDictionary<int, VersionCacheEntry> VersionCache = [];
 
-    // 进程名在进程生命周期内不变，缓存后可避免每 5 秒扫描时为每个候选窗口
-    // 重复调用 Process.GetProcessById（打开进程句柄的开销远高于一次字典查找）。
-    private static readonly ConcurrentDictionary<int, string> ProcessNameCache = [];
+    // 进程名缓存只保留很短时间。Windows 会复用 PID，如果永久按 PID 缓存，
+    // 一个已经退出的 Chrome/微信 PID 被新进程复用后可能造成误识别。
+    private static readonly ConcurrentDictionary<int, ProcessNameCacheEntry> ProcessNameCache = [];
+    private static readonly TimeSpan ProcessNameCacheLifetime = TimeSpan.FromSeconds(10);
 
     public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null)
     {
@@ -98,6 +100,7 @@ public static class ClientWindowDiscovery
                     title.Trim(),
                     windowClass,
                     kind,
+                    ResolveWindowRole(kind, title),
                     (long)rect.Width * rect.Height,
                     TryReadClientVersion(processId, kind)));
             }
@@ -114,7 +117,8 @@ public static class ClientWindowDiscovery
             .Select(group => group.First())
             .GroupBy(candidate => (candidate.Kind, candidate.ProcessId))
             .Select(group => group
-                .OrderByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
+                .OrderByDescending(candidate => candidate.Role == ClientWindowRole.Main)
+                .ThenByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
                 .ThenByDescending(candidate => candidate.PixelArea)
                 .First())
             .OrderBy(candidate => candidate.Kind)
@@ -190,6 +194,24 @@ public static class ClientWindowDiscovery
                || normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login";
     }
 
+    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title)
+    {
+        if (kind == ClientKind.WhatsApp)
+        {
+            return ClientWindowRole.Main;
+        }
+
+        var normalized = title.Trim().ToLowerInvariant();
+        if (normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login")
+        {
+            return ClientWindowRole.Login;
+        }
+
+        return IsGenericMainTitle(title)
+            ? ClientWindowRole.Main
+            : ClientWindowRole.Unknown;
+    }
+
     private static bool IsAuxiliaryWeChatTitle(string normalizedTitle)
     {
         string[] auxiliaryTitleHints =
@@ -201,23 +223,42 @@ public static class ClientWindowDiscovery
         return auxiliaryTitleHints.Any(normalizedTitle.Contains);
     }
 
+    internal static bool IsPotentialClientProcess(int processId)
+    {
+        var processName = TryGetProcessName(processId);
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            return false;
+        }
+
+        var normalized = processName.ToLowerInvariant();
+        return normalized.Contains("whatsapp")
+               || WeChatProcessHints.Any(normalized.Contains)
+               || normalized.Contains("hostselftestclient")
+               || normalized.Contains("windowlocktestclientv023");
+    }
+
     private static string TryGetProcessName(int processId)
     {
-        if (ProcessNameCache.TryGetValue(processId, out var cachedName))
+        var now = DateTime.UtcNow;
+        if (ProcessNameCache.TryGetValue(processId, out var cached)
+            && now - cached.CachedUtc < ProcessNameCacheLifetime)
         {
-            return cachedName;
+            return cached.Name;
         }
 
         try
         {
             using var process = Process.GetProcessById(processId);
             var name = process.ProcessName;
-            ProcessNameCache[processId] = name;
+            ProcessNameCache[processId] = new ProcessNameCacheEntry(name, now);
             return name;
         }
         catch
         {
-            // 进程可能在枚举窗口期间退出。
+            // 进程可能在枚举窗口期间退出。清掉旧 PID 缓存，避免之后 PID 复用误判。
+            ProcessNameCache.TryRemove(processId, out _);
+            VersionCache.TryRemove(processId, out _);
             return string.Empty;
         }
     }
@@ -253,6 +294,8 @@ public static class ClientWindowDiscovery
             return null;
         }
     }
+
+    private readonly record struct ProcessNameCacheEntry(string Name, DateTime CachedUtc);
 
     private readonly record struct VersionCacheEntry(DateTime StartUtc, string? Version);
 

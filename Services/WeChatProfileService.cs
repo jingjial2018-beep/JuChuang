@@ -86,11 +86,17 @@ public static partial class WeChatProfileService
     public static WeChatLocalProfile? TryReadMatchingProfile(
         int processId,
         IEnumerable<string> accountIds)
+        => TryReadMatchingProfileDetailed(processId, accountIds).Profile;
+
+    public static WeChatProfileReadResult TryReadMatchingProfileDetailed(
+        int processId,
+        IEnumerable<string> accountIds)
     {
         var context = new ProfileReadContext();
         try
         {
             var candidates = new List<AccountDatabaseCandidate>();
+            var locatedAccountCount = 0;
             foreach (var accountId in accountIds
                          .Where(value => !string.IsNullOrWhiteSpace(value))
                          .Distinct(StringComparer.OrdinalIgnoreCase))
@@ -101,6 +107,7 @@ public static partial class WeChatProfileService
                     continue;
                 }
 
+                locatedAccountCount++;
                 var firstPage = ReadFirstPage(location.Value.ContactDatabase);
                 if (firstPage is null)
                 {
@@ -117,9 +124,13 @@ public static partial class WeChatProfileService
             if (candidates.Count == 0)
             {
                 context.Fail(
-                    WeChatProfileFailureStage.AccountDirectoryNotFound,
-                    "no readable local account databases were found");
-                return null;
+                    locatedAccountCount == 0
+                        ? WeChatProfileFailureStage.AccountDirectoryNotFound
+                        : WeChatProfileFailureStage.ContactDatabaseUnreadable,
+                    locatedAccountCount == 0
+                        ? "no matching local account directory was found"
+                        : "matching account directories exist, but contact.db could not be read");
+                return context.ToResult(null);
             }
 
             var keyMatch = ExtractContactKey(
@@ -129,12 +140,12 @@ public static partial class WeChatProfileService
             {
                 context.Fail(
                     WeChatProfileFailureStage.KeyExtractionFailed,
-                    $"no verified key found in WeChat process {processId}");
-                return null;
+                    $"no verified contact.db key found in WeChat process {processId}");
+                return context.ToResult(null);
             }
 
             var selected = candidates[keyMatch.Value.PageIndex];
-            return WithKnownContactKey(
+            var profile = WithKnownContactKey(
                 processId,
                 selected.ContactDatabase,
                 keyMatch.Value.Key,
@@ -144,11 +155,12 @@ public static partial class WeChatProfileService
                     selected.AccountId,
                     selected.AccountDirectory,
                     context));
+            return context.ToResult(profile);
         }
         catch (Exception exception)
         {
             context.Fail(WeChatProfileFailureStage.DatabaseOpenFailed, exception.Message);
-            return null;
+            return context.ToResult(null);
         }
     }
 
@@ -1015,9 +1027,14 @@ public static partial class WeChatProfileService
                 parts.Add("avatar-cache-miss");
             }
 
+            var resultStage = profile is null
+                ? Stage
+                : AvatarCacheMiss
+                    ? WeChatProfileFailureStage.AvatarCacheMissing
+                    : WeChatProfileFailureStage.None;
             return new WeChatProfileReadResult(
                 profile,
-                profile is null ? Stage : WeChatProfileFailureStage.None,
+                resultStage,
                 parts.Count == 0 ? null : string.Join("; ", parts));
         }
     }

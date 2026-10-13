@@ -13,6 +13,7 @@ public partial class MainWindow
     private HwndSource? _windowSource;
     private uint _shellHookMessage;
     private bool _shellHookRegistered;
+    private int _shellWindowReconcilePending;
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
@@ -44,10 +45,15 @@ public partial class MainWindow
         IntPtr lParam,
         ref bool handled)
     {
-        if (!_isClosing
-            && _shellHookMessage != 0
-            && message == _shellHookMessage
-            && wParam.ToInt32() == NativeMethods.HSHELL_FLASH)
+        if (_isClosing
+            || _shellHookMessage == 0
+            || message != _shellHookMessage)
+        {
+            return IntPtr.Zero;
+        }
+
+        var shellEvent = wParam.ToInt32();
+        if (shellEvent == NativeMethods.HSHELL_FLASH)
         {
             var flashingHandle = lParam;
             Dispatcher.BeginInvoke(
@@ -55,8 +61,64 @@ public partial class MainWindow
                 new Action(() => HandleClientAttentionRequest(flashingHandle)));
             handled = true;
         }
+        else if (shellEvent is NativeMethods.HSHELL_WINDOWCREATED
+                 or NativeMethods.HSHELL_WINDOWDESTROYED)
+        {
+            QueueClientWindowReconcile(
+                lParam,
+                shellEvent == NativeMethods.HSHELL_WINDOWDESTROYED);
+        }
 
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Shell 的窗口创建/销毁事件作为快速触发源；5 秒扫描仍保留为最终兜底。
+    /// 只响应已知账号窗口或微信/WhatsApp 进程，避免系统其它窗口频繁触发全量扫描。
+    /// </summary>
+    private void QueueClientWindowReconcile(IntPtr changedHandle, bool destroyed)
+    {
+        if (_isClosing || changedHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var relevant = Entries.Any(entry => entry.Handle == changedHandle);
+        if (!relevant && !destroyed)
+        {
+            NativeMethods.GetWindowThreadProcessId(changedHandle, out var rawProcessId);
+            var processId = unchecked((int)rawProcessId);
+            relevant = processId > 0
+                && ClientWindowDiscovery.IsPotentialClientProcess(processId);
+        }
+
+        if (!relevant
+            || Interlocked.CompareExchange(ref _shellWindowReconcilePending, 1, 0) != 0)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(async () =>
+            {
+                try
+                {
+                    // 窗口刚创建时标题/尺寸/可见状态可能尚未稳定；先给客户端一点时间，
+                    // 再补一次较晚的校准，覆盖 Login -> Main 连续重建的情况。
+                    await Task.Delay(180);
+                    await ScanAndAttachAsync();
+                    if (!_isClosing)
+                    {
+                        await Task.Delay(500);
+                        await ScanAndAttachAsync();
+                    }
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _shellWindowReconcilePending, 0);
+                }
+            }));
     }
 
     private void HandleClientAttentionRequest(IntPtr flashingHandle)
