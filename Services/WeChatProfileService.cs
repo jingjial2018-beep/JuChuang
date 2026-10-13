@@ -151,6 +151,7 @@ public static partial class WeChatProfileService
                 keyMatch.Value.Key,
                 context,
                 databasePath => ReadCurrentAccount(
+                    processId,
                     databasePath,
                     selected.AccountId,
                     selected.AccountDirectory,
@@ -183,7 +184,7 @@ public static partial class WeChatProfileService
                 processId,
                 location.Value.ContactDatabase,
                 context,
-                databasePath => ReadCurrentAccount(databasePath, accountId, location.Value.AccountDirectory, context));
+                databasePath => ReadCurrentAccount(processId, databasePath, accountId, location.Value.AccountDirectory, context));
             return context.ToResult(profile);
         }
         catch (Exception exception)
@@ -358,6 +359,7 @@ public static partial class WeChatProfileService
     }
 
     private static WeChatLocalProfile? ReadCurrentAccount(
+        int processId,
         string databasePath,
         string accountId,
         string accountDirectory,
@@ -417,11 +419,26 @@ public static partial class WeChatProfileService
             nickname = accountId;
         }
 
+        var smallHeadUrl = GetField(row, "small_head_url");
+        var bigHeadUrl = GetField(row, "big_head_url");
+        var contentHash = GetField(row, "head_img_md5");
+
         var avatarPath = FindExactAvatarCache(
             accountDirectory,
-            GetField(row, "small_head_url"),
-            GetField(row, "big_head_url"),
-            GetField(row, "head_img_md5"));
+            accountId,
+            smallHeadUrl,
+            bigHeadUrl,
+            contentHash);
+
+        // WeChat 4.1.x can keep the self avatar only in the dedicated encrypted
+        // db_storage/head_image/head_image.db even when temp/head_image has not
+        // materialized a plain cache file yet. Read only the current account row
+        // as a local fallback; no network request is introduced.
+        avatarPath ??= TryReadSelfAvatarFromHeadImageDatabase(
+            processId,
+            accountDirectory,
+            accountId);
+
         if (avatarPath is null)
         {
             context.AvatarCacheMiss = true;
@@ -432,12 +449,23 @@ public static partial class WeChatProfileService
 
     private static string? FindExactAvatarCache(
         string accountDirectory,
+        string accountId,
         string? smallHeadUrl,
         string? bigHeadUrl,
         string? contentHash)
     {
-        var cacheDirectory = Path.Combine(accountDirectory, "temp", "head_image");
-        if (!Directory.Exists(cacheDirectory))
+        var accountRoot = Directory.GetParent(accountDirectory)?.FullName;
+        var cacheDirectories = new[]
+        {
+            Path.Combine(accountDirectory, "temp", "head_image"),
+            accountRoot is null ? null : Path.Combine(accountRoot, "all_users", "head_imgs")
+        }
+        .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+        .Cast<string>()
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+        if (cacheDirectories.Length == 0)
         {
             return null;
         }
@@ -453,19 +481,154 @@ public static partial class WeChatProfileService
             cacheNames.Add(Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(url)))
                 .ToLowerInvariant());
         }
+
         if (!string.IsNullOrWhiteSpace(contentHash))
         {
             cacheNames.Add(contentHash.Trim().ToLowerInvariant());
         }
 
-        foreach (var cacheName in cacheNames.Distinct(StringComparer.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(accountId))
         {
-            var path = Path.Combine(cacheDirectory, cacheName);
-            if (IsPlainImageFile(path))
+            cacheNames.Add(accountId.Trim());
+            cacheNames.Add(Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(accountId.Trim())))
+                .ToLowerInvariant());
+        }
+
+        var extensions = new[] { string.Empty, ".jpg", ".jpeg", ".png", ".gif" };
+        foreach (var directory in cacheDirectories)
+        {
+            foreach (var cacheName in cacheNames.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                return path;
+                foreach (var extension in extensions)
+                {
+                    var directPath = Path.Combine(directory, cacheName + extension);
+                    if (IsPlainImageFile(directPath))
+                    {
+                        return directPath;
+                    }
+
+                    if (cacheName.Length >= 2)
+                    {
+                        var shardedPath = Path.Combine(
+                            directory,
+                            cacheName[..2],
+                            cacheName + extension);
+                        if (IsPlainImageFile(shardedPath))
+                        {
+                            return shardedPath;
+                        }
+                    }
+                }
             }
         }
+
+        return null;
+    }
+
+    private static string? TryReadSelfAvatarFromHeadImageDatabase(
+        int processId,
+        string accountDirectory,
+        string accountId)
+    {
+        var databasePath = Path.Combine(
+            accountDirectory,
+            "db_storage",
+            "head_image",
+            "head_image.db");
+        if (!File.Exists(databasePath))
+        {
+            return null;
+        }
+
+        var avatarContext = new ProfileReadContext();
+        try
+        {
+            return WithDecryptedContactDatabase(
+                processId,
+                databasePath,
+                avatarContext,
+                decryptedPath => ExtractSelfAvatarBlob(
+                    decryptedPath,
+                    accountDirectory,
+                    accountId));
+        }
+        catch (Exception exception)
+        {
+            Trace.WriteLine(
+                $"[WeChatProfile] avatar-db fallback failed for account={accountId}: {exception.Message}");
+            return null;
+        }
+    }
+
+    private static string? ExtractSelfAvatarBlob(
+        string databasePath,
+        string accountDirectory,
+        string accountId)
+    {
+        using var database = NativeSqliteDatabase.OpenReadOnly(databasePath);
+        var columns = database.QueryColumnNames(
+            "PRAGMA table_info(head_image)",
+            nameColumnIndex: 1);
+        if (!columns.Contains("username", StringComparer.OrdinalIgnoreCase)
+            || !columns.Contains("image_buffer", StringComparer.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var image = database.QuerySingleBlob(
+            "SELECT image_buffer FROM head_image WHERE username=? LIMIT 1",
+            accountId);
+        if (image is null || image.Length < 8)
+        {
+            return null;
+        }
+
+        var extension = DetectPlainImageExtension(image);
+        if (extension is null)
+        {
+            return null;
+        }
+
+        var cacheRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "JuChuang",
+            "avatar-db-cache");
+        Directory.CreateDirectory(cacheRoot);
+
+        var identity = accountDirectory + "\n" + accountId;
+        var fileName = "avatar-" + Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(identity)))
+            .ToLowerInvariant()[..24] + extension;
+        var destination = Path.Combine(cacheRoot, fileName);
+
+        File.WriteAllBytes(destination, image);
+        return destination;
+    }
+
+    private static string? DetectPlainImageExtension(ReadOnlySpan<byte> data)
+    {
+        if (data.Length >= 3
+            && data[0] == 0xFF
+            && data[1] == 0xD8
+            && data[2] == 0xFF)
+        {
+            return ".jpg";
+        }
+
+        if (data.Length >= 8
+            && data[..8].SequenceEqual(
+                new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }))
+        {
+            return ".png";
+        }
+
+        if (data.Length >= 6
+            && (data[..6].SequenceEqual("GIF87a"u8)
+                || data[..6].SequenceEqual("GIF89a"u8)))
+        {
+            return ".gif";
+        }
+
         return null;
     }
 
@@ -489,10 +652,7 @@ public static partial class WeChatProfileService
                 return false;
             }
 
-            var isJpeg = header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
-            var isPng = header[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
-            var isGif = header[..6].SequenceEqual("GIF87a"u8) || header[..6].SequenceEqual("GIF89a"u8);
-            return isJpeg || isPng || isGif;
+            return DetectPlainImageExtension(header) is not null;
         }
         catch
         {
@@ -1264,6 +1424,42 @@ public static partial class WeChatProfileService
             return values;
         }
 
+        internal byte[]? QuerySingleBlob(string sql, string parameter)
+        {
+            using var statement = Prepare(sql);
+            var parameterBytes = Utf8(parameter, terminate: false);
+            if (sqlite3_bind_text(
+                    statement.Handle,
+                    1,
+                    parameterBytes,
+                    parameterBytes.Length,
+                    new IntPtr(-1)) != 0)
+            {
+                throw new InvalidDataException(GetError(_handle));
+            }
+
+            var result = sqlite3_step(statement.Handle);
+            if (result == SqliteDone)
+            {
+                return null;
+            }
+            if (result != SqliteRow)
+            {
+                throw new InvalidDataException(GetError(_handle));
+            }
+
+            var length = sqlite3_column_bytes(statement.Handle, 0);
+            var pointer = sqlite3_column_blob(statement.Handle, 0);
+            if (pointer == IntPtr.Zero || length <= 0)
+            {
+                return null;
+            }
+
+            var value = new byte[length];
+            Marshal.Copy(pointer, value, 0, length);
+            return value;
+        }
+
         internal Dictionary<string, string?>? QuerySingle(string sql, string parameter)
         {
             using var statement = Prepare(sql);
@@ -1423,6 +1619,9 @@ public static partial class WeChatProfileService
 
     [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr sqlite3_column_text(IntPtr statement, int column);
+
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr sqlite3_column_blob(IntPtr statement, int column);
 
     [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern int sqlite3_column_bytes(IntPtr statement, int column);

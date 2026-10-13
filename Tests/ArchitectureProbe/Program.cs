@@ -15,6 +15,20 @@ Run("ClientLaunchContext rejects baseline PID", () =>
     Assert(!context.CanClaim(ClientKind.WeChat, 301), "context must only claim one process");
 });
 
+Run("ClientLaunchContext honors exact CreateProcess PID", () =>
+{
+    var context = new ClientLaunchContext(ClientKind.WeChat, [100, 200]);
+    context.ExpectProcess(43210);
+
+    Assert(!context.CanClaim(ClientKind.WeChat, 300),
+        "when CreateProcess returns an authoritative PID, unrelated new PIDs must be rejected");
+    Assert(context.CanClaim(ClientKind.WeChat, 43210),
+        "the exact CreateProcess PID must be claimable");
+
+    context.Claim(43210, new IntPtr(0x5678));
+    Assert(context.ClaimedProcessId == 43210, "exact PID was not stored after claim");
+});
+
 Run("Account profile status is independent from HWND", () =>
 {
     var entry = NewWeChatEntry();

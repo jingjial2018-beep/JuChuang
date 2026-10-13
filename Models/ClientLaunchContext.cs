@@ -21,15 +21,27 @@ public sealed class ClientLaunchContext
 
     public DateTime StartedUtc { get; }
 
+    public int? ExpectedProcessId { get; private set; }
+
     public int? ClaimedProcessId { get; private set; }
 
     public IntPtr ClaimedHandle { get; private set; }
+
+    public void ExpectProcess(int processId)
+    {
+        if (processId > 0)
+        {
+            ExpectedProcessId = processId;
+        }
+    }
 
     public bool CanClaim(ClientKind kind, int processId)
         => ClaimedProcessId is null
            && kind == Kind
            && processId > 0
-           && !_baselineProcessIds.Contains(processId);
+           && (ExpectedProcessId is { } expected
+               ? processId == expected
+               : !_baselineProcessIds.Contains(processId));
 
     public void Claim(int processId, IntPtr handle)
     {
