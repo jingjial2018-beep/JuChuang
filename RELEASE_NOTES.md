@@ -1,58 +1,65 @@
-## v0.3.17
+## v0.3.18
 
-本版本集中完成 v0.3.16 实测后本阶段需要完善的项目，不再拆分多个小版本。重点是修复最小化行为、补强微信 4.1.x 头像读取，并把“添加微信”升级为更确定的独立进程多开启动流程。
+本版本完成当前阶段的界面、品牌与使用体验升级，正式将产品品牌统一为 **JNest**，并集中解决账号排序、后台提醒和资料状态显示等实测问题。
 
-### 最小化与任务栏
+### 品牌与 Logo
 
-- 修复聚窗最小化后从任务栏消失的问题。
-- 最小化时不再调用 `Hide()`，聚窗继续保留 Windows 任务栏按钮。
-- 被托管的微信 / WhatsApp 仍由 WindowHost 按原逻辑隐藏或停放，避免客户端窗口浮到桌面。
-- 系统托盘图标继续保留；收到消息时不恢复、不抢前台，继续使用任务栏闪烁和托盘提示。
+- 软件品牌由“聚窗”统一更名为 **JNest**。
+- 主窗口标题、顶部品牌文字、EXE 产品名、任务栏、系统托盘、异常提示、README 和 Release 标题同步改为 JNest。
+- 正式发布包改名为：
+  - `JNest-v0.3.18-FrameworkDependent-win-x64.zip`
+  - `JNest-v0.3.18-SelfContained-win-x64.zip`
+- 应用 Logo 全面替换为新的黑色手写 J + 珊瑚红圆点标识。
+- 同步更新界面 PNG Logo 与 Windows ICO，确保窗口、EXE、任务栏和托盘统一使用新标识。
+- GitHub 仓库仍保留 `JuChuang` 名称，避免破坏已有仓库链接与历史记录。
+- 为兼容旧版本，`%LOCALAPPDATA%\JuChuang` 设置/缓存目录继续保留，不强制迁移用户数据。
+- Windows 开机自启注册项从 `JuChuang` 平滑迁移到 `JNest`，关闭自启时同时清理旧键。
 
-### 微信 4.1.x 头像读取
+### 账号拖拽排序与持久保存
 
-- 保留原有 `temp/head_image` 精确头像缓存匹配。
-- 增加 Windows 微信 4.x 共享头像目录 `all_users/head_imgs` 的本地匹配。
-- 增加 `db_storage/head_image/head_image.db` 当前账号头像 BLOB 回退：
-  - 仅查询当前登录账号的头像行；
-  - 不读取消息、会话或朋友圈数据库；
-  - 不新增外部网络请求。
-- 头像成功读取后继续进入聚窗自己的 Profile Cache，降低微信临时缓存变化带来的头像丢失。
+- 左侧“账号与窗口”列表支持鼠标上下拖拽重新排序。
+- 微信和 WhatsApp 可以自由调整显示位置。
+- 拖动仅改变列表顺序，不重启客户端、不改变 PID/HWND/AccountId，也不重算未读数。
+- 拖动期间保持原先选中的账号，不因为排序误切换客户端。
+- 排序结果按稳定账号身份保存到现有本地设置中，关闭 JNest 或重启电脑后仍会恢复。
+- 微信优先使用稳定 IdentityKey；WhatsApp 使用固定排序键，不依赖临时 PID/HWND。
+- 尚未识别账号身份的新微信先按发现顺序显示，身份确认后自动回到用户保存的位置。
 
-### 微信多开启动器
+### 后台消息提醒修复
 
-- “添加微信”不再只依赖普通 `Process.Start`。
-- 当已经存在微信进程时，优先采用与 EV 多聊同类的 Windows 单实例 Mutex 思路：
-  - 定位 `XWeChat_App_Instance_Identity_Mutex_Name`；
-  - 短时调整该 Mutex 的 DACL；
-  - 使用 `CreateProcessW` 创建新的 Weixin / WeChat 进程；
-  - 给新进程越过早期单实例检查的时间后恢复原 DACL；
-  - 关闭聚窗持有的内核对象句柄。
-- 不修改微信 EXE，不向微信进程注入 DLL，也不修改微信登录配置。
-- 如果 Mutex 策略在某个微信版本上不可用，保留普通 `CreateProcessW` 回退，窗口发现与现有账号层仍继续工作。
+- 修复“JNest 已最小化/处于后台，但消息来自当前 SelectedEntry 时不闪烁”的逻辑错误。
+- 现在只有当用户确实正在前台查看当前账号时，才抑制 JNest 自身提醒。
+- 当 JNest 最小化或用户切换到其他程序后，即使消息来自当前选中的微信账号，也会触发 JNest 任务栏闪烁。
+- 本版本**不做微信消息接管/静音**：微信自己的任务栏/托盘提醒仍保留，JNest 只补齐自己的提醒能力。
+- 未读数字/红点识别和账号归属逻辑保持原行为。
 
-### 精确 PID 绑定
+### 资料状态显示简化
 
-- `CreateProcessW` 成功后直接取得新微信 PID。
-- `ClientLaunchContext` 新增 ExpectedProcessId；对于权威 PID，窗口扫描只接受对应进程。
-- 多微信同时运行时，降低“添加微信后误选中已有实例”的概率。
-- ArchitectureProbe 增加精确 PID 绑定回归测试。
+- 微信昵称和头像均正常识别后，不再长期显示“资料已识别”。
+- 正常完成状态只显示窗口状态，例如“已嵌入”。
+- 以下状态仍会继续显示：
+  - 资料识别中
+  - 使用资料缓存
+  - 昵称已识别 · 头像待缓存
+  - 等待本地资料
+  - 资料解析待适配
+  - 资料读取失败
+- 诊断 code/detail 和右键“复制诊断信息”继续保留，不影响排障能力。
 
 ### 保持不变
 
-- 不实现微信消息接管 / 静音，本版本继续保留微信原生消息行为。
 - 不切换为 SetParent 子窗口架构。
 - 不向微信进程注入 DLL，不 Hook 微信内部 API。
-- 不修改微信本地登录配置或自动切换历史登录账号。
+- 不修改微信本地登录配置。
 - 不读取聊天正文、消息数据库或会话数据库。
-- 不改变 v0.3.16 已验证正常的未读数字 / 红点识别、账号代际隔离、Window Reconciler 与 WhatsApp 逻辑。
+- 保留 v0.3.17 的 Mutex DACL + CreateProcessW 多开、精确 PID 绑定、Profile Cache、Window Reconciler 与 WhatsApp 支持。
 
 ### 下载说明
 
-- `JuChuang-v0.3.17-FrameworkDependent-win-x64.zip`
+- `JNest-v0.3.18-FrameworkDependent-win-x64.zip`
   - 轻量版
   - 需要已安装 .NET 8 Desktop Runtime x64
-- `JuChuang-v0.3.17-SelfContained-win-x64.zip`
+- `JNest-v0.3.18-SelfContained-win-x64.zip`
   - 免运行库版
   - 无需额外安装 .NET 运行库
 
