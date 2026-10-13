@@ -1,15 +1,19 @@
-## v0.3.22
+## v0.3.22-beta1
 
-任务栏图标专项修复。
+任务栏图标专项测试版。主窗口在初始化时明确将应用内置的 `Assets/app.ico` 同时设置为 Win32 小图标与大图标（`WM_SETICON`），用于改善任务栏中显示非预期图标的问题。保留 WPF 原本图标属性作为后备方案。
 
-- 显式保留 JNest 主窗口的 Windows 任务栏按钮，并在窗口初始化和最小化状态变化时校验窗口扩展样式。
-- 主窗口保持 `WS_EX_APPWINDOW`，移除可能导致任务栏按钮消失的 `WS_EX_TOOLWINDOW`；只有发现异常样式时才刷新非客户区。
-- 继续使用 `Assets/app.ico` 作为主窗口、EXE 和托盘图标资源。
-- 不修改微信/WhatsApp 窗口托管、消息角标、提示音或通知检测逻辑。
+基于 v0.3.22，继续保留最小化后的主窗口任务栏按钮修复；不修改消息识别、未读角标、通知、微信或 WhatsApp 窗口托管机制。
+
+### 测试重点
+
+- 打开应用后检查任务栏图标与 JNest 软件图标是否一致。
+- 最小化、恢复、打开多个微信窗口后检查任务栏图标是否稳定。
+- 核对消息角标和闪烁功能没有回归。
 
 ### 下载说明
 
-- `JNest-v0.3.22-FrameworkDependent-win-x64.zip`：需要 .NET 8 Desktop Runtime x64。
-- `JNest-v0.3.22-SelfContained-win-x64.zip`：包含运行库。
+- FrameworkDependent：需要 .NET 8 Desktop Runtime x64。
+- SelfContained：含运行库，无需另行安装。
+- Windows 11 x64，未进行代码签名。
 
-支持 Windows 11 x64，未进行商业代码签名。任务栏在不同 Windows 配置下的行为需安装后实际验证。
+这是预发布测试版，尚需 Windows 实机验证。
