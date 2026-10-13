@@ -98,6 +98,15 @@ public static class ClientMetadataService
         }
     }
 
+    public static void InvalidateLoginAccountCache()
+    {
+        lock (AccountCacheLock)
+        {
+            _cachedAccounts = [];
+            _cachedAccountsUtc = DateTime.MinValue;
+        }
+    }
+
     private static IReadOnlyList<WeChatAccountIdentity> EnumerateLoginAccounts()
     {
         var accounts = new List<WeChatAccountIdentity>();
