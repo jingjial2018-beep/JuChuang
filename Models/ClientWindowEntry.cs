@@ -23,6 +23,16 @@ public enum ClientSessionState
 }
 
 /// <summary>
+/// 窗口发现层对客户端顶层窗口用途的分类。
+/// </summary>
+public enum ClientWindowRole
+{
+    Unknown,
+    Login,
+    Main
+}
+
+/// <summary>
 /// 角标显示形态：决定聚窗左侧头像角标的具体外观。
 /// </summary>
 public enum AlertDisplayMode
