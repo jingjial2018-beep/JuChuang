@@ -315,6 +315,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _trayIcon?.Dispose();
         _trayIcon = null;
+        ReleaseJNestTaskbarIcon();
 
         WindowHost.DetachAll();
     }
