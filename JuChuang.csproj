@@ -7,15 +7,15 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>聚窗</AssemblyName>
+    <AssemblyName>JNest</AssemblyName>
     <RootNamespace>JuChuang</RootNamespace>
-    <AssemblyTitle>聚窗</AssemblyTitle>
-    <Product>聚窗</Product>
+    <AssemblyTitle>JNest</AssemblyTitle>
+    <Product>JNest</Product>
     <Description>Windows 11 本地微信与 WhatsApp 多窗口管理器</Description>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>0.3.17</Version>
+    <Version>0.3.18</Version>
   </PropertyGroup>
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
