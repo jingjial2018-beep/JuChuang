@@ -17,6 +17,7 @@ public partial class MainWindow
     private NativeMethods.WinEventDelegate? _clientActivityCallback;
     private readonly List<IntPtr> _clientActivityHooks = [];
     private readonly Dictionary<ClientWindowEntry, DateTime> _lastClientActivityScan = [];
+    private readonly Dictionary<ClientWindowEntry, int> _activityRetryGeneration = [];
     private static readonly TimeSpan ClientActivityDebounce = TimeSpan.FromMilliseconds(750);
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
@@ -199,6 +200,7 @@ public partial class MainWindow
         _clientActivityHooks.Clear();
         _clientActivityCallback = null;
         _lastClientActivityScan.Clear();
+        _activityRetryGeneration.Clear();
     }
 
     private void OnClientWindowEvent(
@@ -248,6 +250,26 @@ public partial class MainWindow
         _lastClientActivityScan[entry] = now;
         DiagnosticLogService.WriteActivityEvent($"activity-trigger-{source}", entry.ProcessId);
         TriggerImmediateBadgeScan(entry);
+
+        // Shell/WinEvent 往往早于微信绘制角标；延后补查一次，仍以角标结果
+        // 决定是否提醒。多次事件只保留最后一次补查。
+        var retryGeneration = _activityRetryGeneration.TryGetValue(entry, out var previousGeneration)
+            ? previousGeneration + 1 : 1;
+        _activityRetryGeneration[entry] = retryGeneration;
+        var handle = entry.Handle;
+        var processId = entry.ProcessId;
+        var accountGeneration = entry.AccountGeneration;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () =>
+        {
+            await Task.Delay(700);
+            if (_isClosing || !Entries.Contains(entry)
+                || entry.Handle != handle || entry.ProcessId != processId
+                || entry.AccountGeneration != accountGeneration
+                || !_activityRetryGeneration.TryGetValue(entry, out var currentGeneration)
+                || currentGeneration != retryGeneration) return;
+            _activityRetryGeneration.Remove(entry);
+            TriggerImmediateBadgeScan(entry);
+        }));
     }
 
     /// <summary>
@@ -295,7 +317,10 @@ public partial class MainWindow
             Count = uint.MaxValue,
             Timeout = 0
         };
-        NativeMethods.FlashWindowEx(ref flashInfo);
+        if (!NativeMethods.FlashWindowEx(ref flashInfo))
+        {
+            DiagnosticLogService.WriteActivityEvent("taskbar-flash-failed", entry.ProcessId);
+        }
     }
 
 }

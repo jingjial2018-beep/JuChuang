@@ -341,6 +341,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _queuedImmediateBadgeScans.Remove(entry);
         _badgeStableState.Remove(entry);
         _lastClientActivityScan.Remove(entry);
+        _activityRetryGeneration.Remove(entry);
         Entries.Remove(entry);
 
         if (entry.Kind == ClientKind.WeChat
@@ -442,6 +443,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _queuedImmediateBadgeScans.Remove(entry);
         _badgeStableState.Remove(entry);
         _lastClientActivityScan.Remove(entry);
+        _activityRetryGeneration.Remove(entry);
 
         var index = Entries.IndexOf(entry);
         entry.DisplayName = index >= 0 ? $"微信 {index + 1}" : "微信";
