@@ -11,6 +11,18 @@ public enum ClientKind
 }
 
 /// <summary>
+/// 当前客户端账号会话的生命周期状态。Handle 可以变化，但账号身份应尽量保持稳定。
+/// </summary>
+public enum ClientSessionState
+{
+    Starting,
+    Login,
+    Main,
+    Rebinding,
+    Exited
+}
+
+/// <summary>
 /// 角标显示形态：决定聚窗左侧头像角标的具体外观。
 /// </summary>
 public enum AlertDisplayMode
@@ -37,6 +49,8 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     private int _messageAlertCount;
     private AlertDisplayMode _alertDisplayMode = AlertDisplayMode.None;
     private bool _pendingClearAfterDetection;
+    private string? _accountId;
+    private ClientSessionState _sessionState;
 
     public ClientWindowEntry(
         IntPtr handle,
@@ -45,7 +59,8 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
         string windowTitle,
         ClientKind kind,
         string displayName,
-        string? clientVersion = null)
+        string? clientVersion = null,
+        ClientSessionState sessionState = ClientSessionState.Main)
     {
         _handle = handle;
         ProcessId = processId;
@@ -54,6 +69,8 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
         Kind = kind;
         _displayName = displayName;
         _clientVersion = clientVersion;
+        _sessionState = sessionState;
+        LastSeenUtc = DateTime.UtcNow;
     }
 
     public IntPtr Handle
@@ -100,11 +117,39 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
         set => SetField(ref _isAttached, value);
     }
 
+    /// <summary>
+    /// 聚窗内部稳定身份键，用于保存自定义名称等本地设置。
+    /// </summary>
     public string? IdentityKey
     {
         get => _identityKey;
         set => SetField(ref _identityKey, value);
     }
+
+    /// <summary>
+    /// 客户端自身的账号 ID（微信为本地解析出的 account/wxid 目录标识）。
+    /// 与 HWND 解耦：登录页切主窗口或 HWND 重建时保留。
+    /// </summary>
+    public string? AccountId
+    {
+        get => _accountId;
+        set => SetField(ref _accountId, value);
+    }
+
+    public ClientSessionState SessionState
+    {
+        get => _sessionState;
+        set => SetField(ref _sessionState, value);
+    }
+
+    /// <summary>最近一次扫描确认当前 HWND 有效的时间。</summary>
+    public DateTime LastSeenUtc { get; set; }
+
+    /// <summary>
+    /// HWND 暂时消失的起始时间。进程仍存活时给予短暂重绑定窗口，
+    /// 避免 Login -> Main 或客户端自重建 HWND 时丢失账号卡片。
+    /// </summary>
+    public DateTime? WindowMissingSinceUtc { get; set; }
 
     public bool HasCustomName
     {
