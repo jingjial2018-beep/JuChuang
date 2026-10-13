@@ -10,14 +10,16 @@ namespace JuChuang.Services;
 public static class StartupService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "JuChuang";
+    private const string ValueName = "JNest";
+    private const string LegacyValueName = "JuChuang";
 
     public static bool IsEnabled()
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            return key?.GetValue(ValueName) is string;
+            return key?.GetValue(ValueName) is string
+                || key?.GetValue(LegacyValueName) is string;
         }
         catch
         {
@@ -43,11 +45,13 @@ public static class StartupService
                 if (!string.IsNullOrWhiteSpace(executablePath))
                 {
                     key.SetValue(ValueName, $"\"{executablePath}\"");
+                    key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
                 }
             }
             else
             {
                 key.DeleteValue(ValueName, throwOnMissingValue: false);
+                key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
             }
         }
         catch
