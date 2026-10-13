@@ -263,6 +263,7 @@ public partial class MainWindow
                 entry.PendingClearAfterDetection = false;
                 entry.MessageAlertCount = 0;
                 entry.AlertDisplayMode = AlertDisplayMode.None;
+                UpdateTaskbarUnreadOverlay();
                 return;
             }
 
@@ -284,6 +285,7 @@ public partial class MainWindow
                 entry.AlertDisplayMode = AlertDisplayMode.None;
                 break;
         }
+        UpdateTaskbarUnreadOverlay();
     }
 
     /// <summary>比较两次识别结果是否一致（用于状态同步）。</summary>

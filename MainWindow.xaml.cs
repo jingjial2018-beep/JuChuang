@@ -343,6 +343,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _lastClientActivityScan.Remove(entry);
         _activityRetryGeneration.Remove(entry);
         Entries.Remove(entry);
+        UpdateTaskbarUnreadOverlay();
 
         if (entry.Kind == ClientKind.WeChat
             && !Entries.Any(candidate => candidate.Kind == ClientKind.WeChat && candidate.ProcessId == processId))
@@ -439,6 +440,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         entry.ProfileDiagnosticDetail = null;
         entry.MessageAlertCount = 0;
         entry.AlertDisplayMode = AlertDisplayMode.None;
+        UpdateTaskbarUnreadOverlay();
         entry.PendingClearAfterDetection = false;
         _queuedImmediateBadgeScans.Remove(entry);
         _badgeStableState.Remove(entry);
