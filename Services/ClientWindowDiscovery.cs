@@ -12,6 +12,7 @@ public sealed record WindowCandidate(
     string WindowTitle,
     string WindowClass,
     ClientKind Kind,
+    ClientWindowRole Role,
     long PixelArea,
     string? ClientVersion = null);
 
@@ -98,6 +99,7 @@ public static class ClientWindowDiscovery
                     title.Trim(),
                     windowClass,
                     kind,
+                    ResolveWindowRole(kind, title),
                     (long)rect.Width * rect.Height,
                     TryReadClientVersion(processId, kind)));
             }
@@ -114,7 +116,8 @@ public static class ClientWindowDiscovery
             .Select(group => group.First())
             .GroupBy(candidate => (candidate.Kind, candidate.ProcessId))
             .Select(group => group
-                .OrderByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
+                .OrderByDescending(candidate => candidate.Role == ClientWindowRole.Main)
+                .ThenByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
                 .ThenByDescending(candidate => candidate.PixelArea)
                 .First())
             .OrderBy(candidate => candidate.Kind)
@@ -188,6 +191,24 @@ public static class ClientWindowDiscovery
         var normalized = title.Trim().ToLowerInvariant();
         return IsGenericMainTitle(title)
                || normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login";
+    }
+
+    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title)
+    {
+        if (kind == ClientKind.WhatsApp)
+        {
+            return ClientWindowRole.Main;
+        }
+
+        var normalized = title.Trim().ToLowerInvariant();
+        if (normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login")
+        {
+            return ClientWindowRole.Login;
+        }
+
+        return IsGenericMainTitle(title)
+            ? ClientWindowRole.Main
+            : ClientWindowRole.Unknown;
     }
 
     private static bool IsAuxiliaryWeChatTitle(string normalizedTitle)
