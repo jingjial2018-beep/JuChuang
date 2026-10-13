@@ -14,7 +14,7 @@ JNest 是一款面向 Windows 11 的本地桌面窗口管理工具。它可以�
 
 JNest 不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也不向第三方服务器上传聊天数据。客户端仍由其原生程序负责显示和交互，JNest只负责 Windows 窗口托管与本地状态提示。
 
-当前稳定版本：**v0.3.18**
+当前稳定版本：**v0.3.19**
 
 ## 软件界面
 
@@ -60,12 +60,12 @@ JNest 不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也�
 
 ## 下载与使用
 
-请从 GitHub 仓库的 **Releases** 页面下载 v0.3.18，不要从不明来源获取修改版程序。
+请从 GitHub 仓库的 **Releases** 页面下载 v0.3.19，不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JNest-v0.3.18-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JNest-v0.3.18-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JNest-v0.3.19-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JNest-v0.3.19-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
@@ -175,6 +175,13 @@ JuChuang/
 ```
 
 ## 版本记录
+
+### v0.3.19
+
+- 进程外监测微信主窗口名称和状态变化，并按 PID 与 HWND 触发对应账号即时角标扫描。
+- `HSHELL_FLASH` 继续作为任务栏注意请求入口；只有角标确认从无到有，或可靠数字增长后，JNest 才发出提醒。
+- 对重复活动做节流，防止截图期间账号切换或 HWND 重建时应用过期结果，并在本地日志记录检测降级。
+- Windows 未提供可靠的跨进程托盘图标修改订阅；纯托盘活动可能漏报，继续由 Shell 事件和前台复查兜底。
 
 ### v0.3.18
 
