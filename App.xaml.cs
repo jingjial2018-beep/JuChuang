@@ -19,8 +19,8 @@ public partial class App : Application
         LogException(e.Exception);
         e.Handled = true;
         MessageBox.Show(
-            $"聚窗遇到异常，客户端窗口已尝试恢复到桌面。\n\n{e.Exception.Message}",
-            "聚窗",
+            $"JNest遇到异常，客户端窗口已尝试恢复到桌面。\n\n{e.Exception.Message}",
+            "JNest",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
         Shutdown(-1);
