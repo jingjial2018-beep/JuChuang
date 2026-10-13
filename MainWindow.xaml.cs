@@ -392,6 +392,52 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         entry.IsOnline = true;
     }
 
+    private void PrepareEntryForCandidate(
+        ClientWindowEntry entry,
+        WindowCandidate candidate)
+    {
+        // 同一微信进程从 Main/Rebinding 回到 Login，视为可能发生账号切换。
+        // 先结束上一账号代际，再接收新的 Login/Main 资料，避免昵称、头像、
+        // 自定义名称和未读状态串到下一账号。
+        if (candidate.Kind == ClientKind.WeChat
+            && candidate.Role == ClientWindowRole.Login
+            && entry.SessionState != ClientSessionState.Login
+            && !string.IsNullOrWhiteSpace(entry.IdentityKey))
+        {
+            ResetWeChatAccountBinding(entry);
+        }
+
+        UpdateEntryFromCandidate(entry, candidate);
+    }
+
+    private void ResetWeChatAccountBinding(ClientWindowEntry entry)
+    {
+        var processId = entry.ProcessId;
+        entry.AccountGeneration++;
+        _resolvedWeChatAccounts.Remove(processId);
+        _accountResolutionRetryAfter.Remove(processId);
+        _accountResolutionFailures.Remove(processId);
+        ClientMetadataService.InvalidateLoginAccountCache();
+
+        entry.IdentityKey = null;
+        entry.AccountId = null;
+        entry.HasCustomName = false;
+        entry.AvatarPath = null;
+        entry.MessageAlertCount = 0;
+        entry.AlertDisplayMode = AlertDisplayMode.None;
+        entry.PendingClearAfterDetection = false;
+        _queuedImmediateBadgeScans.Remove(entry);
+        _badgeStableState.Remove(entry);
+
+        var index = Entries.IndexOf(entry);
+        entry.DisplayName = index >= 0 ? $"微信 {index + 1}" : "微信";
+
+        if (ReferenceEquals(entry, SelectedEntry))
+        {
+            CurrentTitleText.Text = entry.DisplayName;
+        }
+    }
+
     private void QueueOrApplyWeChatIdentity(
         ClientWindowEntry entry,
         WindowCandidate candidate,
@@ -564,7 +610,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
                 if (existingEntry is not null)
                 {
-                    UpdateEntryFromCandidate(existingEntry, candidate);
+                    PrepareEntryForCandidate(existingEntry, candidate);
                     QueueOrApplyWeChatIdentity(existingEntry, candidate, weChatAccounts);
 
                     // 自动扫描只重试“接入失败”的窗口。用户主动“弹出窗口”会把句柄
@@ -594,7 +640,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 if (rebindingEntry is not null)
                 {
-                    UpdateEntryFromCandidate(rebindingEntry, candidate);
+                    PrepareEntryForCandidate(rebindingEntry, candidate);
                     QueueOrApplyWeChatIdentity(rebindingEntry, candidate, weChatAccounts);
                     if (rebindingEntry.IsManuallyDetached)
                     {
@@ -615,6 +661,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     }
 
                     TryCompletePendingLaunch(candidate, rebindingEntry);
+                    if (ReferenceEquals(rebindingEntry, SelectedEntry))
+                    {
+                        ShowSelectedEntry();
+                    }
                     continue;
                 }
 
@@ -1137,6 +1187,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (identityChanged && previousIdentity is not null)
         {
             entry.AvatarPath = null;
+            entry.MessageAlertCount = 0;
+            entry.AlertDisplayMode = AlertDisplayMode.None;
+            entry.PendingClearAfterDetection = false;
+            _queuedImmediateBadgeScans.Remove(entry);
+            _badgeStableState.Remove(entry);
         }
 
         if (_settings.AccountNamesByIdentity.TryGetValue(account.Key, out var savedName)
@@ -1189,6 +1244,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WeChatAccountIdentity? preferredAccount)
     {
         var processId = entry.ProcessId;
+        var accountGeneration = entry.AccountGeneration;
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
             ApplyWeChatAccountIdentity(entry, resolvedAccount);
@@ -1209,6 +1265,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (_isClosing
                 || !Entries.Contains(entry)
                 || entry.ProcessId != processId
+                || entry.AccountGeneration != accountGeneration
                 || !NativeMethods.IsWindow(entry.Handle))
             {
                 return;
@@ -1220,7 +1277,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 if (_isClosing
                     || !Entries.Contains(entry)
-                    || entry.ProcessId != processId)
+                    || entry.ProcessId != processId
+                    || entry.AccountGeneration != accountGeneration)
                 {
                     return;
                 }
@@ -1258,13 +1316,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (resolution is null)
             {
-                ScheduleAccountResolutionRetry(processId);
+                if (entry.AccountGeneration == accountGeneration)
+                {
+                    ScheduleAccountResolutionRetry(processId);
+                }
                 return;
             }
 
             if (_isClosing
                 || !Entries.Contains(entry)
                 || entry.ProcessId != processId
+                || entry.AccountGeneration != accountGeneration
                 || !NativeMethods.IsWindow(entry.Handle))
             {
                 return;
@@ -1284,7 +1346,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch
         {
-            ScheduleAccountResolutionRetry(processId);
+            if (entry.AccountGeneration == accountGeneration)
+            {
+                ScheduleAccountResolutionRetry(processId);
+            }
         }
         finally
         {
