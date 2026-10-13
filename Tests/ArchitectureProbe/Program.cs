@@ -37,9 +37,14 @@ Run("Account profile status is independent from HWND", () =>
     entry.ProfileState = AccountProfileState.Ready;
     entry.Handle = new IntPtr(0x2222);
 
-    Assert(entry.StatusSummary.Contains("资料已识别", StringComparison.Ordinal),
-        "ready profile state should be visible in the status summary");
+    Assert(entry.StatusSummary == "已嵌入",
+        "fully ready profile state should stay hidden in the compact status summary");
 
+    entry.ProfileState = AccountProfileState.ReadyWithoutAvatar;
+    Assert(entry.StatusSummary.Contains("头像待缓存", StringComparison.Ordinal),
+        "incomplete profile state should remain visible in the status summary");
+
+    entry.ProfileState = AccountProfileState.Ready;
     var previousAccountId = entry.AccountId;
     entry.Handle = new IntPtr(0x3333);
     entry.SessionState = ClientSessionState.Rebinding;
