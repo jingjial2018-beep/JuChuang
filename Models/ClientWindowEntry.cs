@@ -61,6 +61,7 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     private bool _pendingClearAfterDetection;
     private string? _accountId;
     private ClientSessionState _sessionState;
+    private bool _isManuallyDetached;
 
     public ClientWindowEntry(
         IntPtr handle,
@@ -150,6 +151,16 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     {
         get => _sessionState;
         set => SetField(ref _sessionState, value);
+    }
+
+    /// <summary>
+    /// 用户是否明确要求该账号保持为桌面独立窗口。
+    /// 这是账号会话状态，不跟随 HWND；客户端重建窗口时仍保持弹出状态。
+    /// </summary>
+    public bool IsManuallyDetached
+    {
+        get => _isManuallyDetached;
+        set => SetField(ref _isManuallyDetached, value);
     }
 
     /// <summary>最近一次扫描确认当前 HWND 有效的时间。</summary>
