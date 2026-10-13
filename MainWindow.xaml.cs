@@ -22,6 +22,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly SemaphoreSlim _scanLock = new(1, 1);
     private readonly SemaphoreSlim _profileReadLock = new(2, 2);
     private readonly AppSettings _settings;
+    private readonly WeChatProfileCacheService _profileCache = new();
     private readonly Dictionary<string, WeChatLocalProfile> _profilesByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, WeChatAccountIdentity> _resolvedWeChatAccounts = [];
@@ -1149,6 +1150,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ApplyWeChatProfile(entry, account, cachedProfile);
         }
+        else if (_profileCache.TryGet(account.Key, account.AccountId, out var persistedProfile))
+        {
+            // 磁盘缓存仅作为“上次已确认资料”的快速回退。后台仍会继续读取
+            // 当前微信本地资料，成功后用最新结果刷新缓存。
+            _profilesByIdentity[account.Key] = persistedProfile;
+            ApplyWeChatProfile(entry, account, persistedProfile);
+        }
     }
 
     private async void QueueWeChatAccountResolution(
@@ -1239,7 +1247,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             var (account, profile) = resolution.Value;
             _resolvedWeChatAccounts[processId] = account;
-            _profilesByIdentity[account.Key] = profile;
+
+            // 把已经从微信本地资料成功读取到的昵称/头像稳定到聚窗自己的缓存。
+            // 如果微信本轮没有头像缓存，Store 会保留同一账号上一次有效头像。
+            var stableProfile = _profileCache.Store(account.Key, profile);
+            _profilesByIdentity[account.Key] = stableProfile;
+
             _accountResolutionRetryAfter.Remove(processId);
             _accountResolutionFailures.Remove(processId);
             ApplyWeChatAccountIdentity(entry, account);
