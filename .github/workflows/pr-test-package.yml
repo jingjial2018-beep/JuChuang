@@ -37,6 +37,8 @@ jobs:
           dotnet restore .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj
           dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
           dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
+      - name: Restore win-x64 publish assets
+        run: dotnet restore .\JuChuang.csproj -r win-x64
 
       - name: Publish framework-dependent preview
         shell: pwsh
