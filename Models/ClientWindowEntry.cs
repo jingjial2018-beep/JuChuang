@@ -172,6 +172,12 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     /// </summary>
     public DateTime? WindowMissingSinceUtc { get; set; }
 
+    /// <summary>
+    /// 账号代际。退出登录/重新进入 Login 状态时递增，用来阻止旧的异步
+    /// Profile 读取结果覆盖后来登录的新账号。
+    /// </summary>
+    public int AccountGeneration { get; set; }
+
     public bool HasCustomName
     {
         get => _hasCustomName;
