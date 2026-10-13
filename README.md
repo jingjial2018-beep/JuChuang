@@ -14,7 +14,7 @@
 
 聚窗不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也不向第三方服务器上传聊天数据。客户端仍由其原生程序负责显示和交互，聚窗只负责 Windows 窗口托管与本地状态提示。
 
-当前稳定版本：**v0.3.15**
+当前稳定版本：**v0.3.16**
 
 ## 软件界面
 
@@ -59,12 +59,12 @@
 
 ## 下载与使用
 
-请从 GitHub 仓库的 **Releases** 页面下载 v0.3.15，不要从不明来源获取修改版程序。
+请从 GitHub 仓库的 **Releases** 页面下载 v0.3.16，不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JuChuang-v0.3.15-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JuChuang-v0.3.15-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JuChuang-v0.3.16-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JuChuang-v0.3.16-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
@@ -164,12 +164,24 @@ JuChuang/
 ├─ Models/                    客户端窗口与界面状态模型
 ├─ Services/                  窗口发现、启动、资料读取和角标识别
 ├─ Tests/BadgeProbe/          未读角标识别回归测试
+├─ Tests/ArchitectureProbe/   账号/窗口架构回归测试
 ├─ MainWindow*.cs             主窗口、通知、托盘和角标调度
 ├─ MainWindow.xaml            主界面
 └─ JuChuang.csproj            .NET 项目文件
 ```
 
 ## 版本记录
+
+### v0.3.16
+
+- 账号身份与 HWND 解耦，新增 AccountId / SessionState / AccountGeneration。
+- 微信登录页切主界面或客户端重建 HWND 后，可保留原账号卡片并自动重新绑定。
+- 添加微信时使用启动前 PID 快照，只认领真正新启动的客户端。
+- 新增 Profile Cache，稳定昵称和头像显示；同 PID 换号时隔离旧账号资料与未读状态。
+- 增加 Shell 窗口生命周期事件驱动的快速 reconcile，同时保留 5 秒低频兜底扫描。
+- 新增账号资料诊断状态、本地脱敏日志和右键“复制诊断信息”。
+- 新增 ArchitectureProbe，并纳入 PR 与正式发布前检查。
+- 保持顶层 HWND 托管、不注入微信、不修改微信登录配置、不读取聊天正文。
 
 ### v0.3.15
 
