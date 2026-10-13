@@ -25,6 +25,28 @@ public static class DiagnosticLogService
         LogRoot,
         $"diagnostics-{DateTime.UtcNow:yyyyMMdd}.log");
 
+    public static void WriteSystemEvent(string eventName, string? detail = null)
+    {
+        try
+        {
+            var line =
+                $"{DateTime.UtcNow:O}\t{Sanitize(eventName)}" +
+                $"\tdetail={Sanitize(detail)}" +
+                Environment.NewLine;
+
+            lock (SyncRoot)
+            {
+                Directory.CreateDirectory(LogRoot);
+                CleanupOldLogs();
+                File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // 诊断日志永远不能影响主流程。
+        }
+    }
+
     public static void WriteAccountEvent(ClientWindowEntry entry, string eventName)
     {
         try
