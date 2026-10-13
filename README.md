@@ -2,19 +2,32 @@
   <img src="Assets/app-logo.png" width="88" alt="JNest Logo">
 </p>
 
-<h1 align="center">JNest</h1>
+<h1 align="center">JNest — Windows 11 微信多开与 WhatsApp 多账号窗口管理器</h1>
 
 <p align="center">
-  Windows 11 本地微信与 WhatsApp 多窗口工作台
+  <strong>JNest</strong> · Windows 11 WeChat Multi-Instance & WhatsApp Desktop Window Manager
 </p>
 
-## 项目简介
+<p align="center">
+  开源 · 本地运行 · 微信 4.x 多窗口管理 · WhatsApp 桌面端接入 · 多账号切换 · 未读角标提醒
+</p>
 
-JNest 是一款面向 Windows 11 的本地桌面窗口管理工具。它可以发现、启动并统一管理电脑上已经安装的多个微信 4.x 窗口和 WhatsApp 桌面客户端，在一个主界面内完成账号切换、窗口接入、弹出和关闭。
+<p align="center">
+  <a href="https://github.com/jingjial2018-beep/JuChuang/releases">下载 JNest / Downloads</a> ·
+  <a href="#主要功能">功能介绍</a> ·
+  <a href="#常见问题-faq">常见问题 / FAQ</a> ·
+  <a href="#隐私边界">隐私说明</a>
+</p>
 
-JNest 不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也不向第三方服务器上传聊天数据。客户端仍由其原生程序负责显示和交互，JNest只负责 Windows 窗口托管与本地状态提示。
+## JNest 是什么？（项目简介）
 
-当前稳定版本：**v0.3.21**
+**JNest（聚窗）**是一款面向 **Windows 11 x64** 的开源、本地运行的 **微信多开与 WhatsApp 桌面窗口管理器**（WeChat multi-instance and WhatsApp desktop window manager）。它可以发现、启动并统一管理本机已经安装的多个微信 4.x 窗口和 WhatsApp 桌面客户端，将多个原生窗口集中到一个工作台，方便多账号切换、窗口接入、弹出与关闭。
+
+JNest 适合需要在一台 Windows 电脑上同时管理多个微信账号或微信与 WhatsApp 桌面窗口的用户。它是**窗口管理工具**，不是新的聊天客户端、云同步服务或聊天机器人；账号登录、消息收发和聊天界面仍由微信、WhatsApp 的官方桌面程序负责。
+
+JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端的未读角标用于提醒。**不会向第三方服务器上传聊天数据，不读取聊天消息正文，不注入微信 DLL，也不 Hook 微信内部聊天 API。**部分微信账号昵称/头像识别会按下方[隐私边界](#隐私边界)所述，只读访问本机账号元数据。
+
+**最新稳定版：** [v0.3.22](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v0.3.22) · **图标测试版：** [v0.3.22-beta1](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v0.3.22-beta1)（预发布，不替代稳定版）
 
 ## 软件界面
 
@@ -60,12 +73,12 @@ JNest 不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也�
 
 ## 下载与使用
 
-请从 GitHub 仓库的 **Releases** 页面下载 v0.3.21，不要从不明来源获取修改版程序。
+请从本仓库的 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases) 下载**稳定版 v0.3.22**；如需测试任务栏图标修复，可选择单独标记的 v0.3.22-beta1 预发布版。不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JNest-v0.3.21-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JNest-v0.3.21-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JNest-v0.3.22-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JNest-v0.3.22-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
@@ -76,6 +89,36 @@ JNest 不实现微信或 WhatsApp 的聊天协议，不接管账号登录，也�
 5. 使用左侧账号列表切换客户端；账号卡片右侧的关闭按钮会先请求确认。
 
 当前发布包未进行商业代码签名，Windows SmartScreen 可能在首次运行时显示提示。请确认文件来自本仓库的 Releases 页面后再运行。
+
+## 常见问题 / FAQ
+
+### JNest 支持 Windows 10、macOS 或 Linux 吗？
+
+目前**仅面向 Windows 11 x64**，未宣称支持 Windows 10、macOS 或 Linux。
+
+### JNest 能同时运行和管理多个微信账号吗？
+
+JNest 支持在 Windows 11 上管理多个**微信 4.x 桌面窗口**，并提供新实例启动、自动发现、集中切换、弹出窗口等功能。能否启动或接入特定版本取决于微信客户端版本和 Windows 窗口机制；并不保证对未来所有版本均兼容。
+
+### JNest 能管理 WhatsApp 吗？
+
+支持接入**已安装的 WhatsApp Windows 桌面客户端窗口**，并与微信窗口一起集中切换。它不是 WhatsApp Web 包装器，也不取代官方客户端。
+
+### JNest 可以显示未读消息数量吗？
+
+支持基于**本机客户端界面角标**显示数字或红点，并提供任务栏提示和提示音。准确性取决于客户端界面渲染、版本及 Windows 状态；它不读取聊天正文或会话数据库。
+
+### JNest 是否安全？会上传聊天内容吗？
+
+JNest 作为本地窗口管理器运行，不提供聊天云同步，不向第三方服务器上传聊天数据。为识别微信昵称和头像，程序可在本地按[隐私边界](#隐私边界)所述只读访问部分账号元数据；请阅读源码、许可证和隐私说明后自行评估使用风险。
+
+### JNest 是微信或 WhatsApp 官方软件吗？
+
+不是。**JNest 是独立开源项目**，与腾讯、微信、WhatsApp 或 Meta 没有官方关联、授权或合作关系。
+
+### Where can I download JNest for Windows 11?
+
+Get the official builds from [JNest GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases). JNest is an open-source Windows 11 desktop window manager for multiple WeChat 4.x windows and the WhatsApp desktop client. It does not replace the official messaging apps.
 
 ## 未读消息提示
 
@@ -175,6 +218,17 @@ JuChuang/
 ```
 
 ## 版本记录
+
+### v0.3.22-beta1（预发布）
+
+- 明确给 JNest 主窗口设置内置应用图标的大、小 Win32 图标，供任务栏图标显示测试使用。
+- 保持消息通知与窗口托管行为不变。
+
+### v0.3.22
+
+- 进一步检查主窗口任务栏扩展样式，降低最小化后任务栏按钮消失的风险。
+- 沿用现有应用图标，不改变消息检测功能。
+
 
 ### v0.3.21
 
