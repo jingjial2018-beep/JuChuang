@@ -1043,12 +1043,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void SaveAccountOrder()
     {
-        _settings.AccountOrder = Entries
+        if (_isPreviewMode)
+        {
+            return;
+        }
+
+        var visibleKeys = Entries
             .Select(GetAccountOrderKey)
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .Cast<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // Keep stable identities that are temporarily offline. A drag operation should
+        // not erase another account's saved position merely because that client is not
+        // running in this session.
+        var known = new HashSet<string>(visibleKeys, StringComparer.OrdinalIgnoreCase);
+        foreach (var savedKey in _settings.AccountOrder)
+        {
+            if (!string.IsNullOrWhiteSpace(savedKey) && known.Add(savedKey))
+            {
+                visibleKeys.Add(savedKey);
+            }
+        }
+
+        _settings.AccountOrder = visibleKeys;
         _settings.Save();
     }
 
@@ -1310,7 +1329,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 "嵌入窗口固定在容器内，只能通过顶部“弹出窗口”恢复独立窗口。\n" +
                 "嵌入时保留客户端完整原生样式（标题栏、边框、圆角与阴影）。\n" +
                 "仅在本机只读获取当前微信账号的昵称与头像缓存，不读取聊天数据或登录凭据。\n" +
-                "客户端发出 Windows 注意请求时会显示消息提示，最小化后由托盘图标接管。",
+                "客户端发出 Windows 注意请求时会显示消息提示；JNest 在后台或最小化时通过任务栏闪烁与托盘提示补充提醒。",
                 "关于JNest",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
