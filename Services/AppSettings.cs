@@ -23,6 +23,8 @@ public sealed class AppSettings
 
     public Dictionary<string, string> AccountNamesByIdentity { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public List<string> AccountOrder { get; set; } = [];
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JuChuang",
@@ -42,6 +44,10 @@ public sealed class AppSettings
             settings.AccountNamesByIdentity = new Dictionary<string, string>(
                 settings.AccountNamesByIdentity ?? [],
                 StringComparer.OrdinalIgnoreCase);
+            settings.AccountOrder = (settings.AccountOrder ?? [])
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
             return settings;
         }
         catch
