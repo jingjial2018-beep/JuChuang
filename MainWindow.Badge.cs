@@ -7,7 +7,7 @@ namespace JuChuang;
 
 /// <summary>
 /// 未读消息角标轮询：
-/// 1) HSHELL_FLASH 触发时立即检测对应账号
+/// 1) Shell/WinEvent 活动触发时立即检测对应账号
 /// 2) 同时按低频复查（~4s）所有账号，纠正漏报并确认已读后清零
 /// 3) 发现未读立即更新；只有“角标消失”需要连续两次确认，避免动画帧误清
 /// </summary>
@@ -67,9 +67,7 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 由 HSHELL_FLASH 通知触发：立刻对单个账号做一次识别，跳过"连续两次一致"门槛，
-    /// 直接进入"半稳定"状态——也就是说，这一次立刻反映到 UI，但需要下一轮复查
-    /// 再确认才会"锁死"为稳定值。
+    /// 活动事件本身不代表未读；单账号扫描确认角标新增后才提醒。
     /// </summary>
     private void TriggerImmediateBadgeScan(ClientWindowEntry entry)
     {
@@ -89,7 +87,7 @@ public partial class MainWindow
             {
                 try
                 {
-                    await ScanSingleAsync(entry, confirmOnly: false);
+                    await ScanSingleAsync(entry);
                 }
                 finally
                 {
@@ -136,11 +134,11 @@ public partial class MainWindow
                 return;
             }
 
-            // 复查阶段（confirmOnly=true）：必须连续两次结果一致才更新 UI。
+            // 定时复查仍用于纠漏和连续两次确认角标消失。
             foreach (var entry in targets)
             {
                 if (!NativeMethods.IsWindow(entry.Handle)) continue;
-                await ScanSingleAsync(entry, confirmOnly: true);
+                await ScanSingleAsync(entry);
             }
         }
         finally
@@ -182,16 +180,30 @@ public partial class MainWindow
 
     /// <summary>
     /// 对单个账号截图 + 识别 + 更新 UI。
-    /// confirmOnly=true：未读数字立即更新；无角标需要连续两次确认后才清除。
+    /// 未读数字立即更新；无角标需要连续两次确认后才清除。
     /// </summary>
-    private async Task ScanSingleAsync(ClientWindowEntry entry, bool confirmOnly)
+    private async Task ScanSingleAsync(ClientWindowEntry entry)
     {
         if (!NativeMethods.IsWindow(entry.Handle)) return;
 
-        var result = await Task.Run(() => _badgeDetector.Detect(entry.Handle, entry.Kind))
+        var scannedHandle = entry.Handle;
+        var scannedProcessId = entry.ProcessId;
+        var scannedGeneration = entry.AccountGeneration;
+
+        var result = await Task.Run(() => _badgeDetector.Detect(scannedHandle, entry.Kind))
             .ConfigureAwait(true);
 
-        if (result is null || !NativeMethods.IsWindow(entry.Handle)) return;
+        // 截图期间账号可能退出、重新登录或重建 HWND。旧结果绝不能写入新账号。
+        if (!Entries.Contains(entry) || entry.Handle != scannedHandle
+            || entry.ProcessId != scannedProcessId
+            || entry.AccountGeneration != scannedGeneration
+            || !NativeMethods.IsWindow(scannedHandle)) return;
+
+        if (result is null)
+        {
+            DiagnosticLogService.WriteActivityEvent("badge-scan-unavailable", scannedProcessId);
+            return;
+        }
 
         var detection = result.Value;
         if (!_badgeStableState.TryGetValue(entry, out var stable))
@@ -200,45 +212,38 @@ public partial class MainWindow
             _badgeStableState[entry] = stable;
         }
 
-        if (confirmOnly)
+        if (detection.Confidence != BadgeConfidenceLevel.NoBadge)
         {
-            if (detection.Confidence != BadgeConfidenceLevel.NoBadge)
+            // 首次扫描只建立基线；后续从无到有或可靠数字增长才是新未读。
+            var shouldNotify = BadgeAttentionPolicy.IsNewUnread(stable.Stable, detection);
+            ApplyDetection(entry, detection);
+            stable.Stable = detection;
+            stable.Pending = null;
+            stable.PendingSince = null;
+            if (shouldNotify)
             {
-                // 受限区域内发现角标后立即显示，保证一次 4 秒校准即可同步。
-                // 只有已经建立过稳定基线后，才把“从无未读变为有未读”或
-                // “高置信度数字增加”视为新消息提醒；首次启动同步历史未读时不闪任务栏。
-                var shouldNotify = ShouldNotifyFromStableBadge(entry, stable.Stable, detection);
-                ApplyDetection(entry, detection);
-                stable.Stable = detection;
-                stable.Pending = null;
-                stable.PendingSince = null;
-                if (shouldNotify)
-                {
-                    NotifyAccountAttention(entry);
-                }
+                DiagnosticLogService.WriteActivityEvent("badge-new-unread-confirmed", scannedProcessId);
+                NotifyAccountAttention(entry);
             }
-            else if (stable.Pending.HasValue && IsResultEqual(stable.Pending.Value, detection))
-            {
-                // 连续两次都没有角标才清除，避免客户端重绘瞬间造成闪烁。
-                ApplyDetection(entry, detection);
-                stable.Stable = detection;
-                stable.Pending = null;
-                stable.PendingSince = null;
-            }
-            else
-            {
-                stable.Pending = detection;
-                stable.PendingSince = DateTime.UtcNow;
-            }
+        }
+        else if (stable.Pending.HasValue && IsResultEqual(stable.Pending.Value, detection))
+        {
+            // 无角标仍需连续两次确认，避免动画帧造成误清零。
+            ApplyDetection(entry, detection);
+            stable.Stable = detection;
+            stable.Pending = null;
+            stable.PendingSince = null;
         }
         else
         {
-            // HSHELL_FLASH 触发：立即更新 UI，但把当前值作为"暂定结果"，
-            // 等下一轮复查验证后锁死（避免一闪即逝的误报长期停留在 UI 上）。
-            ApplyDetection(entry, detection);
             stable.Pending = detection;
             stable.PendingSince = DateTime.UtcNow;
-            stable.Stable = null; // 标记"未稳定"，下一轮复查需要再次匹配
+            if (stable.Stable is null)
+            {
+                // 新账号首次无角标可直接作为基线，不需要等待第二次扫描。
+                stable.Stable = detection;
+                ApplyDetection(entry, detection);
+            }
         }
     }
 
@@ -282,31 +287,6 @@ public partial class MainWindow
         }
     }
 
-    private static bool ShouldNotifyFromStableBadge(
-        ClientWindowEntry entry,
-        BadgeResult? previousStable,
-        BadgeResult current)
-    {
-        if (ReferenceEquals(entry, null)
-            || previousStable is null
-            || current.Confidence == BadgeConfidenceLevel.NoBadge)
-        {
-            return false;
-        }
-
-        var previous = previousStable.Value;
-        if (previous.Confidence == BadgeConfidenceLevel.NoBadge)
-        {
-            return true;
-        }
-
-        // 只有两个结果都能可靠读到数字时才根据“数字增加”判断新消息。
-        // Dot -> Count 可能只是识别置信度提升，不能因此重复提醒。
-        return previous.Confidence == BadgeConfidenceLevel.High
-            && current.Confidence == BadgeConfidenceLevel.High
-            && current.Number > previous.Number;
-    }
-
     /// <summary>比较两次识别结果是否一致（用于状态同步）。</summary>
     private static bool IsResultEqual(BadgeResult a, BadgeResult b)
     {
@@ -321,3 +301,4 @@ public partial class MainWindow
         public DateTime? PendingSince;
     }
 }
+

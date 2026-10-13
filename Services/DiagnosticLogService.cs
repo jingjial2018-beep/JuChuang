@@ -25,6 +25,24 @@ public static class DiagnosticLogService
         LogRoot,
         $"diagnostics-{DateTime.UtcNow:yyyyMMdd}.log");
 
+    public static void WriteActivityEvent(string eventName, int processId = 0)
+    {
+        try
+        {
+            var line = $"{DateTime.UtcNow:O}\t{Sanitize(eventName)}\tpid={processId}{Environment.NewLine}";
+            lock (SyncRoot)
+            {
+                Directory.CreateDirectory(LogRoot);
+                CleanupOldLogs();
+                File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // Diagnostics must never interrupt notification delivery.
+        }
+    }
+
     public static void WriteAccountEvent(ClientWindowEntry entry, string eventName)
     {
         try
@@ -206,3 +224,4 @@ public static class DiagnosticLogService
         }
     }
 }
+
