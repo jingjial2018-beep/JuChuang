@@ -423,6 +423,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         entry.AccountId = null;
         entry.HasCustomName = false;
         entry.AvatarPath = null;
+        entry.ProfileState = AccountProfileState.Pending;
+        entry.ProfileDiagnosticCode = null;
+        entry.ProfileDiagnosticDetail = null;
         entry.MessageAlertCount = 0;
         entry.AlertDisplayMode = AlertDisplayMode.None;
         entry.PendingClearAfterDetection = false;
@@ -1236,7 +1239,58 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 当前微信本地资料，成功后用最新结果刷新缓存。
             _profilesByIdentity[account.Key] = persistedProfile;
             ApplyWeChatProfile(entry, account, persistedProfile);
+            entry.ProfileState = AccountProfileState.ReadyFromCache;
+            entry.ProfileDiagnosticCode = "ProfileCache";
+            entry.ProfileDiagnosticDetail = "当前显示的是聚窗上一次确认过的本地账号资料，后台会继续尝试读取最新资料。";
         }
+    }
+
+    private static AccountProfileState MapProfileFailureState(WeChatProfileFailureStage stage)
+        => stage switch
+        {
+            WeChatProfileFailureStage.AccountDirectoryNotFound
+                or WeChatProfileFailureStage.ContactDatabaseUnreadable
+                or WeChatProfileFailureStage.SelfRowMissing
+                => AccountProfileState.WaitingForLocalData,
+
+            WeChatProfileFailureStage.KeyExtractionFailed
+                or WeChatProfileFailureStage.ContactTableMissing
+                => AccountProfileState.CompatibilityIssue,
+
+            WeChatProfileFailureStage.AvatarCacheMissing
+                => AccountProfileState.ReadyWithoutAvatar,
+
+            WeChatProfileFailureStage.DatabaseOpenFailed
+                or WeChatProfileFailureStage.WalMergeInconsistent
+                => AccountProfileState.Error,
+
+            _ => AccountProfileState.Pending
+        };
+
+    private static string GetProfileDiagnosticLabel(WeChatProfileFailureStage stage)
+        => stage switch
+        {
+            WeChatProfileFailureStage.AccountDirectoryNotFound => "AccountDirectoryNotFound",
+            WeChatProfileFailureStage.ContactDatabaseUnreadable => "ContactDatabaseUnreadable",
+            WeChatProfileFailureStage.KeyExtractionFailed => "KeyExtractionFailed",
+            WeChatProfileFailureStage.DatabaseOpenFailed => "DatabaseOpenFailed",
+            WeChatProfileFailureStage.ContactTableMissing => "ContactTableMissing",
+            WeChatProfileFailureStage.SelfRowMissing => "SelfRowMissing",
+            WeChatProfileFailureStage.AvatarCacheMissing => "AvatarCacheMissing",
+            WeChatProfileFailureStage.WalMergeInconsistent => "WalMergeInconsistent",
+            _ => string.Empty
+        };
+
+    private static void ApplyProfileDiagnostic(
+        ClientWindowEntry entry,
+        WeChatProfileFailureStage stage,
+        string? detail)
+    {
+        entry.ProfileState = MapProfileFailureState(stage);
+        entry.ProfileDiagnosticCode = stage == WeChatProfileFailureStage.None
+            ? null
+            : GetProfileDiagnosticLabel(stage);
+        entry.ProfileDiagnosticDetail = detail;
     }
 
     private async void QueueWeChatAccountResolution(
@@ -1259,6 +1313,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _accountResolutionLoads.Add(processId);
+        if (entry.ProfileState is not AccountProfileState.Ready
+            and not AccountProfileState.ReadyFromCache
+            and not AccountProfileState.ReadyWithoutAvatar)
+        {
+            entry.ProfileState = AccountProfileState.Pending;
+            entry.ProfileDiagnosticCode = null;
+            entry.ProfileDiagnosticDetail = null;
+        }
+
         try
         {
             await Task.Delay(300);
@@ -1272,7 +1335,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             await _profileReadLock.WaitAsync();
-            (WeChatAccountIdentity Account, WeChatLocalProfile Profile)? resolution;
+            (WeChatAccountIdentity? Account, WeChatProfileReadResult Result) resolution;
             try
             {
                 if (_isClosing
@@ -1287,7 +1350,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     .Where(pair => pair.Key != processId)
                     .Select(pair => pair.Value.Key)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                resolution = await Task.Run<(WeChatAccountIdentity Account, WeChatLocalProfile Profile)?>(() =>
+                resolution = await Task.Run(() =>
                 {
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
                         .OrderBy(account => preferredAccount is not null
@@ -1296,17 +1359,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
                         .Where(account => !unavailableAccountKeys.Contains(account.Key))
                         .ToArray();
-                    var profile = WeChatProfileService.TryReadMatchingProfile(
+
+                    var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
                         processId,
                         candidates.Select(account => account.AccountId));
-                    if (profile is null)
-                    {
-                        return null;
-                    }
-
-                    var account = candidates.FirstOrDefault(candidate =>
-                        candidate.AccountId.Equals(profile.AccountId, StringComparison.OrdinalIgnoreCase));
-                    return account is null ? null : (account, profile);
+                    var profile = readResult.Profile;
+                    var account = profile is null
+                        ? null
+                        : candidates.FirstOrDefault(candidate =>
+                            candidate.AccountId.Equals(
+                                profile.AccountId,
+                                StringComparison.OrdinalIgnoreCase));
+                    return (Account: account, Result: readResult);
                 });
             }
             finally
@@ -1314,10 +1378,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _profileReadLock.Release();
             }
 
-            if (resolution is null)
+            if (resolution.Result.Profile is null || resolution.Account is null)
             {
                 if (entry.AccountGeneration == accountGeneration)
                 {
+                    ApplyProfileDiagnostic(
+                        entry,
+                        resolution.Result.Stage,
+                        resolution.Result.Detail);
                     ScheduleAccountResolutionRetry(processId);
                 }
                 return;
@@ -1332,13 +1400,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            var (account, profile) = resolution.Value;
+            var account = resolution.Account;
+            var profile = resolution.Result.Profile;
             _resolvedWeChatAccounts[processId] = account;
 
             // 把已经从微信本地资料成功读取到的昵称/头像稳定到聚窗自己的缓存。
             // 如果微信本轮没有头像缓存，Store 会保留同一账号上一次有效头像。
             var stableProfile = _profileCache.Store(account.Key, profile);
             _profilesByIdentity[account.Key] = stableProfile;
+
+            if (resolution.Result.Stage == WeChatProfileFailureStage.AvatarCacheMissing)
+            {
+                entry.ProfileState = stableProfile.AvatarPath is not null
+                    ? AccountProfileState.ReadyFromCache
+                    : AccountProfileState.ReadyWithoutAvatar;
+                entry.ProfileDiagnosticCode = GetProfileDiagnosticLabel(resolution.Result.Stage);
+                entry.ProfileDiagnosticDetail = stableProfile.AvatarPath is not null
+                    ? "微信当前头像缓存暂不可用，已继续使用聚窗上一次确认过的头像。"
+                    : resolution.Result.Detail;
+            }
+            else
+            {
+                entry.ProfileState = AccountProfileState.Ready;
+                entry.ProfileDiagnosticCode = null;
+                entry.ProfileDiagnosticDetail = resolution.Result.Detail;
+            }
 
             _accountResolutionRetryAfter.Remove(processId);
             _accountResolutionFailures.Remove(processId);
