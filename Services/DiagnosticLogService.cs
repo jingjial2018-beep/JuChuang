@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using JuChuang.Models;
 
 namespace JuChuang.Services;
@@ -128,6 +129,13 @@ public static class DiagnosticLogService
                     StringComparison.OrdinalIgnoreCase);
             }
 
+            // 诊断信息有时来自数据库/客户端保存的旧路径，不一定属于当前 Windows
+            // 登录用户。统一遮掉任意 C:\\Users\\<name> 前缀，避免复制或日志中泄露用户名。
+            redacted = Regex.Replace(
+                redacted,
+                @"(?i)[A-Z]:\\Users\\[^\\\r\n]+",
+                "%USERPROFILE%");
+
             if (!string.IsNullOrWhiteSpace(Environment.UserName))
             {
                 redacted = redacted.Replace(
@@ -143,6 +151,12 @@ public static class DiagnosticLogService
                     "<account>",
                     StringComparison.OrdinalIgnoreCase);
             }
+
+            // 当 AccountId 还没成功绑定时，detail 里仍可能出现 wxid_*。
+            redacted = Regex.Replace(
+                redacted,
+                @"(?i)\bwxid_[A-Za-z0-9_-]+\b",
+                "<account>");
         }
         catch
         {
