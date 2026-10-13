@@ -23,6 +23,7 @@ public partial class MainWindow
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
         EnsureMainWindowTaskbarButton();
+        ApplyJNestTaskbarIcon();
         var handle = new WindowInteropHelper(this).Handle;
         _windowSource = HwndSource.FromHwnd(handle);
         if (_windowSource is not null)
