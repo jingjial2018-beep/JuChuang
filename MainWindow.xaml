@@ -6,7 +6,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:JuChuang.Controls"
         mc:Ignorable="d"
-        Title="聚窗"
+        Title="JNest"
         Icon="Assets/app.ico"
         Width="1440"
         Height="900"
@@ -193,7 +193,7 @@
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
                         <Image Source="Assets/app-logo.png" Width="24" Height="24" Stretch="Uniform" />
-                        <TextBlock Text="聚窗" Margin="10,0,0,0" FontSize="17" FontWeight="SemiBold"
+                        <TextBlock Text="JNest" Margin="10,0,0,0" FontSize="17" FontWeight="SemiBold"
                                    Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
 
@@ -269,6 +269,11 @@
                         <ListBox x:Name="AccountsList" Grid.Row="1" ItemsSource="{Binding Entries}"
                                  SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
                                  SelectionChanged="AccountsList_SelectionChanged"
+                                 PreviewMouseLeftButtonDown="AccountsList_PreviewMouseLeftButtonDown"
+                                 PreviewMouseMove="AccountsList_PreviewMouseMove"
+                                 DragOver="AccountsList_DragOver"
+                                 Drop="AccountsList_Drop"
+                                 AllowDrop="True"
                                  ItemContainerStyle="{StaticResource AccountItemStyle}"
                                  Background="Transparent" BorderThickness="0" Padding="0,0,0,8"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
