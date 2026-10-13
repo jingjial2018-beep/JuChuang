@@ -21,6 +21,7 @@ public partial class MainWindow
     private readonly BadgeDetector _badgeDetector = new();
     private int _badgeScanInProgress; // 0 = 空闲，1 = 扫描中（防止重入）
     private readonly HashSet<ClientWindowEntry> _queuedImmediateBadgeScans = [];
+    private readonly HashSet<ClientWindowEntry> _queuedNotifyAfterDetectionScans = [];
     private bool _foregroundCalibrationPending;
 
     // 每个账号的"上一次稳定结果"（用于"连续两次一致才更新"的状态同步）
@@ -46,6 +47,7 @@ public partial class MainWindow
         _badgePollTimer?.Stop();
         _badgePollTimer = null;
         _queuedImmediateBadgeScans.Clear();
+        _queuedNotifyAfterDetectionScans.Clear();
         _foregroundCalibrationPending = false;
     }
 
@@ -71,7 +73,9 @@ public partial class MainWindow
     /// 直接进入"半稳定"状态——也就是说，这一次立刻反映到 UI，但需要下一轮复查
     /// 再确认才会"锁死"为稳定值。
     /// </summary>
-    private void TriggerImmediateBadgeScan(ClientWindowEntry entry)
+    private void TriggerImmediateBadgeScan(
+        ClientWindowEntry entry,
+        bool notifyAfterConfirmedUnread = false)
     {
         if (_isClosing || _isPreviewMode || entry is null || entry.Handle == IntPtr.Zero)
         {
@@ -79,8 +83,12 @@ public partial class MainWindow
         }
         if (Interlocked.CompareExchange(ref _badgeScanInProgress, 1, 0) != 0)
         {
-            // 定时校准正在截图时不能丢掉 Shell 事件；扫描结束后立即补做。
+            // 定时校准正在截图时不能丢掉即时事件；扫描结束后立即补做。
             _queuedImmediateBadgeScans.Add(entry);
+            if (notifyAfterConfirmedUnread)
+            {
+                _queuedNotifyAfterDetectionScans.Add(entry);
+            }
             return;
         }
         Dispatcher.BeginInvoke(
@@ -89,7 +97,10 @@ public partial class MainWindow
             {
                 try
                 {
-                    await ScanSingleAsync(entry, confirmOnly: false);
+                    await ScanSingleAsync(
+                        entry,
+                        confirmOnly: false,
+                        notifyAfterConfirmedUnread: notifyAfterConfirmedUnread);
                 }
                 finally
                 {
@@ -140,7 +151,7 @@ public partial class MainWindow
             foreach (var entry in targets)
             {
                 if (!NativeMethods.IsWindow(entry.Handle)) continue;
-                await ScanSingleAsync(entry, confirmOnly: true);
+                await ScanSingleAsync(entry, confirmOnly: true, notifyAfterConfirmedUnread: false);
             }
         }
         finally
@@ -174,9 +185,10 @@ public partial class MainWindow
 
         var entry = _queuedImmediateBadgeScans.First();
         _queuedImmediateBadgeScans.Remove(entry);
+        var notifyAfterDetection = _queuedNotifyAfterDetectionScans.Remove(entry);
         if (Entries.Contains(entry) && NativeMethods.IsWindow(entry.Handle))
         {
-            TriggerImmediateBadgeScan(entry);
+            TriggerImmediateBadgeScan(entry, notifyAfterDetection);
         }
     }
 
@@ -184,7 +196,10 @@ public partial class MainWindow
     /// 对单个账号截图 + 识别 + 更新 UI。
     /// confirmOnly=true：未读数字立即更新；无角标需要连续两次确认后才清除。
     /// </summary>
-    private async Task ScanSingleAsync(ClientWindowEntry entry, bool confirmOnly)
+    private async Task ScanSingleAsync(
+        ClientWindowEntry entry,
+        bool confirmOnly,
+        bool notifyAfterConfirmedUnread)
     {
         if (!NativeMethods.IsWindow(entry.Handle)) return;
 
@@ -217,9 +232,17 @@ public partial class MainWindow
                     NotifyAccountAttention(entry);
                 }
             }
+            else if (stable.Stable is null && !entry.HasMessageAlert)
+            {
+                // 首次建立“无未读”基线时无需等待第二次确认，因为 UI 本来就没有
+                // 要清除的角标。这样后台托盘活动可以更快与稳定基线比较。
+                stable.Stable = detection;
+                stable.Pending = null;
+                stable.PendingSince = null;
+            }
             else if (stable.Pending.HasValue && IsResultEqual(stable.Pending.Value, detection))
             {
-                // 连续两次都没有角标才清除，避免客户端重绘瞬间造成闪烁。
+                // 已经显示过未读时仍要求连续两次无角标才清除，避免客户端重绘瞬间误清。
                 ApplyDetection(entry, detection);
                 stable.Stable = detection;
                 stable.Pending = null;
@@ -227,6 +250,29 @@ public partial class MainWindow
             }
             else
             {
+                stable.Pending = detection;
+                stable.PendingSince = DateTime.UtcNow;
+            }
+        }
+        else if (notifyAfterConfirmedUnread)
+        {
+            // 外部托盘活动本身不是“新消息”。只有角标检测确认未读相对稳定基线
+            // 从无到有，或可靠数字增加时，才让 JNest 发出任务栏提醒。
+            if (detection.Confidence != BadgeConfidenceLevel.NoBadge)
+            {
+                var shouldNotify = ShouldNotifyFromStableBadge(entry, stable.Stable, detection);
+                ApplyDetection(entry, detection);
+                stable.Stable = detection;
+                stable.Pending = null;
+                stable.PendingSince = null;
+                if (shouldNotify)
+                {
+                    NotifyAccountAttention(entry);
+                }
+            }
+            else
+            {
+                // 托盘活动之后没有看到角标，不把活动误当消息，也不立刻清掉旧未读。
                 stable.Pending = detection;
                 stable.PendingSince = DateTime.UtcNow;
             }

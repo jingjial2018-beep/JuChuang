@@ -281,6 +281,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             : $"已自动接入 {Entries.Count(entry => entry.IsAttached)} 个窗口。";
         _scanTimer.Start();
         StartBadgePolling();
+        StartWeChatTrayActivityMonitoring();
         if (_isClientSelfTestMode)
         {
             ShowClientSelfTestPopup();
@@ -292,6 +293,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _isClosing = true;
         SaveWindowPlacement();
         _scanTimer.Stop();
+        StopWeChatTrayActivityMonitoring();
         StopBadgePolling();
         if (_windowSource is not null)
         {
@@ -338,6 +340,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var wasSelected = ReferenceEquals(SelectedEntry, entry);
         var processId = entry.ProcessId;
         _queuedImmediateBadgeScans.Remove(entry);
+        _queuedNotifyAfterDetectionScans.Remove(entry);
         _badgeStableState.Remove(entry);
         Entries.Remove(entry);
 
@@ -438,6 +441,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         entry.AlertDisplayMode = AlertDisplayMode.None;
         entry.PendingClearAfterDetection = false;
         _queuedImmediateBadgeScans.Remove(entry);
+        _queuedNotifyAfterDetectionScans.Remove(entry);
         _badgeStableState.Remove(entry);
 
         var index = Entries.IndexOf(entry);
