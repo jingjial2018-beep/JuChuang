@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -244,9 +245,14 @@ public sealed class WeChatProfileCacheService
     }
 
     private static bool IsUsableImage(string? path)
-        => !string.IsNullOrWhiteSpace(path)
-           && File.Exists(path)
-           && DetectImageExtension(path) is not null;
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return false;
+        }
+
+        return DetectImageExtension(path) is not null;
+    }
 
     private static string? DetectImageExtension(string path)
     {
