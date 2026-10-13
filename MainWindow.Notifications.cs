@@ -242,7 +242,8 @@ public partial class MainWindow
         if (_isClosing || entry.Handle == IntPtr.Zero || !Entries.Contains(entry)) return;
         var now = DateTime.UtcNow;
         if (_lastClientActivityScan.TryGetValue(entry, out var previous)
-            && now - previous < ClientActivityDebounce) return;
+            && now - previous < ClientActivityDebounce
+            && source != "shell-flash") return;
 
         _lastClientActivityScan[entry] = now;
         DiagnosticLogService.WriteActivityEvent($"activity-trigger-{source}", entry.ProcessId);
