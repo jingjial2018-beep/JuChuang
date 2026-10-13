@@ -45,7 +45,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // 登录页 -> 主界面、客户端自重建 HWND 时，进程通常仍然存活。
     // 给同一 PID 一个短暂重绑定窗口，避免账号身份、昵称和头像随 HWND 一起被丢弃。
-    private static readonly TimeSpan WindowRebindGracePeriod = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan WindowRebindGracePeriod = TimeSpan.FromSeconds(15);
 
     public MainWindow()
     {
@@ -719,6 +719,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             _dismissedWindowHandles.Clear();
             _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WeChat);
+            ClientMetadataService.InvalidateLoginAccountCache();
             _selectNextKind = ClientKind.WeChat;
             await Task.Run(() => ClientLauncher.StartWeChat(executablePath));
             StatusMessageText.Text = "微信已启动，正在等待新窗口…";
@@ -1297,6 +1298,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? current + 1
             : 1;
         _accountResolutionFailures[processId] = failures;
+
+        // 新登录时 xwechat\login 下的 key_info.dat 可能在第一次扫描之后才出现。
+        // 失败后主动清掉 15 秒目录缓存，让下一轮快速重试看到最新账号集合。
+        ClientMetadataService.InvalidateLoginAccountCache();
+
         // 新登录账号的 contact.db/self row/头像缓存常常比主窗口晚几秒落盘。
         // 前几次快速重试用于补齐刚启动资料，随后逐步退避，避免长期高频扫描进程内存。
         var delay = failures switch
