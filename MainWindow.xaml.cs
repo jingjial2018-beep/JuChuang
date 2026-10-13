@@ -570,6 +570,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     // 自动扫描只重试“接入失败”的窗口。用户主动“弹出窗口”会把句柄
                     // 放进 _dismissedWindowHandles，因此不会被后台扫描重新抓回容器。
                     if (!existingEntry.IsAttached
+                        && !existingEntry.IsManuallyDetached
                         && !_dismissedWindowHandles.Contains(existingEntry.Handle))
                     {
                         existingEntry.IsAttached = WindowHost.AttachWindow(
@@ -595,10 +596,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 {
                     UpdateEntryFromCandidate(rebindingEntry, candidate);
                     QueueOrApplyWeChatIdentity(rebindingEntry, candidate, weChatAccounts);
-                    rebindingEntry.IsAttached = WindowHost.AttachWindow(
-                        candidate.Handle,
-                        makeActive: false);
-                    rebindingEntry.Status = rebindingEntry.IsAttached ? "已嵌入" : "接入失败";
+                    if (rebindingEntry.IsManuallyDetached)
+                    {
+                        rebindingEntry.IsAttached = false;
+                        rebindingEntry.Status = "独立窗口";
+                    }
+                    else
+                    {
+                        var makeActive = ReferenceEquals(rebindingEntry, SelectedEntry);
+                        rebindingEntry.IsAttached = WindowHost.AttachWindow(
+                            candidate.Handle,
+                            makeActive);
+                        rebindingEntry.Status = rebindingEntry.IsAttached ? "已嵌入" : "接入失败";
+                        if (makeActive && rebindingEntry.IsAttached)
+                        {
+                            QueueHostedWindowRefresh(rebindingEntry);
+                        }
+                    }
+
                     TryCompletePendingLaunch(candidate, rebindingEntry);
                     continue;
                 }
@@ -874,6 +889,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             // 明确记录“用户主动弹出”，后台 5 秒扫描不得自动重新接入。
             _dismissedWindowHandles.Add(entry.Handle);
+            entry.IsManuallyDetached = true;
             WindowHost.DetachWindow(entry.Handle);
             entry.IsAttached = false;
             entry.Status = "独立窗口";
@@ -883,6 +899,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
             _dismissedWindowHandles.Remove(entry.Handle);
+            entry.IsManuallyDetached = false;
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
             entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
             StatusMessageText.Text = entry.IsAttached
@@ -934,6 +951,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (clearDismissed)
         {
             _dismissedWindowHandles.Clear();
+            foreach (var entry in Entries)
+            {
+                entry.IsManuallyDetached = false;
+            }
         }
 
         await ScanAndAttachAsync();
@@ -942,6 +963,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         foreach (var entry in Entries.Where(entry =>
                      entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle)))
         {
+            // “扫描客户端/全部接入”是用户显式重新接入动作，因此解除账号级弹出保护。
+            entry.IsManuallyDetached = false;
+
             if (entry.IsAttached)
             {
                 // 已接入的窗口跳过：避免 AttachWindow(makeActive:false) 把正在显示的
