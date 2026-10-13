@@ -438,6 +438,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (ReferenceEquals(entry, SelectedEntry))
         {
             CurrentTitleText.Text = entry.DisplayName;
+            RefreshSelectedProfileStatus(entry);
         }
     }
 
@@ -879,6 +880,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private string BuildCurrentStatusText(ClientWindowEntry entry, string baseText)
+    {
+        if (entry.Kind != ClientKind.WeChat
+            || entry.ProfileState == AccountProfileState.NotApplicable
+            || string.IsNullOrWhiteSpace(entry.ProfileStatusText))
+        {
+            return baseText;
+        }
+
+        return $"{baseText} · {entry.ProfileStatusText}";
+    }
+
+    private void RefreshSelectedProfileStatus(ClientWindowEntry entry)
+    {
+        if (_isPreviewMode
+            || !ReferenceEquals(entry, SelectedEntry)
+            || entry.Handle == IntPtr.Zero
+            || !NativeMethods.IsWindow(entry.Handle))
+        {
+            return;
+        }
+
+        CurrentStatusText.Text = entry.IsAttached
+            ? BuildCurrentStatusText(entry, "已嵌入 · 运行中")
+            : BuildCurrentStatusText(entry, "当前为独立窗口");
+    }
+
     private void ShowSelectedEntry()
     {
         var entry = SelectedEntry;
@@ -916,14 +944,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         PopOutButton.IsEnabled = true;
         if (!entry.IsAttached)
         {
-            CurrentStatusText.Text = "当前为独立窗口";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry, "当前为独立窗口");
             PopOutButtonText.Text = "嵌入窗口";
             WindowHost.HideAll();
             SetEmptyState("窗口已弹出到桌面", "点击顶部“嵌入窗口”即可把它放回聚窗。");
             return;
         }
 
-        CurrentStatusText.Text = "已嵌入 · 运行中";
+        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已嵌入 · 运行中");
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
@@ -1242,6 +1270,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.ProfileState = AccountProfileState.ReadyFromCache;
             entry.ProfileDiagnosticCode = "ProfileCache";
             entry.ProfileDiagnosticDetail = "当前显示的是聚窗上一次确认过的本地账号资料，后台会继续尝试读取最新资料。";
+            RefreshSelectedProfileStatus(entry);
         }
     }
 
@@ -1281,7 +1310,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _ => string.Empty
         };
 
-    private static void ApplyProfileDiagnostic(
+    private void ApplyProfileDiagnostic(
         ClientWindowEntry entry,
         WeChatProfileFailureStage stage,
         string? detail)
@@ -1291,6 +1320,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? null
             : GetProfileDiagnosticLabel(stage);
         entry.ProfileDiagnosticDetail = detail;
+        RefreshSelectedProfileStatus(entry);
     }
 
     private async void QueueWeChatAccountResolution(
@@ -1429,6 +1459,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _accountResolutionRetryAfter.Remove(processId);
             _accountResolutionFailures.Remove(processId);
             ApplyWeChatAccountIdentity(entry, account);
+            RefreshSelectedProfileStatus(entry);
         }
         catch
         {
@@ -1487,6 +1518,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (ReferenceEquals(entry, SelectedEntry))
         {
             CurrentTitleText.Text = entry.DisplayName;
+            RefreshSelectedProfileStatus(entry);
         }
     }
 
