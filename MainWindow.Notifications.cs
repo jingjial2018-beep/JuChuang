@@ -317,10 +317,9 @@ public partial class MainWindow
             Count = uint.MaxValue,
             Timeout = 0
         };
-        if (!NativeMethods.FlashWindowEx(ref flashInfo))
-        {
-            DiagnosticLogService.WriteActivityEvent("taskbar-flash-failed", entry.ProcessId);
-        }
+        // 返回值是调用前标题栏是否处于活动状态，不能作为调用是否成功的判断。
+        NativeMethods.FlashWindowEx(ref flashInfo);
+        DiagnosticLogService.WriteActivityEvent("taskbar-flash-requested", entry.ProcessId);
     }
 
 }
