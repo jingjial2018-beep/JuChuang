@@ -109,5 +109,6 @@ jobs:
               --repo "${{ github.repository }}" `
               --target "${{ github.sha }}" `
               --title "JNest v$version" `
+              $(if ($version -match '-') { '--prerelease' }) `
               --notes-file .\artifacts\release-notes.md
           }
