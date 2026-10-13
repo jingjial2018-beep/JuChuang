@@ -279,6 +279,7 @@
                                         <Grid.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                 <MenuItem Header="重命名账号" Click="RenameEntry_Click" />
+                                                <MenuItem Header="复制诊断信息" Click="CopyDiagnostics_Click" />
                                                 <Separator />
                                                 <MenuItem Header="关闭客户端" CommandParameter="{Binding}" Click="CloseEntry_Click" />
                                             </ContextMenu>
