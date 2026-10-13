@@ -1,0 +1,93 @@
+name: PR Test Package
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-test-package-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-latest
+    env:
+      PREVIEW_VERSION: 0.3.16-preview.pr${{ github.event.pull_request.number }}
+      PACKAGE_NAME: JuChuang-v0.3.16-preview-PR${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore .\JuChuang.csproj
+
+      - name: Run architecture regression probe
+        shell: pwsh
+        run: |
+          dotnet restore .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj
+          dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
+          dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
+
+      - name: Publish framework-dependent preview
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            --no-restore `
+            -p:Version="${{ env.PREVIEW_VERSION }}" `
+            -o .\artifacts\FrameworkDependent
+
+      - name: Publish self-contained preview
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -p:Version="${{ env.PREVIEW_VERSION }}" `
+            -o .\artifacts\SelfContained
+
+      - name: Add preview test guide
+        shell: pwsh
+        run: |
+          Copy-Item .\TESTING_V0.3.16_PREVIEW.md .\artifacts\FrameworkDependent\TESTING_V0.3.16_PREVIEW.md
+          Copy-Item .\TESTING_V0.3.16_PREVIEW.md .\artifacts\SelfContained\TESTING_V0.3.16_PREVIEW.md
+
+      - name: Package ZIP files and hashes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .\packages | Out-Null
+          $fd = ".\packages\${{ env.PACKAGE_NAME }}-FrameworkDependent-win-x64.zip"
+          $sc = ".\packages\${{ env.PACKAGE_NAME }}-SelfContained-win-x64.zip"
+          Compress-Archive -Path .\artifacts\FrameworkDependent\* -DestinationPath $fd -Force
+          Compress-Archive -Path .\artifacts\SelfContained\* -DestinationPath $sc -Force
+
+          $lines = @()
+          foreach ($file in @($fd, $sc)) {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash
+            $name = Split-Path $file -Leaf
+            $lines += "$hash  $name"
+          }
+          $lines | Set-Content .\packages\SHA256SUMS.txt -Encoding ascii
+          Copy-Item .\TESTING_V0.3.16_PREVIEW.md .\packages\TESTING_V0.3.16_PREVIEW.md
+
+      - name: Upload preview package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: .\packages\*
+          retention-days: 7
+          if-no-files-found: error
