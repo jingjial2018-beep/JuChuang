@@ -33,6 +33,21 @@ public enum ClientWindowRole
 }
 
 /// <summary>
+/// 微信账号资料解析状态。与窗口在线/嵌入状态分离。
+/// </summary>
+public enum AccountProfileState
+{
+    NotApplicable,
+    Pending,
+    Ready,
+    ReadyFromCache,
+    ReadyWithoutAvatar,
+    WaitingForLocalData,
+    CompatibilityIssue,
+    Error
+}
+
+/// <summary>
 /// 角标显示形态：决定聚窗左侧头像角标的具体外观。
 /// </summary>
 public enum AlertDisplayMode
@@ -62,6 +77,9 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     private string? _accountId;
     private ClientSessionState _sessionState;
     private bool _isManuallyDetached;
+    private AccountProfileState _profileState;
+    private string? _profileDiagnosticCode;
+    private string? _profileDiagnosticDetail;
 
     public ClientWindowEntry(
         IntPtr handle,
@@ -81,6 +99,9 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
         _displayName = displayName;
         _clientVersion = clientVersion;
         _sessionState = sessionState;
+        _profileState = kind == ClientKind.WeChat
+            ? AccountProfileState.Pending
+            : AccountProfileState.NotApplicable;
         LastSeenUtc = DateTime.UtcNow;
     }
 
@@ -107,7 +128,13 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     public string Status
     {
         get => _status;
-        set => SetField(ref _status, value);
+        set
+        {
+            if (SetField(ref _status, value))
+            {
+                OnPropertyChanged(nameof(StatusSummary));
+            }
+        }
     }
 
     public bool IsOnline
@@ -161,6 +188,78 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     {
         get => _isManuallyDetached;
         set => SetField(ref _isManuallyDetached, value);
+    }
+
+    public AccountProfileState ProfileState
+    {
+        get => _profileState;
+        set
+        {
+            if (SetField(ref _profileState, value))
+            {
+                OnPropertyChanged(nameof(ProfileStatusText));
+                OnPropertyChanged(nameof(StatusSummary));
+            }
+        }
+    }
+
+    public string? ProfileDiagnosticCode
+    {
+        get => _profileDiagnosticCode;
+        set
+        {
+            if (SetField(ref _profileDiagnosticCode, value))
+            {
+                OnPropertyChanged(nameof(ProfileDiagnosticText));
+            }
+        }
+    }
+
+    public string? ProfileDiagnosticDetail
+    {
+        get => _profileDiagnosticDetail;
+        set
+        {
+            if (SetField(ref _profileDiagnosticDetail, value))
+            {
+                OnPropertyChanged(nameof(ProfileDiagnosticText));
+            }
+        }
+    }
+
+    public string ProfileStatusText => ProfileState switch
+    {
+        AccountProfileState.Pending => "资料识别中",
+        AccountProfileState.Ready => "资料已识别",
+        AccountProfileState.ReadyFromCache => "使用资料缓存",
+        AccountProfileState.ReadyWithoutAvatar => "昵称已识别 · 头像待缓存",
+        AccountProfileState.WaitingForLocalData => "等待本地资料",
+        AccountProfileState.CompatibilityIssue => "资料解析待适配",
+        AccountProfileState.Error => "资料读取失败",
+        _ => string.Empty
+    };
+
+    public string StatusSummary => Kind == ClientKind.WeChat
+        && ProfileState is not AccountProfileState.NotApplicable
+        && !string.IsNullOrWhiteSpace(ProfileStatusText)
+            ? $"{Status} · {ProfileStatusText}"
+            : Status;
+
+    public string ProfileDiagnosticText
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ProfileDiagnosticCode))
+            {
+                return string.IsNullOrWhiteSpace(ProfileDiagnosticDetail)
+                    ? ProfileStatusText
+                    : ProfileDiagnosticDetail!;
+            }
+
+            return string.IsNullOrWhiteSpace(ProfileDiagnosticDetail)
+                ? ProfileDiagnosticCode!
+                : $"{ProfileDiagnosticCode}: {ProfileDiagnosticDetail}";
+        }
     }
 
     /// <summary>最近一次扫描确认当前 HWND 有效的时间。</summary>
