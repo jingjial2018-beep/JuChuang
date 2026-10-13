@@ -48,7 +48,7 @@ public enum AccountProfileState
 }
 
 /// <summary>
-/// 角标显示形态：决定聚窗左侧头像角标的具体外观。
+/// 角标显示形态：决定JNest左侧头像角标的具体外观。
 /// </summary>
 public enum AlertDisplayMode
 {
@@ -156,7 +156,7 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 聚窗内部稳定身份键，用于保存自定义名称等本地设置。
+    /// JNest内部稳定身份键，用于保存自定义名称等本地设置。
     /// </summary>
     public string? IdentityKey
     {
@@ -230,7 +230,7 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     public string ProfileStatusText => ProfileState switch
     {
         AccountProfileState.Pending => "资料识别中",
-        AccountProfileState.Ready => "资料已识别",
+        AccountProfileState.Ready => string.Empty,
         AccountProfileState.ReadyFromCache => "使用资料缓存",
         AccountProfileState.ReadyWithoutAvatar => "昵称已识别 · 头像待缓存",
         AccountProfileState.WaitingForLocalData => "等待本地资料",

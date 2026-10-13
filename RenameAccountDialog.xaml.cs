@@ -21,7 +21,7 @@ public partial class RenameAccountDialog : Window
     {
         if (string.IsNullOrWhiteSpace(AccountName))
         {
-            MessageBox.Show(this, "账号名称不能为空。", "聚窗", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "账号名称不能为空。", "JNest", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 

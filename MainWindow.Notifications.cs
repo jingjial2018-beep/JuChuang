@@ -121,6 +121,12 @@ public partial class MainWindow
             }));
     }
 
+    private bool IsEntryActivelyViewed(ClientWindowEntry entry)
+        => ReferenceEquals(entry, SelectedEntry)
+           && WindowState != WindowState.Minimized
+           && IsActive
+           && WindowHost.IsManagerContextForeground;
+
     private void HandleClientAttentionRequest(IntPtr flashingHandle)
     {
         if (_isClosing || flashingHandle == IntPtr.Zero)
@@ -144,8 +150,9 @@ public partial class MainWindow
         // 无论账号是否处于选中状态，都先读取客户端真实角标。
         TriggerImmediateBadgeScan(entry);
 
-        // 当前正在查看的账号不播放声音或闪烁任务栏，但数字仍会同步。
-        if (ReferenceEquals(entry, SelectedEntry))
+        // 只有用户此刻真的在前台查看该账号时才抑制提醒。
+        // 最小化或切到其它程序后，即便它仍是 SelectedEntry，也必须让 JNest 闪烁。
+        if (IsEntryActivelyViewed(entry))
         {
             return;
         }
@@ -158,12 +165,12 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 把“某个账号请求注意”统一映射到聚窗自身的提醒。
+    /// 把“某个账号请求注意”统一映射到JNest自身的提醒。
     /// 不读取消息正文；任务栏闪烁与账号红点/数字是两条独立显示通道。
     /// </summary>
     private void NotifyAccountAttention(ClientWindowEntry entry)
     {
-        if (_isClosing || ReferenceEquals(entry, SelectedEntry))
+        if (_isClosing || IsEntryActivelyViewed(entry))
         {
             return;
         }
@@ -179,7 +186,7 @@ public partial class MainWindow
 
         if (WindowState == WindowState.Minimized)
         {
-            // 聚窗最小化后仍保留任务栏按钮，因此收到消息时不恢复窗口、不抢前台，
+            // JNest最小化后仍保留任务栏按钮，因此收到消息时不恢复窗口、不抢前台，
             // 只触发任务栏闪烁，并继续使用托盘气泡作为补充提示。
             if (!IsVisible)
             {
@@ -189,7 +196,7 @@ public partial class MainWindow
 
             _notifyIcon?.ShowBalloonTip(
                 3000,
-                "聚窗",
+                "JNest",
                 $"{entry.DisplayName} 收到新消息。",
                 WinForms.ToolTipIcon.Info);
         }

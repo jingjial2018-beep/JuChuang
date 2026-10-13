@@ -7,7 +7,7 @@ using JuChuang.Models;
 namespace JuChuang.Services;
 
 /// <summary>
-/// 聚窗本地诊断日志。仅记录窗口/账号状态与资料解析阶段；
+/// JNest 本地诊断日志。仅记录窗口/账号状态与资料解析阶段；
 /// 不记录聊天内容、数据库密钥、解密数据库内容或头像文件路径。
 /// </summary>
 public static class DiagnosticLogService
@@ -67,7 +67,7 @@ public static class DiagnosticLogService
     public static string BuildClipboardReport(ClientWindowEntry entry)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("JuChuang account diagnostics");
+        builder.AppendLine("JNest account diagnostics");
         builder.AppendLine($"TimeUtc: {DateTime.UtcNow:O}");
         builder.AppendLine($"Kind: {entry.Kind}");
         builder.AppendLine($"ClientVersion: {entry.ClientVersion ?? "-"}");

@@ -42,6 +42,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly int? _selfTestTargetProcessId;
     private int _renderRefreshGeneration;
     private bool _overlayBoundsUpdatePending;
+    private Point _accountDragStartPoint;
+    private ClientWindowEntry? _accountDragEntry;
+    private ClientWindowEntry? _selectionBeforeAccountDrag;
 
     // 登录页 -> 主界面、客户端自重建 HWND 时，进程通常仍然存活。
     // 给同一 PID 一个短暂重绑定窗口，避免账号身份、昵称和头像随 HWND 一起被丢弃。
@@ -63,7 +66,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         if (_isClientSelfTestMode)
         {
-            Title = "聚窗窗口托管测试";
+            Title = "JNest窗口托管测试";
         }
         _settings = AppSettings.Load();
         _scanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
@@ -136,7 +139,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var isMinimized = WindowState == WindowState.Minimized;
         WindowHost.HandleOwnerWindowStateChanged(isMinimized);
 
-        // 最小化时保持聚窗主窗口可见状态，让 Windows 继续在任务栏显示应用图标。
+        // 最小化时保持JNest主窗口可见状态，让 Windows 继续在任务栏显示应用图标。
         // 只由 WindowHost 隐藏/停放被托管的微信和 WhatsApp 窗口，避免它们浮到桌面。
         // 系统托盘图标仍然保留，作为额外入口，而不是“最小化到托盘”的替代任务栏行为。
         if (isMinimized)
@@ -247,7 +250,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        StatusMessageText.Text = "聚窗已启动，正在后台发现本地客户端…";
+        StatusMessageText.Text = "JNest已启动，正在后台发现本地客户端…";
         // 预热窗口托管宿主：HwndHost 在 Visibility=Collapsed 时可能不会调用
         // BuildWindowCore，导致首次 AttachWindow 因 _hostHandle 未创建而失败
         // （IsReady=false）。这里先设为可见并等待布局完成，确保宿主就绪后再扫描。
@@ -692,6 +695,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var entry = CreateEntry(candidate);
                 Entries.Add(entry);
                 QueueOrApplyWeChatIdentity(entry, candidate, weChatAccounts);
+                ApplySavedAccountOrder();
 
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false);
                 entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
@@ -801,7 +805,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch (Exception exception)
         {
             ClearPendingLaunch(ClientKind.WeChat);
-            ShowOwnedMessageBox($"无法启动微信：\n{exception.Message}", "聚窗",
+            ShowOwnedMessageBox($"无法启动微信：\n{exception.Message}", "JNest",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
@@ -847,7 +851,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch (Exception exception)
         {
             ClearPendingLaunch(ClientKind.WhatsApp);
-            ShowOwnedMessageBox($"无法启动 WhatsApp：\n{exception.Message}", "聚窗",
+            ShowOwnedMessageBox($"无法启动 WhatsApp：\n{exception.Message}", "JNest",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
@@ -896,6 +900,209 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (AccountsList.SelectedItem is ClientWindowEntry entry)
         {
             SelectedEntry = entry;
+        }
+    }
+
+    private void AccountsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _accountDragEntry = null;
+        _selectionBeforeAccountDrag = SelectedEntry;
+        _accountDragStartPoint = e.GetPosition(AccountsList);
+
+        var source = e.OriginalSource as DependencyObject;
+        if (source is null || IsAccountDragInteractiveElement(source))
+        {
+            return;
+        }
+
+        var item = ItemsControl.ContainerFromElement(AccountsList, source) as ListBoxItem;
+        _accountDragEntry = item?.DataContext as ClientWindowEntry;
+    }
+
+    private void AccountsList_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _accountDragEntry is null)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(AccountsList);
+        if (Math.Abs(point.X - _accountDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(point.Y - _accountDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var dragged = _accountDragEntry;
+        try
+        {
+            DragDrop.DoDragDrop(AccountsList, dragged, DragDropEffects.Move);
+        }
+        finally
+        {
+            _accountDragEntry = null;
+            if (_selectionBeforeAccountDrag is not null && Entries.Contains(_selectionBeforeAccountDrag))
+            {
+                AccountsList.SelectedItem = _selectionBeforeAccountDrag;
+                SelectedEntry = _selectionBeforeAccountDrag;
+            }
+            _selectionBeforeAccountDrag = null;
+        }
+    }
+
+    private void AccountsList_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(ClientWindowEntry))
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void AccountsList_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(ClientWindowEntry))
+            || e.Data.GetData(typeof(ClientWindowEntry)) is not ClientWindowEntry dragged
+            || !Entries.Contains(dragged))
+        {
+            return;
+        }
+
+        var oldIndex = Entries.IndexOf(dragged);
+        var source = e.OriginalSource as DependencyObject;
+        var targetContainer = source is null
+            ? null
+            : ItemsControl.ContainerFromElement(AccountsList, source) as ListBoxItem;
+
+        var insertionIndex = Entries.Count;
+        if (targetContainer?.DataContext is ClientWindowEntry target && Entries.Contains(target))
+        {
+            var targetIndex = Entries.IndexOf(target);
+            var point = e.GetPosition(targetContainer);
+            insertionIndex = targetIndex + (point.Y > targetContainer.ActualHeight / 2 ? 1 : 0);
+        }
+
+        // Removing the old item shifts every later insertion point one slot left.
+        if (oldIndex < insertionIndex)
+        {
+            insertionIndex--;
+        }
+
+        insertionIndex = Math.Clamp(insertionIndex, 0, Math.Max(0, Entries.Count - 1));
+        if (oldIndex != insertionIndex)
+        {
+            Entries.Move(oldIndex, insertionIndex);
+            SaveAccountOrder();
+            StatusMessageText.Text = "账号顺序已保存。";
+        }
+
+        if (_selectionBeforeAccountDrag is not null && Entries.Contains(_selectionBeforeAccountDrag))
+        {
+            AccountsList.SelectedItem = _selectionBeforeAccountDrag;
+            SelectedEntry = _selectionBeforeAccountDrag;
+        }
+
+        e.Handled = true;
+    }
+
+    private static bool IsAccountDragInteractiveElement(DependencyObject? source)
+    {
+        while (source is not null && source is not ListBoxItem)
+        {
+            if (source is ButtonBase or MenuItem or TextBoxBase or ScrollBar)
+            {
+                return true;
+            }
+
+            source = source is Visual || source is Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        return false;
+    }
+
+    private string? GetAccountOrderKey(ClientWindowEntry entry)
+    {
+        if (entry.Kind == ClientKind.WhatsApp)
+        {
+            return "whatsapp";
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.IdentityKey))
+        {
+            return "wechat:" + entry.IdentityKey;
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.AccountId))
+        {
+            return "wechat-account:" + entry.AccountId;
+        }
+
+        return null;
+    }
+
+    private void SaveAccountOrder()
+    {
+        if (_isPreviewMode)
+        {
+            return;
+        }
+
+        var visibleKeys = Entries
+            .Select(GetAccountOrderKey)
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Keep stable identities that are temporarily offline. A drag operation should
+        // not erase another account's saved position merely because that client is not
+        // running in this session.
+        var known = new HashSet<string>(visibleKeys, StringComparer.OrdinalIgnoreCase);
+        foreach (var savedKey in _settings.AccountOrder)
+        {
+            if (!string.IsNullOrWhiteSpace(savedKey) && known.Add(savedKey))
+            {
+                visibleKeys.Add(savedKey);
+            }
+        }
+
+        _settings.AccountOrder = visibleKeys;
+        _settings.Save();
+    }
+
+    private void ApplySavedAccountOrder()
+    {
+        if (_settings.AccountOrder.Count == 0 || Entries.Count < 2)
+        {
+            return;
+        }
+
+        var rank = _settings.AccountOrder
+            .Select((key, index) => (key, index))
+            .ToDictionary(item => item.key, item => item.index, StringComparer.OrdinalIgnoreCase);
+
+        var desired = Entries
+            .Select((entry, originalIndex) =>
+            {
+                var key = GetAccountOrderKey(entry);
+                var order = key is not null && rank.TryGetValue(key, out var savedIndex)
+                    ? savedIndex
+                    : int.MaxValue;
+                return (entry, order, originalIndex);
+            })
+            .OrderBy(item => item.order)
+            .ThenBy(item => item.originalIndex)
+            .Select(item => item.entry)
+            .ToArray();
+
+        for (var targetIndex = 0; targetIndex < desired.Length; targetIndex++)
+        {
+            var currentIndex = Entries.IndexOf(desired[targetIndex]);
+            if (currentIndex >= 0 && currentIndex != targetIndex)
+            {
+                Entries.Move(currentIndex, targetIndex);
+            }
         }
     }
 
@@ -956,7 +1163,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CurrentStatusText.Text = "窗口已关闭";
             PopOutButton.IsEnabled = false;
-            SetEmptyState("客户端窗口已关闭", "重新打开客户端后，聚窗会尝试把它接回原来的位置。");
+            SetEmptyState("客户端窗口已关闭", "重新打开客户端后，JNest会尝试把它接回原来的位置。");
             return;
         }
 
@@ -966,7 +1173,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CurrentStatusText.Text = BuildCurrentStatusText(entry, "当前为独立窗口");
             PopOutButtonText.Text = "嵌入窗口";
             WindowHost.HideAll();
-            SetEmptyState("窗口已弹出到桌面", "点击顶部“嵌入窗口”即可把它放回聚窗。");
+            SetEmptyState("窗口已弹出到桌面", "点击顶部“嵌入窗口”即可把它放回JNest。");
             return;
         }
 
@@ -1009,7 +1216,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 entry.IsAttached ? "manual-attach" : "manual-attach-failed");
             StatusMessageText.Text = entry.IsAttached
                 ? $"{entry.DisplayName} 已重新嵌入。"
-                : "窗口接入失败，聚窗会继续后台重试，也可使用“全部接入”。";
+                : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。";
         }
 
         UpdateWindowCount();
@@ -1116,14 +1323,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 : $"{version.Major}.{version.Minor}.{version.Build}";
             MessageBox.Show(
                 this,
-                $"聚窗 {displayVersion}\n\n" +
+                $"JNest {displayVersion}\n\n" +
                 "统一管理本地微信与 WhatsApp 窗口。\n" +
                 "微信版本从当前本地客户端自动读取。\n" +
                 "嵌入窗口固定在容器内，只能通过顶部“弹出窗口”恢复独立窗口。\n" +
                 "嵌入时保留客户端完整原生样式（标题栏、边框、圆角与阴影）。\n" +
                 "仅在本机只读获取当前微信账号的昵称与头像缓存，不读取聊天数据或登录凭据。\n" +
-                "客户端发出 Windows 注意请求时会显示消息提示，最小化后由托盘图标接管。",
-                "关于聚窗",
+                "客户端发出 Windows 注意请求时会显示消息提示；JNest 在后台或最小化时通过任务栏闪烁与托盘提示补充提醒。",
+                "关于JNest",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -1280,6 +1487,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CurrentTitleText.Text = entry.DisplayName;
         }
 
+        ApplySavedAccountOrder();
+
         if (_profilesByIdentity.TryGetValue(account.Key, out var cachedProfile))
         {
             ApplyWeChatProfile(entry, account, cachedProfile);
@@ -1292,7 +1501,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ApplyWeChatProfile(entry, account, persistedProfile);
             entry.ProfileState = AccountProfileState.ReadyFromCache;
             entry.ProfileDiagnosticCode = "ProfileCache";
-            entry.ProfileDiagnosticDetail = "当前显示的是聚窗上一次确认过的本地账号资料，后台会继续尝试读取最新资料。";
+            entry.ProfileDiagnosticDetail = "当前显示的是JNest上一次确认过的本地账号资料，后台会继续尝试读取最新资料。";
             RefreshSelectedProfileStatus(entry);
             DiagnosticLogService.WriteAccountEvent(entry, "profile-cache-restored");
         }
@@ -1459,7 +1668,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var profile = resolution.Result.Profile;
             _resolvedWeChatAccounts[processId] = account;
 
-            // 把已经从微信本地资料成功读取到的昵称/头像稳定到聚窗自己的缓存。
+            // 把已经从微信本地资料成功读取到的昵称/头像稳定到JNest自己的缓存。
             // 如果微信本轮没有头像缓存，Store 会保留同一账号上一次有效头像。
             var stableProfile = _profileCache.Store(account.Key, profile);
             _profilesByIdentity[account.Key] = stableProfile;
@@ -1471,7 +1680,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     : AccountProfileState.ReadyWithoutAvatar;
                 entry.ProfileDiagnosticCode = GetProfileDiagnosticLabel(resolution.Result.Stage);
                 entry.ProfileDiagnosticDetail = stableProfile.AvatarPath is not null
-                    ? "微信当前头像缓存暂不可用，已继续使用聚窗上一次确认过的头像。"
+                    ? "微信当前头像缓存暂不可用，已继续使用JNest上一次确认过的头像。"
                     : resolution.Result.Detail;
             }
             else
@@ -1628,7 +1837,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var answer = ShowOwnedMessageBox(
-            $"确定关闭“{entry.DisplayName}”的客户端窗口吗？\n\n这不会关闭聚窗，也不会影响其他账号。",
+            $"确定关闭“{entry.DisplayName}”的客户端窗口吗？\n\n这不会关闭JNest，也不会影响其他账号。",
             "关闭客户端",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,

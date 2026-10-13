@@ -50,7 +50,7 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 聚窗重新回到前台时补做一次校准。后台期间不再周期性调用
+    /// JNest重新回到前台时补做一次校准。后台期间不再周期性调用
     /// PrintWindow(PW_RENDERFULLCONTENT)，避免打断 Chrome/DWM 的 GPU 合成。
     /// </summary>
     private void TriggerForegroundBadgeCalibration()

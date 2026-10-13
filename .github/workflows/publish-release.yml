@@ -73,8 +73,8 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $framework = "JuChuang-v$version-FrameworkDependent-win-x64.zip"
-          $selfContained = "JuChuang-v$version-SelfContained-win-x64.zip"
+          $framework = "JNest-v$version-FrameworkDependent-win-x64.zip"
+          $selfContained = "JNest-v$version-SelfContained-win-x64.zip"
           Compress-Archive -Path .\artifacts\framework-dependent\* -DestinationPath ".\artifacts\$framework" -Force
           Compress-Archive -Path .\artifacts\self-contained\* -DestinationPath ".\artifacts\$selfContained" -Force
           $frameworkHash = (Get-FileHash ".\artifacts\$framework" -Algorithm SHA256).Hash
@@ -108,6 +108,6 @@ jobs:
             gh release create $tag $framework $selfContained `
               --repo "${{ github.repository }}" `
               --target "${{ github.sha }}" `
-              --title "聚窗 v$version" `
+              --title "JNest v$version" `
               --notes-file .\artifacts\release-notes.md
           }
