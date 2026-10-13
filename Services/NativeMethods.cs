@@ -71,6 +71,8 @@ internal static class NativeMethods
     internal const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
     internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+    internal const int HSHELL_WINDOWCREATED = 1;
+    internal const int HSHELL_WINDOWDESTROYED = 2;
     internal const int HSHELL_FLASH = 0x8006;
     internal const uint FLASHW_STOP = 0x00000000;
     internal const uint FLASHW_CAPTION = 0x00000001;
