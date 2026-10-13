@@ -320,6 +320,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RemoveEntry(ClientWindowEntry entry)
     {
+        entry.SessionState = ClientSessionState.Exited;
+
         if (entry.IsAttached)
         {
             WindowHost.DetachWindow(entry.Handle, bringToFront: false);
@@ -348,6 +350,133 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateWindowCount();
     }
 
+    private static bool IsClientProcessAlive(int processId)
+    {
+        if (processId <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static ClientSessionState MapSessionState(ClientWindowRole role)
+        => role switch
+        {
+            ClientWindowRole.Login => ClientSessionState.Login,
+            ClientWindowRole.Main => ClientSessionState.Main,
+            _ => ClientSessionState.Starting
+        };
+
+    private static void UpdateEntryFromCandidate(
+        ClientWindowEntry entry,
+        WindowCandidate candidate)
+    {
+        entry.Handle = candidate.Handle;
+        entry.ProcessId = candidate.ProcessId;
+        entry.ProcessName = candidate.ProcessName;
+        entry.WindowTitle = candidate.WindowTitle;
+        entry.ClientVersion = candidate.ClientVersion;
+        entry.SessionState = MapSessionState(candidate.Role);
+        entry.LastSeenUtc = DateTime.UtcNow;
+        entry.WindowMissingSinceUtc = null;
+        entry.IsOnline = true;
+    }
+
+    private void QueueOrApplyWeChatIdentity(
+        ClientWindowEntry entry,
+        WindowCandidate candidate,
+        IReadOnlyDictionary<int, WeChatAccountIdentity> accounts)
+    {
+        if (candidate.Kind != ClientKind.WeChat)
+        {
+            return;
+        }
+
+        if (_resolvedWeChatAccounts.TryGetValue(candidate.ProcessId, out var resolvedAccount))
+        {
+            ApplyWeChatAccountIdentity(entry, resolvedAccount);
+            return;
+        }
+
+        accounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
+        QueueWeChatAccountResolution(entry, preferredAccount);
+    }
+
+    private void TryCompletePendingLaunch(
+        WindowCandidate candidate,
+        ClientWindowEntry entry)
+    {
+        if (_selectNextKind != candidate.Kind)
+        {
+            return;
+        }
+
+        if (_pendingLaunchContext is not null)
+        {
+            if (!_pendingLaunchContext.CanClaim(candidate.Kind, candidate.ProcessId))
+            {
+                return;
+            }
+
+            _pendingLaunchContext.Claim(candidate.ProcessId, candidate.Handle);
+        }
+
+        _pendingLaunchContext = null;
+        _selectNextKind = null;
+        SelectedEntry = entry;
+        AccountsList.SelectedItem = entry;
+        StatusMessageText.Text = $"已接入 {entry.DisplayName}。";
+    }
+
+    private async Task<ClientLaunchContext> CaptureLaunchContextAsync(ClientKind kind)
+    {
+        var knownProcessIds = Entries
+            .Where(entry => entry.Kind == kind && entry.ProcessId > 0)
+            .Select(entry => entry.ProcessId)
+            .ToHashSet();
+
+        try
+        {
+            var discoveredProcessIds = await Task.Run(() =>
+                ClientWindowDiscovery.FindClientWindows()
+                    .Where(candidate => candidate.Kind == kind)
+                    .Select(candidate => candidate.ProcessId)
+                    .Where(processId => processId > 0)
+                    .Distinct()
+                    .ToArray());
+
+            knownProcessIds.UnionWith(discoveredProcessIds);
+        }
+        catch
+        {
+            // 启动上下文只是用于提高“新窗口”匹配准确率；快照失败时仍允许正常启动。
+        }
+
+        return new ClientLaunchContext(kind, knownProcessIds);
+    }
+
+    private void ClearPendingLaunch(ClientKind kind)
+    {
+        if (_pendingLaunchContext?.Kind == kind)
+        {
+            _pendingLaunchContext = null;
+        }
+
+        if (_selectNextKind == kind)
+        {
+            _selectNextKind = null;
+        }
+    }
+
     private async Task ScanAndAttachAsync()
     {
         if (!await _scanLock.WaitAsync(0))
@@ -357,22 +486,46 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
+            var scanUtc = DateTime.UtcNow;
             foreach (var entry in Entries.Where(entry => entry.Handle != IntPtr.Zero).ToArray())
             {
                 var exists = NativeMethods.IsWindow(entry.Handle);
-                entry.IsOnline = exists;
-                if (!exists)
+                if (exists)
                 {
-                    RemoveEntry(entry);
+                    entry.IsOnline = true;
+                    entry.LastSeenUtc = scanUtc;
+                    entry.WindowMissingSinceUtc = null;
+                    if (entry.SessionState == ClientSessionState.Rebinding)
+                    {
+                        entry.SessionState = ClientSessionState.Main;
+                    }
+
+                    entry.Status = entry.IsAttached ? "已嵌入" : "独立窗口";
+                    continue;
                 }
-                else if (entry.IsAttached)
+
+                // HWND 消失不等于账号进程已经退出。微信在 Login -> Main 或内部重建
+                // 顶层窗口时会短暂更换 HWND；先从 Host 中忘掉旧句柄，再给同一 PID
+                // 一个短暂重绑定窗口，保留账号身份、昵称、头像和用户自定义名称。
+                if (entry.IsAttached)
                 {
-                    entry.Status = "已嵌入";
+                    WindowHost.DetachWindow(entry.Handle, bringToFront: false);
+                    entry.IsAttached = false;
                 }
-                else
+
+                var processAlive = IsClientProcessAlive(entry.ProcessId);
+                entry.WindowMissingSinceUtc ??= scanUtc;
+                if (processAlive
+                    && scanUtc - entry.WindowMissingSinceUtc.Value < WindowRebindGracePeriod)
                 {
-                    entry.Status = "独立窗口";
+                    entry.IsOnline = true;
+                    entry.SessionState = ClientSessionState.Rebinding;
+                    entry.Status = "窗口切换中";
+                    continue;
                 }
+
+                entry.IsOnline = false;
+                RemoveEntry(entry);
             }
 
             _dismissedWindowHandles.RemoveWhere(handle => !NativeMethods.IsWindow(handle));
@@ -404,24 +557,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 .Where(candidate => !_dismissedWindowHandles.Contains(candidate.Handle))
                 .ToArray();
             var weChatAccounts = scanResult.Accounts;
+
             foreach (var candidate in candidates)
             {
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
                 if (existingEntry is not null)
                 {
-                    existingEntry.ClientVersion = candidate.ClientVersion;
-                    if (candidate.Kind == ClientKind.WeChat)
-                    {
-                        if (_resolvedWeChatAccounts.TryGetValue(candidate.ProcessId, out var resolvedAccount))
-                        {
-                            ApplyWeChatAccountIdentity(existingEntry, resolvedAccount);
-                        }
-                        else
-                        {
-                            weChatAccounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
-                            QueueWeChatAccountResolution(existingEntry, preferredAccount);
-                        }
-                    }
+                    UpdateEntryFromCandidate(existingEntry, candidate);
+                    QueueOrApplyWeChatIdentity(existingEntry, candidate, weChatAccounts);
 
                     // 自动扫描只重试“接入失败”的窗口。用户主动“弹出窗口”会把句柄
                     // 放进 _dismissedWindowHandles，因此不会被后台扫描重新抓回容器。
@@ -434,6 +577,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         existingEntry.Status = existingEntry.IsAttached ? "已嵌入" : "接入失败";
                     }
 
+                    TryCompletePendingLaunch(candidate, existingEntry);
+                    continue;
+                }
+
+                // 同一进程的 HWND 被客户端重建时，重新绑定到原账号 Entry，
+                // 不创建第二张账号卡片，也不清空已经解析出的 Identity/Profile。
+                var rebindingEntry = Entries.FirstOrDefault(entry =>
+                    entry.Kind == candidate.Kind
+                    && entry.ProcessId == candidate.ProcessId
+                    && (entry.SessionState == ClientSessionState.Rebinding
+                        || entry.Handle == IntPtr.Zero
+                        || !NativeMethods.IsWindow(entry.Handle)));
+
+                if (rebindingEntry is not null)
+                {
+                    UpdateEntryFromCandidate(rebindingEntry, candidate);
+                    QueueOrApplyWeChatIdentity(rebindingEntry, candidate, weChatAccounts);
+                    rebindingEntry.IsAttached = WindowHost.AttachWindow(
+                        candidate.Handle,
+                        makeActive: false);
+                    rebindingEntry.Status = rebindingEntry.IsAttached ? "已嵌入" : "接入失败";
+                    TryCompletePendingLaunch(candidate, rebindingEntry);
                     continue;
                 }
 
@@ -448,58 +613,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     continue;
                 }
 
-                var reusableEntry = Entries.FirstOrDefault(entry =>
-                    entry.Kind == candidate.Kind
-                    && entry.Handle != IntPtr.Zero
-                    && !NativeMethods.IsWindow(entry.Handle));
-
-                ClientWindowEntry entry;
-                if (reusableEntry is not null)
-                {
-                    entry = reusableEntry;
-                    var entryIndex = Entries.IndexOf(entry);
-                    entry.Handle = candidate.Handle;
-                    entry.ProcessId = candidate.ProcessId;
-                    entry.ProcessName = candidate.ProcessName;
-                    entry.WindowTitle = candidate.WindowTitle;
-                    entry.ClientVersion = candidate.ClientVersion;
-                    entry.IsOnline = true;
-                    entry.IdentityKey = null;
-                    entry.HasCustomName = false;
-                    entry.AvatarPath = null;
-                    entry.DisplayName = candidate.Kind == ClientKind.WeChat
-                        ? $"微信 {entryIndex + 1}"
-                        : "WhatsApp";
-                }
-                else
-                {
-                    entry = CreateEntry(candidate);
-                    Entries.Add(entry);
-                }
-
-                if (candidate.Kind == ClientKind.WeChat)
-                {
-                    if (_resolvedWeChatAccounts.TryGetValue(candidate.ProcessId, out var resolvedAccount))
-                    {
-                        ApplyWeChatAccountIdentity(entry, resolvedAccount);
-                    }
-                    else
-                    {
-                        weChatAccounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
-                        QueueWeChatAccountResolution(entry, preferredAccount);
-                    }
-                }
+                var entry = CreateEntry(candidate);
+                Entries.Add(entry);
+                QueueOrApplyWeChatIdentity(entry, candidate, weChatAccounts);
 
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false);
                 entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
-
-                if (_selectNextKind == candidate.Kind)
-                {
-                    _selectNextKind = null;
-                    SelectedEntry = entry;
-                    AccountsList.SelectedItem = entry;
-                    StatusMessageText.Text = $"已接入 {entry.DisplayName}。";
-                }
+                TryCompletePendingLaunch(candidate, entry);
             }
 
             if (SelectedEntry is not null
