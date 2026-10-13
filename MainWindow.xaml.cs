@@ -910,7 +910,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _accountDragStartPoint = e.GetPosition(AccountsList);
 
         var source = e.OriginalSource as DependencyObject;
-        if (IsAccountDragInteractiveElement(source))
+        if (source is null || IsAccountDragInteractiveElement(source))
         {
             return;
         }
@@ -969,7 +969,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var oldIndex = Entries.IndexOf(dragged);
         var source = e.OriginalSource as DependencyObject;
-        var targetContainer = ItemsControl.ContainerFromElement(AccountsList, source) as ListBoxItem;
+        var targetContainer = source is null
+            ? null
+            : ItemsControl.ContainerFromElement(AccountsList, source) as ListBoxItem;
 
         var insertionIndex = Entries.Count;
         if (targetContainer?.DataContext is ClientWindowEntry target && Entries.Contains(target))
