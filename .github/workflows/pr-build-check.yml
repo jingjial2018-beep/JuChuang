@@ -35,3 +35,12 @@ jobs:
 
       - name: Build BadgeProbe
         run: dotnet build .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release --no-restore
+
+      - name: Restore ArchitectureProbe
+        run: dotnet restore .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj
+
+      - name: Build ArchitectureProbe
+        run: dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
+
+      - name: Run ArchitectureProbe
+        run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
