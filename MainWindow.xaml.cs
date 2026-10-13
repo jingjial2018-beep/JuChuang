@@ -1297,11 +1297,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? current + 1
             : 1;
         _accountResolutionFailures[processId] = failures;
+        // 新登录账号的 contact.db/self row/头像缓存常常比主窗口晚几秒落盘。
+        // 前几次快速重试用于补齐刚启动资料，随后逐步退避，避免长期高频扫描进程内存。
         var delay = failures switch
         {
-            1 => TimeSpan.FromMinutes(1),
-            2 => TimeSpan.FromMinutes(3),
-            3 => TimeSpan.FromMinutes(10),
+            1 => TimeSpan.FromSeconds(5),
+            2 => TimeSpan.FromSeconds(15),
+            3 => TimeSpan.FromMinutes(1),
+            4 => TimeSpan.FromMinutes(3),
+            5 => TimeSpan.FromMinutes(10),
             _ => TimeSpan.FromMinutes(30)
         };
         _accountResolutionRetryAfter[processId] = DateTime.UtcNow.Add(delay);
