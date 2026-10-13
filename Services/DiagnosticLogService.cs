@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using JuChuang.Models;
@@ -29,7 +30,7 @@ public static class DiagnosticLogService
         {
             var accountToken = CreateAccountToken(entry.IdentityKey ?? entry.AccountId);
             var diagnosticCode = Sanitize(entry.ProfileDiagnosticCode);
-            var diagnosticDetail = Sanitize(entry.ProfileDiagnosticDetail);
+            var diagnosticDetail = Sanitize(RedactDetail(entry.ProfileDiagnosticDetail, entry.AccountId));
             var version = Sanitize(entry.ClientVersion);
 
             var line =
@@ -79,7 +80,7 @@ public static class DiagnosticLogService
         builder.AppendLine($"ManuallyDetached: {entry.IsManuallyDetached}");
         builder.AppendLine($"ProfileState: {entry.ProfileState}");
         builder.AppendLine($"ProfileDiagnosticCode: {entry.ProfileDiagnosticCode ?? "-"}");
-        builder.AppendLine($"ProfileDiagnosticDetail: {Sanitize(entry.ProfileDiagnosticDetail)}");
+        builder.AppendLine($"ProfileDiagnosticDetail: {Sanitize(RedactDetail(entry.ProfileDiagnosticDetail, entry.AccountId))}");
         builder.AppendLine($"AvatarAvailable: {entry.HasAvatar}");
         builder.AppendLine($"UnreadMode: {entry.AlertDisplayMode}");
         builder.AppendLine($"UnreadCount: {entry.MessageAlertCount}");
@@ -106,6 +107,48 @@ public static class DiagnosticLogService
         {
             return "-";
         }
+    }
+
+    private static string? RedactDetail(string? value, string? accountId)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var redacted = value;
+        try
+        {
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(userProfile))
+            {
+                redacted = redacted.Replace(
+                    userProfile,
+                    "%USERPROFILE%",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (!string.IsNullOrWhiteSpace(Environment.UserName))
+            {
+                redacted = redacted.Replace(
+                    Environment.UserName,
+                    "<user>",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (!string.IsNullOrWhiteSpace(accountId))
+            {
+                redacted = redacted.Replace(
+                    accountId,
+                    "<account>",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+        }
+
+        return redacted;
     }
 
     private static string Sanitize(string? value)
