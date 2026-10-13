@@ -48,7 +48,7 @@ public enum AccountProfileState
 }
 
 /// <summary>
-/// 角标显示形态：决定聚窗左侧头像角标的具体外观。
+/// 角标显示形态：决定JNest左侧头像角标的具体外观。
 /// </summary>
 public enum AlertDisplayMode
 {
@@ -156,7 +156,7 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 聚窗内部稳定身份键，用于保存自定义名称等本地设置。
+    /// JNest内部稳定身份键，用于保存自定义名称等本地设置。
     /// </summary>
     public string? IdentityKey
     {
