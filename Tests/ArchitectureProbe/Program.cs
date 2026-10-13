@@ -3,6 +3,29 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("Activity requires a confirmed new badge before notification", () =>
+{
+    var noBadge = BadgeResult.NoBadge;
+    var dot = BadgeResult.Dot;
+    var one = new BadgeResult(true, 1, BadgeConfidenceLevel.High);
+    var two = new BadgeResult(true, 2, BadgeConfidenceLevel.High);
+
+    Assert(!BadgeAttentionPolicy.IsNewUnread(null, one),
+        "initial historical unread must only establish a baseline");
+    Assert(BadgeAttentionPolicy.IsNewUnread(noBadge, dot),
+        "new dot after a known empty baseline should notify");
+    Assert(BadgeAttentionPolicy.IsNewUnread(noBadge, one),
+        "new count after a known empty baseline should notify");
+    Assert(!BadgeAttentionPolicy.IsNewUnread(dot, one),
+        "improved dot recognition must not notify twice");
+    Assert(!BadgeAttentionPolicy.IsNewUnread(one, one),
+        "unchanged unread count must not notify");
+    Assert(BadgeAttentionPolicy.IsNewUnread(one, two),
+        "increased reliable count should notify");
+    Assert(!BadgeAttentionPolicy.IsNewUnread(two, noBadge),
+        "badge disappearance must not notify");
+});
+
 Run("ClientLaunchContext rejects baseline PID", () =>
 {
     var context = new ClientLaunchContext(ClientKind.WeChat, [100, 200]);
@@ -164,3 +187,4 @@ static void Assert(bool condition, string message)
         throw new InvalidOperationException(message);
     }
 }
+

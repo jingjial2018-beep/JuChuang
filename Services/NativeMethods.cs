@@ -69,6 +69,10 @@ internal static class NativeMethods
     internal const uint EVENT_SYSTEM_MOVESIZESTART = 0x000A;
     internal const uint EVENT_SYSTEM_MOVESIZEEND = 0x000B;
     internal const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
+    internal const uint EVENT_OBJECT_STATECHANGE = 0x800A;
+    internal const uint EVENT_OBJECT_NAMECHANGE = 0x800C;
+    internal const int OBJID_WINDOW = 0;
+    internal const int CHILDID_SELF = 0;
     internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
     internal const int HSHELL_WINDOWCREATED = 1;
@@ -432,3 +436,4 @@ internal static class NativeMethods
             sizeof(int));
     }
 }
+

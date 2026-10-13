@@ -14,6 +14,10 @@ public partial class MainWindow
     private uint _shellHookMessage;
     private bool _shellHookRegistered;
     private int _shellWindowReconcilePending;
+    private NativeMethods.WinEventDelegate? _clientActivityCallback;
+    private readonly List<IntPtr> _clientActivityHooks = [];
+    private readonly Dictionary<ClientWindowEntry, DateTime> _lastClientActivityScan = [];
+    private static readonly TimeSpan ClientActivityDebounce = TimeSpan.FromMilliseconds(750);
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
@@ -28,7 +32,13 @@ public partial class MainWindow
             _shellHookRegistered = _shellHookMessage != 0
                 && NativeMethods.RegisterShellHookWindow(handle);
             _windowSource.AddHook(WindowMessageHook);
+            if (!_shellHookRegistered)
+            {
+                DiagnosticLogService.WriteActivityEvent("shell-hook-unavailable");
+            }
         }
+
+        StartClientActivityMonitoring();
 
         var preference = NativeMethods.DWMWCP_ROUND;
         NativeMethods.DwmSetWindowAttribute(
@@ -139,7 +149,8 @@ public partial class MainWindow
         {
             NativeMethods.GetWindowThreadProcessId(flashingHandle, out var rawProcessId);
             var processId = unchecked((int)rawProcessId);
-            entry = Entries.FirstOrDefault(candidate => candidate.ProcessId == processId);
+            entry = Entries.FirstOrDefault(candidate => candidate.ProcessId == processId
+                && candidate.Kind == ClientKind.WeChat);
         }
 
         if (entry is null)
@@ -147,21 +158,96 @@ public partial class MainWindow
             return;
         }
 
-        // 无论账号是否处于选中状态，都先读取客户端真实角标。
-        TriggerImmediateBadgeScan(entry);
+        QueueClientActivityScan(entry, "shell-flash");
+    }
 
-        // 只有用户此刻真的在前台查看该账号时才抑制提醒。
-        // 最小化或切到其它程序后，即便它仍是 SelectedEntry，也必须让 JNest 闪烁。
-        if (IsEntryActivelyViewed(entry))
+    private void StartClientActivityMonitoring()
+    {
+        // WinEvent out-of-context 回调只观察客户端窗口，不装载代码到微信。
+        // Windows 不公开跨进程的 Shell_NotifyIcon(NIM_MODIFY) 订阅，也不提供
+        // 能可靠反查每个托盘图标所属微信 PID 的通知。这里监测可归属的窗口
+        // 名称/状态变化；托盘活动不可见时由 HSHELL_FLASH 和前台校准兜底。
+        _clientActivityCallback = OnClientWindowEvent;
+        foreach (var eventId in new[]
+                 {
+                     NativeMethods.EVENT_OBJECT_NAMECHANGE,
+                     NativeMethods.EVENT_OBJECT_STATECHANGE
+                 })
+        {
+            var hook = NativeMethods.SetWinEventHook(
+                eventId, eventId, IntPtr.Zero, _clientActivityCallback,
+                0, 0,
+                NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
+            if (hook != IntPtr.Zero)
+            {
+                _clientActivityHooks.Add(hook);
+            }
+        }
+
+        DiagnosticLogService.WriteActivityEvent(
+            _clientActivityHooks.Count == 2
+                ? "external-window-events-enabled;tray-modify-unavailable"
+                : "external-window-events-degraded;tray-modify-unavailable");
+    }
+
+    private void StopClientActivityMonitoring()
+    {
+        foreach (var hook in _clientActivityHooks)
+        {
+            NativeMethods.UnhookWinEvent(hook);
+        }
+        _clientActivityHooks.Clear();
+        _clientActivityCallback = null;
+        _lastClientActivityScan.Clear();
+    }
+
+    private void OnClientWindowEvent(
+        IntPtr hook, uint eventType, IntPtr window, int objectId, int childId,
+        uint eventThread, uint eventTime)
+    {
+        if (_isClosing || window == IntPtr.Zero
+            || objectId != NativeMethods.OBJID_WINDOW
+            || childId != NativeMethods.CHILDID_SELF)
         {
             return;
         }
 
-        // Shell 只告诉我们“这个窗口请求关注”，并不携带真实未读数。
-        // 先显示红点，随后由角标识别用真实数字替换，避免每次闪烁都错误 +1。
-        entry.MessageAlertCount = 0;
-        entry.AlertDisplayMode = AlertDisplayMode.Dot;
-        NotifyAccountAttention(entry);
+        NativeMethods.GetWindowThreadProcessId(window, out var rawProcessId);
+        var processId = unchecked((int)rawProcessId);
+        if (processId <= 0 || !Entries.Any(candidate =>
+                candidate.Kind == ClientKind.WeChat && candidate.ProcessId == processId))
+        {
+            return;
+        }
+
+        // 回调来自当前 UI 线程的消息循环；BeginInvoke 避免在 WinEvent 中截图。
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (_isClosing || !NativeMethods.IsWindow(window)) return;
+            var entry = Entries.FirstOrDefault(candidate =>
+                candidate.Kind == ClientKind.WeChat
+                && candidate.ProcessId == processId
+                && candidate.Handle == window);
+            if (entry is not null)
+            {
+                QueueClientActivityScan(entry,
+                    eventType == NativeMethods.EVENT_OBJECT_NAMECHANGE
+                        ? "window-name-change" : "window-state-change");
+            }
+        }));
+    }
+
+    private void QueueClientActivityScan(ClientWindowEntry entry, string source)
+    {
+        if (_isClosing || entry.Handle == IntPtr.Zero || !Entries.Contains(entry)) return;
+        var now = DateTime.UtcNow;
+        if (_lastClientActivityScan.TryGetValue(entry, out var previous)
+            && now - previous < ClientActivityDebounce
+            && source != "shell-flash") return;
+
+        _lastClientActivityScan[entry] = now;
+        DiagnosticLogService.WriteActivityEvent($"activity-trigger-{source}", entry.ProcessId);
+        TriggerImmediateBadgeScan(entry);
     }
 
     /// <summary>
@@ -213,3 +299,4 @@ public partial class MainWindow
     }
 
 }
+

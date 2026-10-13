@@ -293,6 +293,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SaveWindowPlacement();
         _scanTimer.Stop();
         StopBadgePolling();
+        StopClientActivityMonitoring();
         if (_windowSource is not null)
         {
             _windowSource.RemoveHook(WindowMessageHook);
@@ -339,6 +340,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var processId = entry.ProcessId;
         _queuedImmediateBadgeScans.Remove(entry);
         _badgeStableState.Remove(entry);
+        _lastClientActivityScan.Remove(entry);
         Entries.Remove(entry);
 
         if (entry.Kind == ClientKind.WeChat
@@ -439,6 +441,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         entry.PendingClearAfterDetection = false;
         _queuedImmediateBadgeScans.Remove(entry);
         _badgeStableState.Remove(entry);
+        _lastClientActivityScan.Remove(entry);
 
         var index = Entries.IndexOf(entry);
         entry.DisplayName = index >= 0 ? $"微信 {index + 1}" : "微信";
@@ -1948,3 +1951,4 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
