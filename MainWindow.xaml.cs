@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -30,6 +31,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly HashSet<IntPtr> _dismissedWindowHandles = [];
     private ClientWindowEntry? _selectedEntry;
     private ClientKind? _selectNextKind;
+    private ClientLaunchContext? _pendingLaunchContext;
     private int _wechatNumber;
     private bool _isClosing;
     private bool _isPreviewMode;
@@ -39,6 +41,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly int? _selfTestTargetProcessId;
     private int _renderRefreshGeneration;
     private bool _overlayBoundsUpdatePending;
+
+    // 登录页 -> 主界面、客户端自重建 HWND 时，进程通常仍然存活。
+    // 给同一 PID 一个短暂重绑定窗口，避免账号身份、昵称和头像随 HWND 一起被丢弃。
+    private static readonly TimeSpan WindowRebindGracePeriod = TimeSpan.FromSeconds(8);
 
     public MainWindow()
     {
