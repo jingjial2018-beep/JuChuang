@@ -230,7 +230,7 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     public string ProfileStatusText => ProfileState switch
     {
         AccountProfileState.Pending => "资料识别中",
-        AccountProfileState.Ready => "资料已识别",
+        AccountProfileState.Ready => string.Empty,
         AccountProfileState.ReadyFromCache => "使用资料缓存",
         AccountProfileState.ReadyWithoutAvatar => "昵称已识别 · 头像待缓存",
         AccountProfileState.WaitingForLocalData => "等待本地资料",
