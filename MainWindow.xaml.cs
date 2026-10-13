@@ -781,8 +781,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WeChat);
             ClientMetadataService.InvalidateLoginAccountCache();
             _selectNextKind = ClientKind.WeChat;
-            await Task.Run(() => ClientLauncher.StartWeChat(executablePath));
-            StatusMessageText.Text = "微信已启动，正在等待新窗口…";
+
+            var launchResult = await Task.Run(() => ClientLauncher.StartWeChat(executablePath));
+            if (_pendingLaunchContext is not null
+                && launchResult.ProcessId is { } createdProcessId
+                && (launchResult.UsedMultiInstanceBypass
+                    || launchResult.Strategy.Equals("CreateProcessW-Normal", StringComparison.Ordinal)))
+            {
+                // EV 式多开或首个正常实例由 CreateProcessW 直接返回权威 PID；
+                // 后续窗口扫描只接受该 PID，避免多微信环境下认错实例。
+                _pendingLaunchContext.ExpectProcess(createdProcessId);
+            }
+
+            StatusMessageText.Text = launchResult.UsedMultiInstanceBypass
+                ? $"微信多开进程已启动（PID {launchResult.ProcessId}），正在等待窗口…"
+                : "微信已启动，正在等待新窗口…";
             await WaitForExpectedWindowAsync(ClientKind.WeChat);
         }
         catch (Exception exception)
