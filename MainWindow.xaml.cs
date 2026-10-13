@@ -133,19 +133,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
         UpdateMaximizeGlyph();
-        WindowHost.HandleOwnerWindowStateChanged(WindowState == WindowState.Minimized);
-        if (WindowState == WindowState.Minimized)
+        var isMinimized = WindowState == WindowState.Minimized;
+        WindowHost.HandleOwnerWindowStateChanged(isMinimized);
+
+        // 最小化时保持聚窗主窗口可见状态，让 Windows 继续在任务栏显示应用图标。
+        // 只由 WindowHost 隐藏/停放被托管的微信和 WhatsApp 窗口，避免它们浮到桌面。
+        // 系统托盘图标仍然保留，作为额外入口，而不是“最小化到托盘”的替代任务栏行为。
+        if (isMinimized)
         {
-            Hide();
+            return;
         }
-        else
+
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
-            _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-            {
-                WindowHost.UpdateOverlayBounds();
-                if (!_isTitleBarInteraction) WindowHost.ActivateCurrentWindow();
-            }));
-        }
+            WindowHost.UpdateOverlayBounds();
+            if (!_isTitleBarInteraction) WindowHost.ActivateCurrentWindow();
+        }));
     }
 
     private void UpdateMaximizeGlyph()
