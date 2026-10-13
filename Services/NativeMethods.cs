@@ -15,6 +15,13 @@ internal static class NativeMethods
         uint eventThread,
         uint eventTime);
 
+    internal const uint WM_SETICON = 0x0080;
+    internal const int ICON_SMALL = 0;
+    internal const int ICON_BIG = 1;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     internal const int GWL_STYLE = -16;
     internal const int GWL_EXSTYLE = -20;
     internal const int GWLP_HWNDPARENT = -8;
