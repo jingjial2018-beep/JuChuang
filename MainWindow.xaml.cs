@@ -1341,7 +1341,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 "客户端发出 Windows 注意请求时会显示消息提示；JNest 在后台或最小化时通过任务栏闪烁与托盘提示补充提醒。",
                 "关于JNest",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                MessageBoxImage.None);
         }
         finally
         {
