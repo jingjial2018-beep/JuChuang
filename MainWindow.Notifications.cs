@@ -63,6 +63,33 @@ public partial class MainWindow
         IntPtr lParam,
         ref bool handled)
     {
+        if (message == NativeMethods.WM_GETMINMAXINFO && lParam != IntPtr.Zero)
+        {
+            // Win32 monitor/work rectangles are already in physical screen pixels.
+            // Never multiply by WPF DPI scale here: the OS owns these values.
+            // This also handles secondary displays and taskbars on any edge.
+            var monitor = NativeMethods.MonitorFromWindow(
+                hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            if (monitor != IntPtr.Zero)
+            {
+                var info = new NativeMethods.MONITORINFO
+                {
+                    cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>()
+                };
+                if (NativeMethods.GetMonitorInfo(monitor, ref info))
+                {
+                    var data = System.Runtime.InteropServices.Marshal.PtrToStructure<NativeMethods.MINMAXINFO>(lParam);
+                    data.ptMaxPosition.X = info.rcWork.Left - info.rcMonitor.Left;
+                    data.ptMaxPosition.Y = info.rcWork.Top - info.rcMonitor.Top;
+                    data.ptMaxSize.X = info.rcWork.Width;
+                    data.ptMaxSize.Y = info.rcWork.Height;
+                    System.Runtime.InteropServices.Marshal.StructureToPtr(data, lParam, false);
+                    handled = true;
+                }
+            }
+            return IntPtr.Zero;
+        }
+
         if (_isClosing
             || _shellHookMessage == 0
             || message != _shellHookMessage)
