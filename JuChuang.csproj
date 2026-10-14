@@ -38,4 +38,7 @@
     <Resource Include="Assets\wechat-icon.jpg" />
     <Resource Include="Assets\whatsapp-icon.png" />
   </ItemGroup>
+  <Target Name="GenerateBrandAppIcon" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\GenerateAppIcon.ps1&quot;" />
+  </Target>
 </Project>
