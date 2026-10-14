@@ -146,6 +146,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (value is not null && _pendingMessageEntry is not null
                 && ReferenceEquals(value, _pendingMessageEntry))
                 ClearTemporaryStatus(value);
+            if (value is not null && WindowState != WindowState.Minimized
+                && (IsActive || WindowHost.IsManagerContextForeground))
+                DismissAccountToast(value);
         }
     }
 
@@ -376,6 +379,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var wasSelected = ReferenceEquals(SelectedEntry, entry);
         var processId = entry.ProcessId;
+        DismissAccountToast(entry);
         _queuedImmediateBadgeScans.Remove(entry);
         _pendingClearRechecks.Remove(entry);
         _badgeStableState.Remove(entry);
