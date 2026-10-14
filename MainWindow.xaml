@@ -256,8 +256,14 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="{StaticResource SidebarSurfaceBrush}"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                <!-- Layered desktop: continuous matte sidebar surface (zone A). -->
+                <Border Grid.Column="0" BorderBrush="#CBD2DB" BorderThickness="0,0,1,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#F3F5F8" Offset="0"/>
+                            <GradientStop Color="#EBEFF4" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="48" />
@@ -402,13 +408,28 @@
                               DragDelta="SidebarSplitter_DragDelta"
                               DragCompleted="SidebarSplitter_DragCompleted" />
 
-                <Grid Grid.Column="2" Background="{StaticResource WorkspaceSurfaceBrush}">
+                <!-- Zone B/C: a calm recessed workspace surface behind native windows.
+                     No hosting bounds, clipping, window styles or input behavior change. -->
+                <Grid Grid.Column="2">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#E9EDF2" Offset="0"/>
+                            <GradientStop Color="#E3E8EE" Offset="0.88"/>
+                            <GradientStop Color="#DEE5ED" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Grid.Background>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="44" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Border Grid.Row="0" Background="{StaticResource ChromeSurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="0,0,0,1">
+                    <!-- Subtle layered header (zone B) without changing its 44px height. -->
+                    <Border Grid.Row="0" BorderBrush="#CBD3DE" BorderThickness="0,0,0,1">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#F5F7FA" Offset="0"/>
+                                <GradientStop Color="#EAEFF5" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
                         <Grid Margin="20,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -426,12 +447,32 @@
                         </Grid>
                     </Border>
                     <Grid x:Name="ClientArea" Grid.Row="1" ClipToBounds="True"
-                          SnapsToDevicePixels="True" Background="{StaticResource WorkspaceSurfaceBrush}">
-                        <!-- 通铺式嵌入：原生窗口直接铺满整个工作区，不做卡片包装
-                             （无留白/无边框/无圆角/无投影）。窗口左右紧贴侧栏与外壳，
-                             视觉上作为界面的一部分存在，而非悬浮的独立卡片。 -->
-                        <controls:ExternalWindowHost x:Name="WindowHost" Visibility="Collapsed" />
-                        <Grid x:Name="EmptyState" Background="{StaticResource WorkspaceSurfaceBrush}">
+                          SnapsToDevicePixels="True">
+                        <Grid.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#E9EDF2" Offset="0"/>
+                                <GradientStop Color="#E4E9F0" Offset="0.93"/>
+                                <GradientStop Color="#DBE2EA" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Grid.Background>
+                        <!-- Experimental recessed slot: the existing native overlay remains
+                             untouched; only its WPF layout rectangle is inset by 6 DIP.
+                             The frame sits BEHIND the HWND, never on top of input. -->
+                        <Border Margin="5" CornerRadius="8" Background="#CAD2DD"
+                                BorderBrush="#BAC5D2" BorderThickness="1"
+                                IsHitTestVisible="False" SnapsToDevicePixels="True">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#334155" ShadowDepth="2"
+                                                  BlurRadius="9" Opacity="0.22"/>
+                            </Border.Effect>
+                        </Border>
+                        <Border Margin="6" Background="#F7F8FA" CornerRadius="5"
+                                BorderBrush="#E7EBF0" BorderThickness="1"
+                                IsHitTestVisible="False"/>
+                        <controls:ExternalWindowHost x:Name="WindowHost"
+                                                     Margin="6" Visibility="Collapsed" />
+                        <Grid x:Name="EmptyState" Margin="6"
+                              Background="{StaticResource WorkspaceSurfaceBrush}">
                             <StackPanel Width="420" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border Width="56" Height="56" Background="#EAF2FF" CornerRadius="16">
                                     <Path Width="22" Height="22" Stretch="Uniform" Stroke="{StaticResource AccentBrush}"

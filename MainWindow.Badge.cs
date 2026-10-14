@@ -23,6 +23,9 @@ public partial class MainWindow
     private readonly HashSet<ClientWindowEntry> _queuedImmediateBadgeScans = [];
     private bool _foregroundCalibrationPending;
     private int _backgroundBadgeCursor;
+    // A pending clear must be confirmed quickly rather than waiting for the
+    // next 4-second foreground/background polling round.
+    private readonly HashSet<ClientWindowEntry> _pendingClearRechecks = [];
 
     // 每个账号的"上一次稳定结果"（用于"连续两次一致才更新"的状态同步）
     private readonly Dictionary<ClientWindowEntry, BadgeStableState> _badgeStableState = new();
@@ -47,6 +50,7 @@ public partial class MainWindow
         _badgePollTimer?.Stop();
         _badgePollTimer = null;
         _queuedImmediateBadgeScans.Clear();
+        _pendingClearRechecks.Clear();
         _foregroundCalibrationPending = false;
     }
 
@@ -177,6 +181,36 @@ public partial class MainWindow
         }
     }
 
+    private void RequestSelectedBadgeCalibration(ClientWindowEntry entry)
+    {
+        if (_isClosing || _isPreviewMode || !Entries.Contains(entry)
+            || !entry.IsAttached || !NativeMethods.IsWindow(entry.Handle)) return;
+        TriggerImmediateBadgeScan(entry);
+    }
+
+    private void SchedulePendingClearConfirmation(ClientWindowEntry entry)
+    {
+        if (!_pendingClearRechecks.Add(entry)) return;
+        var handle = entry.Handle;
+        var processId = entry.ProcessId;
+        var generation = entry.AccountGeneration;
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () =>
+        {
+            try
+            {
+                await Task.Delay(450);
+                if (_isClosing || !Entries.Contains(entry) || !entry.IsAttached
+                    || entry.Handle != handle || entry.ProcessId != processId
+                    || entry.AccountGeneration != generation) return;
+                TriggerImmediateBadgeScan(entry);
+            }
+            finally
+            {
+                _pendingClearRechecks.Remove(entry);
+            }
+        }));
+    }
+
     /// <summary>
     /// 对单个账号截图 + 识别 + 更新 UI。
     /// 未读数字立即更新；无角标需要连续两次确认后才清除。
@@ -200,6 +234,7 @@ public partial class MainWindow
 
         if (result is null)
         {
+            // Unavailable captures must never be mistaken for "no unread".
             DiagnosticLogService.WriteActivityEvent("badge-scan-unavailable", scannedProcessId);
             return;
         }
@@ -237,6 +272,8 @@ public partial class MainWindow
         {
             stable.Pending = detection;
             stable.PendingSince = DateTime.UtcNow;
+            if (entry.PendingClearAfterDetection || entry.HasMessageAlert)
+                SchedulePendingClearConfirmation(entry);
             if (stable.Stable is null)
             {
                 // 新账号首次无角标可直接作为基线，不需要等待第二次扫描。
