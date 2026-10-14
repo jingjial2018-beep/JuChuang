@@ -15,7 +15,33 @@ internal static class NativeMethods
         uint eventThread,
         uint eventTime);
 
-    internal const uint WM_SETICON = 0x0080;
+    // Restore window show-state/placement after repeated host sessions.
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct WINDOWPLACEMENT
+    {
+        internal int Length;
+        internal int Flags;
+        internal int ShowCmd;
+        internal POINT MinPosition;
+        internal POINT MaxPosition;
+        internal RECT NormalPosition;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT placement);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT placement);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr SetParent(IntPtr child, IntPtr newParent);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int GetWindowRgn(IntPtr hWnd, IntPtr region);
+
+        internal const uint WM_SETICON = 0x0080;
     internal const int ICON_SMALL = 0;
     internal const int ICON_BIG = 1;
 

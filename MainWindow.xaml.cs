@@ -26,7 +26,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly Dictionary<string, WeChatLocalProfile> _profilesByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, WeChatAccountIdentity> _resolvedWeChatAccounts = [];
-    private readonly HashSet<int> _accountResolutionLoads = [];
+    private readonly Dictionary<int, long> _resolvedAccountProcessStarts = [];
+    private readonly Dictionary<int, long> _accountResolutionLoads = [];
+    private long _accountResolutionSequence;
     private readonly Dictionary<int, DateTime> _accountResolutionRetryAfter = [];
     private readonly Dictionary<int, int> _accountResolutionFailures = [];
     private readonly HashSet<IntPtr> _dismissedWindowHandles = [];
@@ -111,6 +113,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             OnPropertyChanged();
             ShowSelectedEntry();
+            if (value is not null && WindowState != WindowState.Minimized)
+                ClearViewedAttentionStatus(value);
         }
     }
 
@@ -325,6 +329,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!_isClosing)
         {
             await ScanAndAttachAsync();
+            ClearExpiredAttentionStatus();
         }
     }
 
@@ -351,6 +356,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             && !Entries.Any(candidate => candidate.Kind == ClientKind.WeChat && candidate.ProcessId == processId))
         {
             _resolvedWeChatAccounts.Remove(processId);
+            _resolvedAccountProcessStarts.Remove(processId);
             _accountResolutionLoads.Remove(processId);
             _accountResolutionRetryAfter.Remove(processId);
             _accountResolutionFailures.Remove(processId);
@@ -362,6 +368,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         UpdateWindowCount();
+    }
+
+    private static long? TryGetProcessStartUtcTicks(int processId)
+    {
+        if (processId <= 0) return null;
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.HasExited ? null : process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch
+        {
+            // Some processes deny access to their start time; keep legacy discovery working.
+            return null;
+        }
     }
 
     private static bool IsClientProcessAlive(int processId)
@@ -429,6 +450,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DiagnosticLogService.WriteAccountEvent(entry, "account-generation-reset");
         entry.AccountGeneration++;
         _resolvedWeChatAccounts.Remove(processId);
+        _resolvedAccountProcessStarts.Remove(processId);
+        // Invalidate in-flight resolution before the next account is allowed to start.
+        // Old tasks may finish later, but their request tokens can no longer apply.
+        _accountResolutionLoads.Remove(processId);
         _accountResolutionRetryAfter.Remove(processId);
         _accountResolutionFailures.Remove(processId);
         ClientMetadataService.InvalidateLoginAccountCache();
@@ -471,8 +496,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_resolvedWeChatAccounts.TryGetValue(candidate.ProcessId, out var resolvedAccount))
         {
-            ApplyWeChatAccountIdentity(entry, resolvedAccount);
-            return;
+            var currentStart = TryGetProcessStartUtcTicks(candidate.ProcessId);
+            if (_resolvedAccountProcessStarts.TryGetValue(candidate.ProcessId, out var knownStart)
+                && currentStart.HasValue && knownStart != currentStart.Value)
+            {
+                ResetWeChatAccountBinding(entry);
+            }
+            else
+            {
+                ApplyWeChatAccountIdentity(entry, resolvedAccount);
+                return;
+            }
         }
 
         accounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
@@ -1548,26 +1582,44 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DiagnosticLogService.WriteAccountEvent(entry, "profile-diagnostic");
     }
 
+    private bool IsCurrentAccountResolution(
+        ClientWindowEntry entry, int processId, int accountGeneration,
+        IntPtr windowHandle, long? processStartTicks, long requestToken)
+        => !_isClosing
+           && Entries.Contains(entry)
+           && entry.ProcessId == processId
+           && entry.AccountGeneration == accountGeneration
+           && entry.Handle == windowHandle
+           && (!processStartTicks.HasValue
+               || TryGetProcessStartUtcTicks(processId) == processStartTicks)
+           && NativeMethods.IsWindow(windowHandle)
+           && _accountResolutionLoads.TryGetValue(processId, out var activeToken)
+           && activeToken == requestToken;
+
     private async void QueueWeChatAccountResolution(
         ClientWindowEntry entry,
         WeChatAccountIdentity? preferredAccount)
     {
         var processId = entry.ProcessId;
         var accountGeneration = entry.AccountGeneration;
+        var windowHandle = entry.Handle;
+        var processStartTicks = TryGetProcessStartUtcTicks(processId);
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
+            // The discovery path validates process lifetime before scheduling this read.
             ApplyWeChatAccountIdentity(entry, resolvedAccount);
             return;
         }
 
-        if (_accountResolutionLoads.Contains(processId)
+        if (_accountResolutionLoads.ContainsKey(processId)
             || (_accountResolutionRetryAfter.TryGetValue(processId, out var retryAfter)
                 && retryAfter > DateTime.UtcNow))
         {
             return;
         }
 
-        _accountResolutionLoads.Add(processId);
+        var resolutionToken = ++_accountResolutionSequence;
+        _accountResolutionLoads[processId] = resolutionToken;
         if (entry.ProfileState is not AccountProfileState.Ready
             and not AccountProfileState.ReadyFromCache
             and not AccountProfileState.ReadyWithoutAvatar)
@@ -1580,11 +1632,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             await Task.Delay(300);
-            if (_isClosing
-                || !Entries.Contains(entry)
-                || entry.ProcessId != processId
-                || entry.AccountGeneration != accountGeneration
-                || !NativeMethods.IsWindow(entry.Handle))
+            if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
+                    windowHandle, processStartTicks, resolutionToken))
             {
                 return;
             }
@@ -1593,10 +1642,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (WeChatAccountIdentity? Account, WeChatProfileReadResult Result) resolution;
             try
             {
-                if (_isClosing
-                    || !Entries.Contains(entry)
-                    || entry.ProcessId != processId
-                    || entry.AccountGeneration != accountGeneration)
+                if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
+                        windowHandle, processStartTicks, resolutionToken))
                 {
                     return;
                 }
@@ -1610,7 +1657,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
                         .OrderBy(account => preferredAccount is not null
                             && account.Key.Equals(preferredAccount.Key, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                        .ThenBy(account => account.LastLoginUtc)
+                        .ThenByDescending(account => account.LastLoginUtc)
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
                         .Where(account => !unavailableAccountKeys.Contains(account.Key))
                         .ToArray();
@@ -1635,7 +1682,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (resolution.Result.Profile is null || resolution.Account is null)
             {
-                if (entry.AccountGeneration == accountGeneration)
+                if (IsCurrentAccountResolution(entry, processId, accountGeneration,
+                        windowHandle, processStartTicks, resolutionToken))
                 {
                     ApplyProfileDiagnostic(
                         entry,
@@ -1646,11 +1694,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            if (_isClosing
-                || !Entries.Contains(entry)
-                || entry.ProcessId != processId
-                || entry.AccountGeneration != accountGeneration
-                || !NativeMethods.IsWindow(entry.Handle))
+            if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
+                    windowHandle, processStartTicks, resolutionToken))
             {
                 return;
             }
@@ -1658,6 +1703,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var account = resolution.Account;
             var profile = resolution.Result.Profile;
             _resolvedWeChatAccounts[processId] = account;
+            if (processStartTicks.HasValue)
+                _resolvedAccountProcessStarts[processId] = processStartTicks.Value;
+            else
+                _resolvedAccountProcessStarts.Remove(processId);
 
             // 把已经从微信本地资料成功读取到的昵称/头像稳定到JNest自己的缓存。
             // 如果微信本轮没有头像缓存，Store 会保留同一账号上一次有效头像。
@@ -1689,14 +1738,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch
         {
-            if (entry.AccountGeneration == accountGeneration)
+            if (IsCurrentAccountResolution(entry, processId, accountGeneration,
+                    windowHandle, processStartTicks, resolutionToken))
             {
                 ScheduleAccountResolutionRetry(processId);
             }
         }
         finally
         {
-            _accountResolutionLoads.Remove(processId);
+            // A previous request must not clear a newer request for a reused PID.
+            if (_accountResolutionLoads.TryGetValue(processId, out var currentToken)
+                && currentToken == resolutionToken)
+            {
+                _accountResolutionLoads.Remove(processId);
+            }
         }
     }
 

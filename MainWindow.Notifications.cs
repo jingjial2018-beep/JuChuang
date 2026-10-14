@@ -280,6 +280,33 @@ public partial class MainWindow
     /// 把“某个账号请求注意”统一映射到JNest自身的提醒。
     /// 不读取消息正文；任务栏闪烁与账号红点/数字是两条独立显示通道。
     /// </summary>
+    private ClientWindowEntry? _attentionStatusEntry;
+    private DateTime _attentionStatusExpiresUtc;
+
+    // The status bar shows a short-lived activity hint, not a durable unread state.
+    // Unread badges and the taskbar overlay continue to use their own detection state.
+    private void ClearExpiredAttentionStatus()
+    {
+        if (_attentionStatusEntry is null) return;
+        if (DateTime.UtcNow < _attentionStatusExpiresUtc
+            && Entries.Contains(_attentionStatusEntry)
+            && _attentionStatusEntry.HasMessageAlert) return;
+
+        var expected = $"{_attentionStatusEntry.DisplayName} 收到新消息。";
+        if (StatusMessageText.Text == expected)
+            StatusMessageText.Text = "本地运行 · 不读取聊天数据";
+        _attentionStatusEntry = null;
+    }
+
+    private void ClearViewedAttentionStatus(ClientWindowEntry? entry)
+    {
+        if (entry is null || !ReferenceEquals(entry, _attentionStatusEntry)) return;
+        var expected = $"{entry.DisplayName} 收到新消息。";
+        if (StatusMessageText.Text == expected)
+            StatusMessageText.Text = "本地运行 · 不读取聊天数据";
+        _attentionStatusEntry = null;
+    }
+
     private void NotifyAccountAttention(ClientWindowEntry entry)
     {
         if (_isClosing || IsEntryActivelyViewed(entry))
@@ -288,6 +315,8 @@ public partial class MainWindow
         }
 
         StatusMessageText.Text = $"{entry.DisplayName} 收到新消息。";
+        _attentionStatusEntry = entry;
+        _attentionStatusExpiresUtc = DateTime.UtcNow.AddSeconds(15);
         SystemSounds.Exclamation.Play();
 
         var managerHandle = new WindowInteropHelper(this).Handle;

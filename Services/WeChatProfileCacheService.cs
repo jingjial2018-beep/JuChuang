@@ -2,6 +2,8 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace JuChuang.Services;
 
@@ -198,14 +200,27 @@ public sealed class WeChatProfileCacheService
                 .ToLowerInvariant();
             var destination = Path.Combine(CacheRoot, $"avatar-{baseName}{extension}");
 
-            if (!Path.GetFullPath(sourcePath!).Equals(
+            if (Path.GetFullPath(sourcePath!).Equals(
                     Path.GetFullPath(destination),
                     StringComparison.OrdinalIgnoreCase))
             {
-                File.Copy(sourcePath!, destination, overwrite: true);
+                return IsUsableImage(destination) ? destination : null;
             }
 
-            return destination;
+            // Stage and fully validate before touching the last known-good avatar.
+            var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.Copy(sourcePath!, temporary);
+                if (!IsUsableImage(temporary)) return null;
+                File.Move(temporary, destination, overwrite: true);
+                return destination;
+            }
+            finally
+            {
+                try { if (File.Exists(temporary)) File.Delete(temporary); }
+                catch (IOException) { }
+            }
         }
         catch
         {
@@ -251,7 +266,25 @@ public sealed class WeChatProfileCacheService
             return false;
         }
 
-        return DetectImageExtension(path) is not null;
+        if (DetectImageExtension(path) is null) return false;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count == 0) return false;
+            var frame = decoder.Frames[0];
+            if (frame.PixelWidth <= 0 || frame.PixelHeight <= 0
+                || (long)frame.PixelWidth * frame.PixelHeight > 16_000_000) return false;
+            // Force the decoder to read all pixel data, not only image headers.
+            var converted = new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
+            var stride = checked(frame.PixelWidth * 4);
+            var pixels = new byte[checked(stride * frame.PixelHeight)];
+            converted.CopyPixels(pixels, stride, 0);
+            return true;
+        }
+        catch { return false; }
     }
 
     private static string? DetectImageExtension(string path)
