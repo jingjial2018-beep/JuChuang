@@ -1,5 +1,13 @@
 ## v0.3.24-beta1 — Window Host Stability (Beta)
 
+本版本同时包含窗口恢复修复和实验性无悬浮嵌入测试，不拆分为多个 Beta。
+
+- 新增真正的 `SetParent / WS_CHILD` 嵌入实验模式，移除原生系统标题栏样式；仅显式传入 `--child-host` 或设置 `JNEST_CHILD_HOST=1` 时启用。
+- 默认保留顶层 OverlayHost，以保护微信原有 HSHELL_FLASH 触发条件及现有未读通知机制；实验模式在父子窗口绑定失败时尝试回退至 OverlayHost。
+- 实验性 ChildHost 尚未经实机消息提醒、登录页/主窗口转换、WhatsApp 弹窗和 DPI 场景验证。切勿在关键业务账号上未经测试直接长期启用。
+- 保留原窗口 WINDOWPLACEMENT 与非矩形裁剪区域，退出托管时恢复，减少反复开关后的布局漂移。
+
+
 - 修复底部状态栏“某账号收到新消息”长期不消失：进入该账号时清理提示，未操作时最多约 15 秒自动复位；未读角标、任务栏覆盖标记和通知逻辑保持独立。
 
 - 修复重复退出/重新启动 JNest 后，托管窗口恢复顺序可能导致原生位置被旧的 Windows placement 覆盖的问题。
