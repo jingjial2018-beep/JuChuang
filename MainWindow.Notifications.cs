@@ -304,11 +304,14 @@ public partial class MainWindow
                 Show();
             }
 
+            // Native NotifyIcon balloons cannot render per-account image content.
+            // Use the account name as the title to avoid repeating "JNest" in
+            // the system app header and the notification body.
             _notifyIcon?.ShowBalloonTip(
                 3000,
-                "JNest",
-                $"{entry.DisplayName} 收到新消息。",
-                WinForms.ToolTipIcon.Info);
+                entry.DisplayName,
+                "收到新消息。",
+                WinForms.ToolTipIcon.None);
         }
 
         var flashInfo = new NativeMethods.FLASHWINFO
