@@ -41,9 +41,6 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern int GetWindowRgn(IntPtr hWnd, IntPtr region);
 
-    [DllImport("gdi32.dll", SetLastError = true)]
-    internal static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
-
         internal const uint WM_SETICON = 0x0080;
     internal const int ICON_SMALL = 0;
     internal const int ICON_BIG = 1;
