@@ -377,6 +377,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var wasSelected = ReferenceEquals(SelectedEntry, entry);
         var processId = entry.ProcessId;
         _queuedImmediateBadgeScans.Remove(entry);
+        _pendingClearRechecks.Remove(entry);
         _badgeStableState.Remove(entry);
         _lastClientActivityScan.Remove(entry);
         _activityRetryGeneration.Remove(entry);
@@ -501,6 +502,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateTaskbarUnreadOverlay();
         entry.PendingClearAfterDetection = false;
         _queuedImmediateBadgeScans.Remove(entry);
+        _pendingClearRechecks.Remove(entry);
         _badgeStableState.Remove(entry);
         _lastClientActivityScan.Remove(entry);
         _activityRetryGeneration.Remove(entry);
@@ -1509,6 +1511,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.AlertDisplayMode = AlertDisplayMode.None;
             entry.PendingClearAfterDetection = false;
             _queuedImmediateBadgeScans.Remove(entry);
+            _pendingClearRechecks.Remove(entry);
             _badgeStableState.Remove(entry);
         }
 
