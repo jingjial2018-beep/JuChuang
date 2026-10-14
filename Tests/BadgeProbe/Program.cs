@@ -25,6 +25,29 @@ if (args.Length == 7 && args[0].Equals("--crop", StringComparison.OrdinalIgnoreC
 
 var failures = new List<string>();
 
+// The shell/window activity event is a scan trigger, not proof of unread.
+// Protect no-badge baseline and transitions from spurious notifications.
+var notificationCases = new (string Name, BadgeResult? Previous, BadgeResult Current, bool Expected)[]
+{
+    ("initial unread is baseline, not a new notification", null,
+        new BadgeResult(true, 1, BadgeConfidenceLevel.High), false),
+    ("new unread after clear notifies", new BadgeResult(false, 0, BadgeConfidenceLevel.NoBadge),
+        new BadgeResult(true, 1, BadgeConfidenceLevel.High), true),
+    ("unchanged count does not notify", new BadgeResult(true, 2, BadgeConfidenceLevel.High),
+        new BadgeResult(true, 2, BadgeConfidenceLevel.High), false),
+    ("higher count notifies", new BadgeResult(true, 2, BadgeConfidenceLevel.High),
+        new BadgeResult(true, 3, BadgeConfidenceLevel.High), true),
+    ("no badge never notifies", new BadgeResult(true, 1, BadgeConfidenceLevel.High),
+        new BadgeResult(false, 0, BadgeConfidenceLevel.NoBadge), false)
+};
+foreach (var sample in notificationCases)
+{
+    var actual = BadgeAttentionPolicy.IsNewUnread(sample.Previous, sample.Current);
+    if (actual != sample.Expected) failures.Add(sample.Name);
+    Console.WriteLine($"Badge policy: {sample.Name}: {(actual == sample.Expected ? "PASS" : "FAIL")}");
+}
+
+
 var discoverySamples = new (string Name, string ProcessName, string Title,
     string WindowClass, bool ExpectedMatch, ClientKind ExpectedKind)[]
 {
