@@ -9,6 +9,13 @@ public partial class MainWindow
 {
     private WinForms.NotifyIcon? _notifyIcon;
     private System.Drawing.Icon? _trayIcon;
+    private WinForms.ToolStripMenuItem? _startupMenuItem;
+
+    private void RefreshStartupMenuState()
+    {
+        if (_startupMenuItem is not null)
+            _startupMenuItem.Checked = StartupService.IsEnabled();
+    }
 
     private void InitializeTrayIcon()
     {
@@ -55,10 +62,12 @@ public partial class MainWindow
         {
             var shouldEnable = !startupItem.Checked;
             StartupService.SetEnabled(shouldEnable);
-            _settings.LaunchAtStartup = shouldEnable;
+            _settings.LaunchAtStartup = StartupService.IsEnabled();
             _settings.Save();
-            startupItem.Checked = shouldEnable;
+            startupItem.Checked = _settings.LaunchAtStartup;
         };
+        _startupMenuItem = startupItem;
+        menu.Opening += (_, _) => RefreshStartupMenuState();
         menu.Items.Add(startupItem);
 
         menu.Items.Add(new WinForms.ToolStripSeparator());

@@ -292,7 +292,8 @@ public partial class MainWindow
         }
 
         ShowTemporaryStatus($"{entry.DisplayName} 收到新消息。", TimeSpan.FromSeconds(5), entry);
-        SystemSounds.Exclamation.Play();
+        if (_settings.EnableNotificationSound)
+            SystemSounds.Exclamation.Play();
 
         var managerHandle = new WindowInteropHelper(this).Handle;
         if (managerHandle == IntPtr.Zero)
@@ -305,10 +306,12 @@ public partial class MainWindow
         // otherwise foreground JNest should not produce a popup.
         var isManagerInForeground = WindowState != WindowState.Minimized
             && (IsActive || WindowHost.IsManagerContextForeground);
-        if (!isManagerInForeground)
+        if (!isManagerInForeground && _settings.EnableToastNotifications)
         {
             ShowAccountNotification(entry);
         }
+
+        if (!_settings.EnableTaskbarFlash) return;
 
         var flashInfo = new NativeMethods.FLASHWINFO
         {
@@ -324,6 +327,35 @@ public partial class MainWindow
     }
 
     /// <summary>Use the existing account avatar cache for Windows toast; retain a legacy tray fallback.</summary>
+    private void ApplyNotificationPreferences()
+    {
+        // Disabling a channel stops its outstanding indicator without affecting
+        // unread badge detection or the other two notification channels.
+        if (!_settings.EnableTaskbarFlash)
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+            {
+                var info = new NativeMethods.FLASHWINFO
+                {
+                    Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.FLASHWINFO>(),
+                    Window = handle,
+                    Flags = NativeMethods.FLASHW_STOP,
+                    Count = 0,
+                    Timeout = 0
+                };
+                NativeMethods.FlashWindowEx(ref info);
+            }
+        }
+
+        if (!_settings.EnableToastNotifications)
+        {
+            foreach (var entry in Entries.ToArray())
+                DismissAccountToast(entry);
+            _lastAccountToast.Clear();
+        }
+    }
+
     private static string GetAccountToastTag(ClientWindowEntry entry)
         => $"account-{entry.ProcessId}";
 
