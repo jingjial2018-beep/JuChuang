@@ -1408,6 +1408,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return attachedCount;
     }
 
+    private void OpenMainMenu_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuPopup.PlacementTarget = MainMenuButton;
+        MainMenuPopup.IsOpen = true;
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        WindowHost.SuspendOverlayZOrder();
+        try
+        {
+            var dialog = new SettingsDialog(_settings, ApplyNotificationPreferences, RefreshStartupMenuState)
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+        }
+        finally
+        {
+            WindowHost.ResumeOverlayZOrder();
+        }
+    }
+
     private void About_Click(object sender, RoutedEventArgs e)
     {
         WindowHost.SuspendOverlayZOrder();
