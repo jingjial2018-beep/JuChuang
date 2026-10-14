@@ -2,7 +2,7 @@ name: Build and publish JNest beta
 on:
   push:
     branches:
-      - dev/v0.3.24-beta1-account-stability
+      - dev/v0.3.24-beta1-window-host-stability
   workflow_dispatch:
 permissions:
   contents: write
