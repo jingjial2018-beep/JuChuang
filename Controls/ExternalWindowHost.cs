@@ -62,13 +62,28 @@ public sealed class ExternalWindowHost : HwndHost
         {
             NativeMethods.GetWindowRect(handle, out var originalRect);
             var nativeChrome = NativeMethods.CaptureNativeChromeState(handle);
+            var placement = new NativeMethods.WINDOWPLACEMENT
+            {
+                Length = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>()
+            };
+            var hasPlacement = NativeMethods.GetWindowPlacement(handle, ref placement);
+            var originalRegion = NativeMethods.CreateRectRgn(0, 0, 0, 0);
+            var hasRegion = originalRegion != IntPtr.Zero
+                && NativeMethods.GetWindowRgn(handle, originalRegion) > 0;
+            if (!hasRegion && originalRegion != IntPtr.Zero)
+            {
+                NativeMethods.DeleteObject(originalRegion);
+                originalRegion = IntPtr.Zero;
+            }
             var state = new HostedWindowState(
                 NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER),
                 NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE),
                 NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE),
                 originalRect,
                 CalculateHostInsets(handle, originalRect),
-                nativeChrome);
+                nativeChrome,
+                hasPlacement ? placement : null,
+                originalRegion);
 
             NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
@@ -273,7 +288,11 @@ public sealed class ExternalWindowHost : HwndHost
         // SW_RESTORE after SetWindowPos can overwrite the saved geometry with a
         // placement retained from an older JNest session.
         NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
-        NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
+        // SetWindowRgn transfers ownership of the region to Windows on success.
+        var restoreRegion = state.OriginalRegion;
+        if (!NativeMethods.SetWindowRgn(handle, restoreRegion, true)
+            && restoreRegion != IntPtr.Zero)
+            NativeMethods.DeleteObject(restoreRegion);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, state.Owner);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
@@ -290,6 +309,12 @@ public sealed class ExternalWindowHost : HwndHost
         NativeMethods.SetWindowPos(handle, IntPtr.Zero, left, top, width, height,
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE
             | NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW);
+        if (state.Placement is NativeMethods.WINDOWPLACEMENT originalPlacement)
+        {
+            originalPlacement.Length = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>();
+            // SetWindowPlacement after restoring styles but before final geometry.
+            NativeMethods.SetWindowPlacement(handle, ref originalPlacement);
+        }
         NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
             NativeMethods.RDW_INVALIDATE | NativeMethods.RDW_ERASE
             | NativeMethods.RDW_FRAME);
@@ -599,5 +624,7 @@ public sealed class ExternalWindowHost : HwndHost
         IntPtr ExtendedStyle,
         NativeMethods.RECT Rect,
         HostInsets Insets,
-        NativeMethods.DwmChromeState ChromeState);
+        NativeMethods.DwmChromeState ChromeState,
+        NativeMethods.WINDOWPLACEMENT? Placement,
+        IntPtr OriginalRegion);
 }
