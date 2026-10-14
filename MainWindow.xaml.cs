@@ -113,8 +113,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             OnPropertyChanged();
             ShowSelectedEntry();
-            if (value is not null && WindowState != WindowState.Minimized)
-                ClearViewedAttentionStatus(value);
         }
     }
 
@@ -329,7 +327,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!_isClosing)
         {
             await ScanAndAttachAsync();
-            ClearExpiredAttentionStatus();
         }
     }
 

@@ -2,7 +2,7 @@ name: Build and publish JNest beta
 on:
   push:
     branches:
-      - dev/v0.3.24-beta1-window-host-stability
+      - dev/v0.3.23-beta1-account-stability
   workflow_dispatch:
 permissions:
   contents: write
@@ -23,10 +23,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release --no-build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish Windows x64 packages
         shell: pwsh
         run: |
@@ -34,17 +30,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\out\selfcontained
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path .\out\framework\* -DestinationPath .\JNest-v0.3.24-beta1-FrameworkDependent-win-x64.zip
-          Compress-Archive -Path .\out\selfcontained\* -DestinationPath .\JNest-v0.3.24-beta1-SelfContained-win-x64.zip
+          Compress-Archive -Path .\out\framework\* -DestinationPath .\JNest-v0.3.23-beta1-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path .\out\selfcontained\* -DestinationPath .\JNest-v0.3.23-beta1-SelfContained-win-x64.zip
       - name: Create or update prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $tag = "v0.3.24-beta1"
+          $tag = "v0.3.23-beta1"
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag .\JNest-v0.3.24-beta1-FrameworkDependent-win-x64.zip .\JNest-v0.3.24-beta1-SelfContained-win-x64.zip --clobber
+            gh release upload $tag .\JNest-v0.3.23-beta1-FrameworkDependent-win-x64.zip .\JNest-v0.3.23-beta1-SelfContained-win-x64.zip --clobber
           } else {
-            gh release create $tag .\JNest-v0.3.24-beta1-FrameworkDependent-win-x64.zip .\JNest-v0.3.24-beta1-SelfContained-win-x64.zip --target "${{ github.sha }}" --title "JNest v0.3.24-beta1" --notes-file RELEASE_NOTES.md --prerelease
+            gh release create $tag .\JNest-v0.3.23-beta1-FrameworkDependent-win-x64.zip .\JNest-v0.3.23-beta1-SelfContained-win-x64.zip --target "${{ github.sha }}" --title "JNest v0.3.23-beta1" --notes-file RELEASE_NOTES.md --prerelease
           }
