@@ -21,6 +21,9 @@ public partial class MainWindow
     private readonly Dictionary<ClientWindowEntry, DateTime> _lastClientActivityScan = [];
     private readonly Dictionary<ClientWindowEntry, int> _activityRetryGeneration = [];
     private static readonly TimeSpan ClientActivityDebounce = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan AccountToastCooldown = TimeSpan.FromSeconds(10);
+    private const string AccountToastGroup = "jnest-account-messages";
+    private readonly Dictionary<ClientWindowEntry, DateTime> _lastAccountToast = [];
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
@@ -205,6 +208,7 @@ public partial class MainWindow
         _clientActivityCallback = null;
         _lastClientActivityScan.Clear();
         _activityRetryGeneration.Clear();
+        _lastAccountToast.Clear();
     }
 
     private void OnClientWindowEvent(
@@ -296,16 +300,13 @@ public partial class MainWindow
             return;
         }
 
-        if (WindowState == WindowState.Minimized)
+        // Windows toast is shown only when the manager is truly in the
+        // background (or minimized). A different selected account in an
+        // otherwise foreground JNest should not produce a popup.
+        var isManagerInForeground = WindowState != WindowState.Minimized
+            && (IsActive || WindowHost.IsManagerContextForeground);
+        if (!isManagerInForeground)
         {
-            // JNest最小化后仍保留任务栏按钮，因此收到消息时不恢复窗口、不抢前台，
-            // 只触发任务栏闪烁，并继续使用托盘气泡作为补充提示。
-            if (!IsVisible)
-            {
-                // 兼容从旧版本状态或其它路径被显式 Hide 的情况。
-                Show();
-            }
-
             ShowAccountNotification(entry);
         }
 
@@ -323,8 +324,30 @@ public partial class MainWindow
     }
 
     /// <summary>Use the existing account avatar cache for Windows toast; retain a legacy tray fallback.</summary>
+    private static string GetAccountToastTag(ClientWindowEntry entry)
+        => $"account-{entry.ProcessId}";
+
+    private void DismissAccountToast(ClientWindowEntry entry)
+    {
+        _lastAccountToast.Remove(entry);
+        try
+        {
+            ToastNotificationManagerCompat.History.Remove(
+                GetAccountToastTag(entry), AccountToastGroup);
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteActivityEvent(
+                "toast-dismiss-" + exception.GetType().Name, entry.ProcessId);
+        }
+    }
+
     private void ShowAccountNotification(ClientWindowEntry entry)
     {
+        var now = DateTime.UtcNow;
+        if (_lastAccountToast.TryGetValue(entry, out var previous)
+            && now - previous < AccountToastCooldown) return;
+        _lastAccountToast[entry] = now;
         try
         {
             var toast = new ToastContentBuilder()
@@ -356,7 +379,13 @@ public partial class MainWindow
                 if (File.Exists(fallback))
                     toast.AddAppLogoOverride(new Uri(fallback), ToastGenericAppLogoCrop.Circle);
             }
-            toast.Show();
+            // Stable tag+group replaces the existing account notification
+            // instead of stacking Windows 11 toasts for rapid messages.
+            toast.Show(notification =>
+            {
+                notification.Tag = GetAccountToastTag(entry);
+                notification.Group = AccountToastGroup;
+            });
         }
         catch (Exception exception)
         {
