@@ -89,7 +89,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ControlBorder" Property="Background" Value="#ECEEF1" />
+                                <Setter TargetName="ControlBorder" Property="Background" Value="#E1E5EA" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="ControlBorder" Property="Background" Value="#DDE0E5" />
@@ -191,7 +191,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="160" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="138" />
+                        <ColumnDefinition Width="182" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
@@ -217,19 +217,44 @@
                         <Button Style="{StaticResource ToolbarButtonStyle}" Click="ScanClients_Click"
                                 Content="扫描客户端"
                                 ToolTip="扫描当前正在运行的本地客户端" />
-                        <Button Style="{StaticResource ToolbarButtonStyle}" Margin="0"
-                                Content="关于" Click="About_Click" />
-                    </StackPanel>
+</StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
+                        <Button x:Name="MainMenuButton" Width="44" Height="44"
+                                Style="{StaticResource WindowControlButtonStyle}" ToolTip="菜单"
+                                Click="OpenMainMenu_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="MainMenuPopup" Placement="Bottom"
+                                             Background="#F7F8FA" BorderBrush="#D9DEE5"
+                                             BorderThickness="1" Padding="6"
+                                             MinWidth="196">
+                                    <ContextMenu.Resources>
+                                        <Style TargetType="MenuItem">
+                                            <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
+                                            <Setter Property="FontSize" Value="13"/>
+                                            <Setter Property="Foreground" Value="#263041"/>
+                                            <Setter Property="Height" Value="39"/>
+                                            <Setter Property="Padding" Value="14,6"/>
+                                        </Style>
+                                    </ContextMenu.Resources>
+                                    <MenuItem Header="设置" Click="Settings_Click"/>
+                                    <MenuItem Header="关于 JNest" Click="About_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="退出 JNest" Click="Close_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                            <Path Width="15" Height="15" Stroke="#344054" StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M2,3 H13 M2,7.5 H13 M2,12 H13"/>
+                        </Button>
                         <Button Style="{StaticResource WindowControlButtonStyle}" ToolTip="最小化" Click="Minimize_Click">
-                            <Path Width="10" Height="10" Stretch="Uniform" Stroke="#344054" StrokeThickness="1.4"
+                            <Path Width="10" Height="10" Stretch="Uniform" Stroke="#344054" StrokeThickness="1.3"
                                   Data="M1,5 H9" />
                         </Button>
                         <Button x:Name="MaximizeButton" Style="{StaticResource WindowControlButtonStyle}"
                                 ToolTip="最大化" Click="Maximize_Click">
                             <Path x:Name="MaximizeGlyph" Width="10" Height="10" Stretch="Uniform" Stroke="#344054"
-                                  StrokeThickness="1.2" StrokeLineJoin="Miter" Data="M1,1 H9 V9 H1 Z" />
+                                  StrokeThickness="1.3" StrokeLineJoin="Miter" Data="M1,1 H9 V9 H1 Z" />
                         </Button>
                         <Button ToolTip="关闭" Click="Close_Click">
                             <Button.Style>
@@ -244,7 +269,7 @@
                             </Button.Style>
                             <Path Width="10" Height="10" Stretch="Uniform"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                  StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                   Data="M1,1 L9,9 M9,1 L1,9" />
                         </Button>
                     </StackPanel>
