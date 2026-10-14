@@ -430,6 +430,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DiagnosticLogService.WriteAccountEvent(entry, "account-generation-reset");
         entry.AccountGeneration++;
         _resolvedWeChatAccounts.Remove(processId);
+        // Invalidate in-flight resolution before the next account is allowed to start.
+        // Old tasks may finish later, but their request tokens can no longer apply.
+        _accountResolutionLoads.Remove(processId);
         _accountResolutionRetryAfter.Remove(processId);
         _accountResolutionFailures.Remove(processId);
         ClientMetadataService.InvalidateLoginAccountCache();
@@ -1549,12 +1552,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DiagnosticLogService.WriteAccountEvent(entry, "profile-diagnostic");
     }
 
+    private bool IsCurrentAccountResolution(
+        ClientWindowEntry entry, int processId, int accountGeneration,
+        IntPtr windowHandle, long requestToken)
+        => !_isClosing
+           && Entries.Contains(entry)
+           && entry.ProcessId == processId
+           && entry.AccountGeneration == accountGeneration
+           && entry.Handle == windowHandle
+           && NativeMethods.IsWindow(windowHandle)
+           && _accountResolutionLoads.TryGetValue(processId, out var activeToken)
+           && activeToken == requestToken;
+
     private async void QueueWeChatAccountResolution(
         ClientWindowEntry entry,
         WeChatAccountIdentity? preferredAccount)
     {
         var processId = entry.ProcessId;
         var accountGeneration = entry.AccountGeneration;
+        var windowHandle = entry.Handle;
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
             ApplyWeChatAccountIdentity(entry, resolvedAccount);
@@ -1582,11 +1598,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             await Task.Delay(300);
-            if (_isClosing
-                || !Entries.Contains(entry)
-                || entry.ProcessId != processId
-                || entry.AccountGeneration != accountGeneration
-                || !NativeMethods.IsWindow(entry.Handle))
+            if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
+                    windowHandle, resolutionToken))
             {
                 return;
             }
@@ -1595,10 +1608,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (WeChatAccountIdentity? Account, WeChatProfileReadResult Result) resolution;
             try
             {
-                if (_isClosing
-                    || !Entries.Contains(entry)
-                    || entry.ProcessId != processId
-                    || entry.AccountGeneration != accountGeneration)
+                if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
+                        windowHandle, resolutionToken))
                 {
                     return;
                 }
@@ -1612,7 +1623,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
                         .OrderBy(account => preferredAccount is not null
                             && account.Key.Equals(preferredAccount.Key, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                        .ThenBy(account => account.LastLoginUtc)
+                        .ThenByDescending(account => account.LastLoginUtc)
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
                         .Where(account => !unavailableAccountKeys.Contains(account.Key))
                         .ToArray();
@@ -1637,7 +1648,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (resolution.Result.Profile is null || resolution.Account is null)
             {
-                if (entry.AccountGeneration == accountGeneration)
+                if (IsCurrentAccountResolution(entry, processId, accountGeneration,
+                        windowHandle, resolutionToken))
                 {
                     ApplyProfileDiagnostic(
                         entry,
@@ -1648,11 +1660,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            if (_isClosing
-                || !Entries.Contains(entry)
-                || entry.ProcessId != processId
-                || entry.AccountGeneration != accountGeneration
-                || !NativeMethods.IsWindow(entry.Handle))
+            if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
+                    windowHandle, resolutionToken))
             {
                 return;
             }
@@ -1691,7 +1700,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch
         {
-            if (entry.AccountGeneration == accountGeneration)
+            if (IsCurrentAccountResolution(entry, processId, accountGeneration,
+                    windowHandle, resolutionToken))
             {
                 ScheduleAccountResolutionRetry(processId);
             }
