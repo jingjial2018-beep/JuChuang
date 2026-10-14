@@ -442,10 +442,9 @@
                                 <TextBlock x:Name="CurrentStatusText" Text="尚未接入" FontSize="12.5"
                                            Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                             </StackPanel>
-                            <Border Grid.Column="1" Padding="10,4" Background="#EBF3FF" BorderBrush="#D2E4FF"
-                                    BorderThickness="1" CornerRadius="7" VerticalAlignment="Center">
-                                <TextBlock Text="本地客户端" Foreground="{StaticResource AccentBrush}" FontSize="10.5" />
-                            </Border>
+                            <TextBlock Grid.Column="1" Text="本地运行 · 不读取聊天数据"
+                                       FontSize="11.5" Foreground="#667085"
+                                       VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                     </Border>
                     <Grid x:Name="ClientArea" Grid.Row="1" ClipToBounds="True"
@@ -493,8 +492,13 @@
                     </StackPanel>
                     <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="11.5"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Column="2" Text="本地运行 · 不读取聊天数据" FontSize="11.5"
-                               Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="LocalDateText" FontSize="11.5" Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="11.5" Foreground="#475467"
+                                   FontWeight="SemiBold" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="11.5"
+                                   Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>
