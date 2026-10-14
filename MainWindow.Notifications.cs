@@ -287,7 +287,7 @@ public partial class MainWindow
             return;
         }
 
-        StatusMessageText.Text = $"{entry.DisplayName} 收到新消息。";
+        ShowTemporaryStatus($"{entry.DisplayName} 收到新消息。", TimeSpan.FromSeconds(5), entry);
         SystemSounds.Exclamation.Play();
 
         var managerHandle = new WindowInteropHelper(this).Handle;
