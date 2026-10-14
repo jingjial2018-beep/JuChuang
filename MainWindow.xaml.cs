@@ -310,9 +310,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SelectedEntry = Entries.FirstOrDefault(entry => entry.IsAttached) ?? Entries[0];
         }
 
-        StatusMessageText.Text = Entries.Count == 0
+        ShowTemporaryStatus(Entries.Count == 0
             ? "未发现正在运行的客户端，可从顶部新建。"
-            : $"已自动接入 {Entries.Count(entry => entry.IsAttached)} 个窗口。";
+            : "客户端接入检查完成");
         _scanTimer.Start();
         StartBadgePolling();
         if (_isClientSelfTestMode)
@@ -565,7 +565,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _selectNextKind = null;
         SelectedEntry = entry;
         AccountsList.SelectedItem = entry;
-        StatusMessageText.Text = $"已接入 {entry.DisplayName}。";
+        ShowTemporaryStatus($"已接入 {entry.DisplayName}。");
     }
 
     private async Task<ClientLaunchContext> CaptureLaunchContextAsync(ClientKind kind)
@@ -1304,7 +1304,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // “全部接入”是用户显式请求把容器外所有受支持的客户端都接入，
         // 包括之前从列表移除的窗口。
-        StatusMessageText.Text = "正在接入容器外的客户端窗口…";
+        ShowTemporaryStatus("正在接入容器外的客户端窗口…");
         var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
         ShowTemporaryStatus(attachedCount > 0
             ? "接入检查完成"
@@ -1318,7 +1318,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        StatusMessageText.Text = "正在扫描并接入本地客户端…";
+        ShowTemporaryStatus("正在扫描并接入本地客户端…");
         var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
         ShowTemporaryStatus(attachedCount > 0
             ? "扫描完成"
