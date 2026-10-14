@@ -298,6 +298,11 @@ public sealed class ExternalWindowHost : HwndHost
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
         NativeMethods.ApplyNativeChromeState(handle, state.ChromeState);
         NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+        if (state.Placement is NativeMethods.WINDOWPLACEMENT originalPlacement)
+        {
+            originalPlacement.Length = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>();
+            NativeMethods.SetWindowPlacement(handle, ref originalPlacement);
+        }
 
         // Never grow the native client's restored rectangle on each cycle.
         // The previous minimum (720x560) could permanently change small login
@@ -309,12 +314,6 @@ public sealed class ExternalWindowHost : HwndHost
         NativeMethods.SetWindowPos(handle, IntPtr.Zero, left, top, width, height,
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE
             | NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW);
-        if (state.Placement is NativeMethods.WINDOWPLACEMENT originalPlacement)
-        {
-            originalPlacement.Length = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>();
-            // SetWindowPlacement after restoring styles but before final geometry.
-            NativeMethods.SetWindowPlacement(handle, ref originalPlacement);
-        }
         NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
             NativeMethods.RDW_INVALIDATE | NativeMethods.RDW_ERASE
             | NativeMethods.RDW_FRAME);
