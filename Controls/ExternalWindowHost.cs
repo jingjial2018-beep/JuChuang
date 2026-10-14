@@ -269,21 +269,30 @@ public sealed class ExternalWindowHost : HwndHost
         if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         if (!NativeMethods.IsWindow(handle)) return true;
 
+        // Restore the native window *before* restoring its rectangle:
+        // SW_RESTORE after SetWindowPos can overwrite the saved geometry with a
+        // placement retained from an older JNest session.
         NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
         NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, state.Owner);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
         NativeMethods.ApplyNativeChromeState(handle, state.ChromeState);
+        NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
 
-        var width = Math.Max(720, state.Rect.Width);
-        var height = Math.Max(560, state.Rect.Height);
+        // Never grow the native client's restored rectangle on each cycle.
+        // The previous minimum (720x560) could permanently change small login
+        // windows after repeated close/reopen operations.
+        var width = Math.Max(1, state.Rect.Width);
+        var height = Math.Max(1, state.Rect.Height);
         var left = state.Rect.Left < -10000 ? 120 : state.Rect.Left;
         var top = state.Rect.Top < -10000 ? 120 : state.Rect.Top;
         NativeMethods.SetWindowPos(handle, IntPtr.Zero, left, top, width, height,
-            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_FRAMECHANGED
-            | NativeMethods.SWP_SHOWWINDOW);
-        NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE
+            | NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW);
+        NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
+            NativeMethods.RDW_INVALIDATE | NativeMethods.RDW_ERASE
+            | NativeMethods.RDW_FRAME);
         if (bringToFront) NativeMethods.SetForegroundWindow(handle);
         return true;
     }
