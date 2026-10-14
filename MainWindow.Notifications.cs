@@ -337,6 +337,25 @@ public partial class MainWindow
                 toast.AddAppLogoOverride(new Uri(Path.GetFullPath(avatar)),
                     ToastGenericAppLogoCrop.Circle);
             }
+            else
+            {
+                // Only a public app logo is written to the temporary image cache.
+                // Chat/message content and account profile data are never exported.
+                var fallback = Path.Combine(Path.GetTempPath(), "JNest-brand-toast.png");
+                if (!File.Exists(fallback))
+                {
+                    var resource = Application.GetResourceStream(
+                        new Uri("pack://application:,,,/Assets/app-logo.png"));
+                    if (resource is not null)
+                    {
+                        using var input = resource.Stream;
+                        using var output = File.Create(fallback);
+                        input.CopyTo(output);
+                    }
+                }
+                if (File.Exists(fallback))
+                    toast.AddAppLogoOverride(new Uri(fallback), ToastGenericAppLogoCrop.Circle);
+            }
             toast.Show();
         }
         catch (Exception exception)
