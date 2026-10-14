@@ -125,6 +125,35 @@ internal static class NativeMethods
         internal int Y;
     }
 
+    internal const int WM_GETMINMAXINFO = 0x0024;
+    internal const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MINMAXINFO
+    {
+        internal POINT ptReserved;
+        internal POINT ptMaxSize;
+        internal POINT ptMaxPosition;
+        internal POINT ptMinTrackSize;
+        internal POINT ptMaxTrackSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    internal struct MONITORINFO
+    {
+        internal int cbSize;
+        internal RECT rcMonitor;
+        internal RECT rcWork;
+        internal uint dwFlags;
+    }
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
     // PrintWindow 标志：强制从硬件加速（DirectUI/WebView）窗口回读完整内容。
     // 微信 4.x（Qt）与 WhatsApp（WebView2）的自绘窗口若不带此标志会截到黑屏。
     internal const uint PW_RENDERFULLCONTENT = 0x00000002;
