@@ -292,7 +292,8 @@ public partial class MainWindow
         }
 
         ShowTemporaryStatus($"{entry.DisplayName} 收到新消息。", TimeSpan.FromSeconds(5), entry);
-        SystemSounds.Exclamation.Play();
+        if (_settings.EnableNotificationSound)
+            SystemSounds.Exclamation.Play();
 
         var managerHandle = new WindowInteropHelper(this).Handle;
         if (managerHandle == IntPtr.Zero)
@@ -305,10 +306,12 @@ public partial class MainWindow
         // otherwise foreground JNest should not produce a popup.
         var isManagerInForeground = WindowState != WindowState.Minimized
             && (IsActive || WindowHost.IsManagerContextForeground);
-        if (!isManagerInForeground)
+        if (!isManagerInForeground && _settings.EnableToastNotifications)
         {
             ShowAccountNotification(entry);
         }
+
+        if (!_settings.EnableTaskbarFlash) return;
 
         var flashInfo = new NativeMethods.FLASHWINFO
         {
