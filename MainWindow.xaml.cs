@@ -73,10 +73,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settings = AppSettings.Load();
         _scanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _scanTimer.Tick += ScanTimer_Tick;
+        _statusResetTimer.Tick += (_, _) => ClearTemporaryStatus();
         StateChanged += MainWindow_StateChanged;
         Activated += (_, _) => TriggerForegroundBadgeCalibration();
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
+    }
+
+    private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private string? _pendingStatusText;
+    private ClientWindowEntry? _pendingMessageEntry;
+
+    // Middle status text is temporary; the right-hand privacy statement is fixed.
+    private void ShowTemporaryStatus(string message, TimeSpan? duration = null,
+        ClientWindowEntry? messageEntry = null)
+    {
+        _statusResetTimer.Stop();
+        StatusMessageText.Text = message;
+        _pendingStatusText = message;
+        _pendingMessageEntry = messageEntry;
+        _statusResetTimer.Interval = duration ?? TimeSpan.FromSeconds(3);
+        _statusResetTimer.Start();
+    }
+
+    private void ClearTemporaryStatus(ClientWindowEntry? viewedEntry = null)
+    {
+        if (viewedEntry is not null && !ReferenceEquals(viewedEntry, _pendingMessageEntry))
+            return;
+        _statusResetTimer.Stop();
+        if (_pendingStatusText is not null && StatusMessageText.Text == _pendingStatusText)
+            StatusMessageText.Text = string.Empty;
+        _pendingStatusText = null;
+        _pendingMessageEntry = null;
     }
 
     public ObservableCollection<ClientWindowEntry> Entries { get; } = [];
@@ -113,6 +141,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             OnPropertyChanged();
             ShowSelectedEntry();
+            if (value is not null && _pendingMessageEntry is not null
+                && ReferenceEquals(value, _pendingMessageEntry))
+                ClearTemporaryStatus(value);
         }
     }
 
@@ -295,6 +326,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _isClosing = true;
         SaveWindowPlacement();
         _scanTimer.Stop();
+        _statusResetTimer.Stop();
         StopBadgePolling();
         StopClientActivityMonitoring();
         if (_windowSource is not null)
@@ -1274,9 +1306,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // 包括之前从列表移除的窗口。
         StatusMessageText.Text = "正在接入容器外的客户端窗口…";
         var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
-        StatusMessageText.Text = attachedCount > 0
-            ? $"全部接入完成：{attachedCount} 个窗口。"
-            : "没有发现可接入的微信或 WhatsApp 主窗口。";
+        ShowTemporaryStatus(attachedCount > 0
+            ? "接入检查完成"
+            : "未发现可接入的客户端窗口");
     }
 
     private async void ScanClients_Click(object sender, RoutedEventArgs e)
@@ -1288,9 +1320,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         StatusMessageText.Text = "正在扫描并接入本地客户端…";
         var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
-        StatusMessageText.Text = attachedCount > 0
-            ? $"扫描完成：已接入 {attachedCount} 个窗口。"
-            : "没有发现新的客户端窗口。";
+        ShowTemporaryStatus(attachedCount > 0
+            ? "扫描完成"
+            : "未发现新的客户端窗口");
     }
 
     /// <summary>
