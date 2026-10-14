@@ -141,6 +141,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             OnPropertyChanged();
             ShowSelectedEntry();
+            if (value is not null && value.PendingClearAfterDetection)
+                RequestSelectedBadgeCalibration(value);
             if (value is not null && _pendingMessageEntry is not null
                 && ReferenceEquals(value, _pendingMessageEntry))
                 ClearTemporaryStatus(value);
@@ -284,7 +286,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        StatusMessageText.Text = "JNest已启动，正在后台发现本地客户端…";
+        ShowTemporaryStatus("JNest已启动，正在后台发现本地客户端…");
         // 预热窗口托管宿主：HwndHost 在 Visibility=Collapsed 时可能不会调用
         // BuildWindowCore，导致首次 AttachWindow 因 _hostHandle 未创建而失败
         // （IsReady=false）。这里先设为可见并等待布局完成，确保宿主就绪后再扫描。
@@ -1848,7 +1850,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            StatusMessageText.Text = $"复制诊断信息失败：{exception.Message}";
+            ShowTemporaryStatus($"复制诊断信息失败：{exception.Message}", TimeSpan.FromSeconds(12));
         }
     }
 
