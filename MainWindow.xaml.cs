@@ -1603,16 +1603,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var processStartTicks = TryGetProcessStartUtcTicks(processId);
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
-            if (_resolvedAccountProcessStarts.TryGetValue(processId, out var knownStart)
-                && processStartTicks.HasValue && knownStart != processStartTicks.Value)
-            {
-                ResetWeChatAccountBinding(entry);
-            }
-            else
-            {
-                ApplyWeChatAccountIdentity(entry, resolvedAccount);
-                return;
-            }
+            // The discovery path validates process lifetime before scheduling this read.
+            ApplyWeChatAccountIdentity(entry, resolvedAccount);
+            return;
         }
 
         if (_accountResolutionLoads.ContainsKey(processId)
