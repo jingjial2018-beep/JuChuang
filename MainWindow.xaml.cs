@@ -214,8 +214,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         MaximizeGlyph.Data = Geometry.Parse(
             WindowState == WindowState.Maximized
-                ? "M 4,1 H 9 V 6 H 4 Z M 1,4 H 6 V 9 H 1 Z"
-                : "M 1,1 H 9 V 9 H 1 Z");
+                ? "M 4,1.5 H 11 V 8.5 H 4 Z M 2,4 H 9 V 11 H 2 Z"
+                : "M 2,2 H 11 V 11 H 2 Z");
     }
 
     private void RestoreWindowPlacement()
@@ -1411,6 +1411,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OpenMainMenu_Click(object sender, RoutedEventArgs e)
     {
         MainMenuPopup.PlacementTarget = MainMenuButton;
+        // Align the dropdown's right edge with the window's inner right edge.
+        // Coordinates are WPF DIPs; transforms account for window size and DPI.
+        var buttonLeft = MainMenuButton.TransformToAncestor(this).Transform(new Point(0, 0)).X;
+        MainMenuPopup.HorizontalOffset = Math.Max(0, ActualWidth - buttonLeft - MainMenuPopup.Width - 8);
         MainMenuPopup.IsOpen = true;
     }
 
