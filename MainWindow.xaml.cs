@@ -73,10 +73,55 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settings = AppSettings.Load();
         _scanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _scanTimer.Tick += ScanTimer_Tick;
+        _statusResetTimer.Tick += (_, _) => ClearTemporaryStatus();
+        _clockTimer.Tick += (_, _) => UpdateLocalClock();
+        UpdateLocalClock();
+        _clockTimer.Start();
         StateChanged += MainWindow_StateChanged;
-        Activated += (_, _) => TriggerForegroundBadgeCalibration();
+        Activated += (_, _) =>
+        {
+            TriggerForegroundBadgeCalibration();
+            if (SelectedEntry is { } entry && WindowState != WindowState.Minimized)
+                DismissAccountToast(entry);
+        };
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
+    }
+
+    private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private void UpdateLocalClock()
+    {
+        var now = DateTimeOffset.Now;
+        LocalDateText.Text = now.ToString("yyyy/MM/dd", System.Globalization.CultureInfo.InvariantCulture);
+        LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+        var offset = now.Offset;
+        LocalTimeZoneText.Text = $"UTC{(offset < TimeSpan.Zero ? "-" : "+")}{Math.Abs(offset.Hours):00}:{Math.Abs(offset.Minutes):00}";
+    }
+    private string? _pendingStatusText;
+    private ClientWindowEntry? _pendingMessageEntry;
+
+    // Middle status text is temporary; the right-hand privacy statement is fixed.
+    private void ShowTemporaryStatus(string message, TimeSpan? duration = null,
+        ClientWindowEntry? messageEntry = null)
+    {
+        _statusResetTimer.Stop();
+        StatusMessageText.Text = message;
+        _pendingStatusText = message;
+        _pendingMessageEntry = messageEntry;
+        _statusResetTimer.Interval = duration ?? TimeSpan.FromSeconds(3);
+        _statusResetTimer.Start();
+    }
+
+    private void ClearTemporaryStatus(ClientWindowEntry? viewedEntry = null)
+    {
+        if (viewedEntry is not null && !ReferenceEquals(viewedEntry, _pendingMessageEntry))
+            return;
+        _statusResetTimer.Stop();
+        if (_pendingStatusText is not null && StatusMessageText.Text == _pendingStatusText)
+            StatusMessageText.Text = string.Empty;
+        _pendingStatusText = null;
+        _pendingMessageEntry = null;
     }
 
     public ObservableCollection<ClientWindowEntry> Entries { get; } = [];
@@ -113,6 +158,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             OnPropertyChanged();
             ShowSelectedEntry();
+            if (value is not null && value.PendingClearAfterDetection)
+                RequestSelectedBadgeCalibration(value);
+            if (value is not null && _pendingMessageEntry is not null
+                && ReferenceEquals(value, _pendingMessageEntry))
+                ClearTemporaryStatus(value);
+            if (value is not null && WindowState != WindowState.Minimized
+                && (IsActive || WindowHost.IsManagerContextForeground))
+                DismissAccountToast(value);
         }
     }
 
@@ -253,7 +306,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        StatusMessageText.Text = "JNest已启动，正在后台发现本地客户端…";
+        ShowTemporaryStatus("JNest已启动，正在后台发现本地客户端…");
         // 预热窗口托管宿主：HwndHost 在 Visibility=Collapsed 时可能不会调用
         // BuildWindowCore，导致首次 AttachWindow 因 _hostHandle 未创建而失败
         // （IsReady=false）。这里先设为可见并等待布局完成，确保宿主就绪后再扫描。
@@ -279,9 +332,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SelectedEntry = Entries.FirstOrDefault(entry => entry.IsAttached) ?? Entries[0];
         }
 
-        StatusMessageText.Text = Entries.Count == 0
+        ShowTemporaryStatus(Entries.Count == 0
             ? "未发现正在运行的客户端，可从顶部新建。"
-            : $"已自动接入 {Entries.Count(entry => entry.IsAttached)} 个窗口。";
+            : "客户端接入检查完成");
         _scanTimer.Start();
         StartBadgePolling();
         if (_isClientSelfTestMode)
@@ -295,6 +348,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _isClosing = true;
         SaveWindowPlacement();
         _scanTimer.Stop();
+        _statusResetTimer.Stop();
+        _clockTimer.Stop();
         StopBadgePolling();
         StopClientActivityMonitoring();
         if (_windowSource is not null)
@@ -342,7 +397,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var wasSelected = ReferenceEquals(SelectedEntry, entry);
         var processId = entry.ProcessId;
+        DismissAccountToast(entry);
         _queuedImmediateBadgeScans.Remove(entry);
+        _pendingClearRechecks.Remove(entry);
         _badgeStableState.Remove(entry);
         _lastClientActivityScan.Remove(entry);
         _activityRetryGeneration.Remove(entry);
@@ -467,6 +524,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateTaskbarUnreadOverlay();
         entry.PendingClearAfterDetection = false;
         _queuedImmediateBadgeScans.Remove(entry);
+        _pendingClearRechecks.Remove(entry);
         _badgeStableState.Remove(entry);
         _lastClientActivityScan.Remove(entry);
         _activityRetryGeneration.Remove(entry);
@@ -533,7 +591,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _selectNextKind = null;
         SelectedEntry = entry;
         AccountsList.SelectedItem = entry;
-        StatusMessageText.Text = $"已接入 {entry.DisplayName}。";
+        ShowTemporaryStatus($"已接入 {entry.DisplayName}。");
     }
 
     private async Task<ClientLaunchContext> CaptureLaunchContextAsync(ClientKind kind)
@@ -599,7 +657,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         entry.SessionState = ClientSessionState.Main;
                     }
 
-                    entry.Status = entry.IsAttached ? "已嵌入" : "独立窗口";
+                    entry.Status = entry.IsAttached ? "已接入" : "独立窗口";
                     continue;
                 }
 
@@ -674,7 +732,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         existingEntry.IsAttached = WindowHost.AttachWindow(
                             existingEntry.Handle,
                             makeActive: false);
-                        existingEntry.Status = existingEntry.IsAttached ? "已嵌入" : "接入失败";
+                        existingEntry.Status = existingEntry.IsAttached ? "已接入" : "接入失败";
                     }
 
                     TryCompletePendingLaunch(candidate, existingEntry);
@@ -705,7 +763,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         rebindingEntry.IsAttached = WindowHost.AttachWindow(
                             candidate.Handle,
                             makeActive);
-                        rebindingEntry.Status = rebindingEntry.IsAttached ? "已嵌入" : "接入失败";
+                        rebindingEntry.Status = rebindingEntry.IsAttached ? "已接入" : "接入失败";
                         if (makeActive && rebindingEntry.IsAttached)
                         {
                             QueueHostedWindowRefresh(rebindingEntry);
@@ -738,7 +796,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 ApplySavedAccountOrder();
 
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false);
-                entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+                entry.Status = entry.IsAttached ? "已接入" : "接入失败";
                 TryCompletePendingLaunch(candidate, entry);
             }
 
@@ -787,14 +845,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (_isPreviewMode)
             {
-                StatusMessageText.Text = "预览模式不会启动本地客户端。";
+                ShowTemporaryStatus("预览模式不会启动本地客户端。");
             }
             return;
         }
 
         try
         {
-            StatusMessageText.Text = "正在准备微信客户端…";
+            ShowTemporaryStatus("正在准备微信客户端…");
             await Dispatcher.Yield(DispatcherPriority.Input);
 
             // Process/registry probing can be slow on machines with many client
@@ -812,7 +870,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 if (dialog.ShowDialog(this) != true)
                 {
-                    StatusMessageText.Text = "未选择微信客户端。";
+                    ShowTemporaryStatus("未选择微信客户端。");
                     return;
                 }
 
@@ -837,9 +895,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _pendingLaunchContext.ExpectProcess(createdProcessId);
             }
 
-            StatusMessageText.Text = launchResult.UsedMultiInstanceBypass
+            ShowTemporaryStatus(launchResult.UsedMultiInstanceBypass
                 ? $"微信多开进程已启动（PID {launchResult.ProcessId}），正在等待窗口…"
-                : "微信已启动，正在等待新窗口…";
+                : "微信已启动，正在等待新窗口…");
             await WaitForExpectedWindowAsync(ClientKind.WeChat);
         }
         catch (Exception exception)
@@ -860,7 +918,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (_isPreviewMode)
             {
-                StatusMessageText.Text = "预览模式不会启动本地客户端。";
+                ShowTemporaryStatus("预览模式不会启动本地客户端。");
             }
             return;
         }
@@ -875,17 +933,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SelectedEntry = existing;
                 AccountsList.SelectedItem = existing;
-                StatusMessageText.Text = "WhatsApp 已经在管理器中。";
+                ShowTemporaryStatus("WhatsApp 已经在管理器中。");
                 return;
             }
 
-            StatusMessageText.Text = "正在准备 WhatsApp 客户端…";
+            ShowTemporaryStatus("正在准备 WhatsApp 客户端…");
             await Dispatcher.Yield(DispatcherPriority.Input);
             _dismissedWindowHandles.Clear();
             _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WhatsApp);
             _selectNextKind = ClientKind.WhatsApp;
             await Task.Run(ClientLauncher.StartWhatsApp);
-            StatusMessageText.Text = "WhatsApp 已启动，正在等待窗口…";
+            ShowTemporaryStatus("WhatsApp 已启动，正在等待窗口…");
             await WaitForExpectedWindowAsync(ClientKind.WhatsApp);
         }
         catch (Exception exception)
@@ -931,7 +989,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_selectNextKind == kind)
         {
             ClearPendingLaunch(kind);
-            StatusMessageText.Text = "客户端可能仍在启动；窗口出现后会自动接入。";
+            ShowTemporaryStatus("客户端可能仍在启动；窗口出现后会自动接入。");
         }
     }
 
@@ -1032,7 +1090,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             Entries.Move(oldIndex, insertionIndex);
             SaveAccountOrder();
-            StatusMessageText.Text = "账号顺序已保存。";
+            ShowTemporaryStatus("账号顺序已保存。");
         }
 
         if (_selectionBeforeAccountDrag is not null && Entries.Contains(_selectionBeforeAccountDrag))
@@ -1169,7 +1227,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         CurrentStatusText.Text = entry.IsAttached
-            ? BuildCurrentStatusText(entry, "已嵌入 · 运行中")
+            ? BuildCurrentStatusText(entry, "已接入 · 运行中")
             : BuildCurrentStatusText(entry, "当前为独立窗口");
     }
 
@@ -1217,7 +1275,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已嵌入 · 运行中");
+        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入 · 运行中");
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
@@ -1242,7 +1300,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.IsAttached = false;
             entry.Status = "独立窗口";
             DiagnosticLogService.WriteAccountEvent(entry, "manual-detach");
-            StatusMessageText.Text = $"{entry.DisplayName} 已弹出到桌面。";
+            ShowTemporaryStatus($"{entry.DisplayName} 已弹出到桌面。");
         }
         else
         {
@@ -1250,13 +1308,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
-            entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
                 entry.IsAttached ? "manual-attach" : "manual-attach-failed");
-            StatusMessageText.Text = entry.IsAttached
+            ShowTemporaryStatus(entry.IsAttached
                 ? $"{entry.DisplayName} 已重新嵌入。"
-                : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。";
+                : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。",
+                entry.IsAttached ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
         }
 
         UpdateWindowCount();
@@ -1272,11 +1331,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // “全部接入”是用户显式请求把容器外所有受支持的客户端都接入，
         // 包括之前从列表移除的窗口。
-        StatusMessageText.Text = "正在接入容器外的客户端窗口…";
+        ShowTemporaryStatus("正在接入容器外的客户端窗口…");
         var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
-        StatusMessageText.Text = attachedCount > 0
-            ? $"全部接入完成：{attachedCount} 个窗口。"
-            : "没有发现可接入的微信或 WhatsApp 主窗口。";
+        ShowTemporaryStatus(attachedCount > 0
+            ? "接入检查完成"
+            : "未发现可接入的客户端窗口");
     }
 
     private async void ScanClients_Click(object sender, RoutedEventArgs e)
@@ -1286,11 +1345,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        StatusMessageText.Text = "正在扫描并接入本地客户端…";
+        ShowTemporaryStatus("正在扫描并接入本地客户端…");
         var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
-        StatusMessageText.Text = attachedCount > 0
-            ? $"扫描完成：已接入 {attachedCount} 个窗口。"
-            : "没有发现新的客户端窗口。";
+        ShowTemporaryStatus(attachedCount > 0
+            ? "扫描完成"
+            : "未发现新的客户端窗口");
     }
 
     /// <summary>
@@ -1327,7 +1386,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false);
-            entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             if (entry.IsAttached)
             {
                 attachedCount++;
@@ -1453,7 +1512,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             clientVersion,
             ClientSessionState.Main)
         {
-            Status = "已嵌入",
+            Status = "已接入",
             IsOnline = true,
             IsAttached = true
         };
@@ -1474,6 +1533,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.AlertDisplayMode = AlertDisplayMode.None;
             entry.PendingClearAfterDetection = false;
             _queuedImmediateBadgeScans.Remove(entry);
+            _pendingClearRechecks.Remove(entry);
             _badgeStableState.Remove(entry);
         }
 
@@ -1811,11 +1871,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             Clipboard.SetText(DiagnosticLogService.BuildClipboardReport(entry));
             DiagnosticLogService.WriteAccountEvent(entry, "diagnostic-copied");
-            StatusMessageText.Text = $"{entry.DisplayName} 的诊断信息已复制到剪贴板。";
+            ShowTemporaryStatus($"{entry.DisplayName} 的诊断信息已复制到剪贴板。");
         }
         catch (Exception exception)
         {
-            StatusMessageText.Text = $"复制诊断信息失败：{exception.Message}";
+            ShowTemporaryStatus($"复制诊断信息失败：{exception.Message}", TimeSpan.FromSeconds(12));
         }
     }
 
@@ -1848,7 +1908,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CurrentTitleText.Text = entry.DisplayName;
         }
 
-        StatusMessageText.Text = $"账号名称已更新为“{entry.DisplayName}”。";
+        ShowTemporaryStatus($"账号名称已更新为“{entry.DisplayName}”。");
     }
 
     private void CloseEntry_Click(object sender, RoutedEventArgs e)
@@ -1869,7 +1929,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_isPreviewMode)
         {
-            StatusMessageText.Text = "预览模式不会关闭本地客户端。";
+            ShowTemporaryStatus("预览模式不会关闭本地客户端。");
             return;
         }
 
@@ -1905,9 +1965,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             IntPtr.Zero);
         var displayName = entry.DisplayName;
         RemoveEntry(entry);
-        StatusMessageText.Text = closeRequested
+        ShowTemporaryStatus(closeRequested
             ? $"已关闭并移除 {displayName}。"
-            : $"已从列表移除 {displayName}；客户端未响应关闭请求。";
+            : $"已从列表移除 {displayName}；客户端未响应关闭请求。",
+            closeRequested ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
     }
 
     private void ShowClientSelfTestPopup()

@@ -101,6 +101,8 @@
         </Style>
 
         <Style x:Key="AccountItemStyle" TargetType="ListBoxItem">
+            <!-- Suppress only the default dotted keyboard focus border; preserve the blue selected-account accent. -->
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Margin" Value="8,2" />
             <Setter Property="Padding" Value="0" />
@@ -256,8 +258,14 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="{StaticResource SidebarSurfaceBrush}"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                <!-- Layered desktop: continuous matte sidebar surface (zone A). -->
+                <Border Grid.Column="0" BorderBrush="#CBD2DB" BorderThickness="0,0,1,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#F3F5F8" Offset="0"/>
+                            <GradientStop Color="#EBEFF4" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="48" />
@@ -402,13 +410,28 @@
                               DragDelta="SidebarSplitter_DragDelta"
                               DragCompleted="SidebarSplitter_DragCompleted" />
 
-                <Grid Grid.Column="2" Background="{StaticResource WorkspaceSurfaceBrush}">
+                <!-- Zone B/C: a calm recessed workspace surface behind native windows.
+                     No hosting bounds, clipping, window styles or input behavior change. -->
+                <Grid Grid.Column="2">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#E9EDF2" Offset="0"/>
+                            <GradientStop Color="#E3E8EE" Offset="0.88"/>
+                            <GradientStop Color="#DEE5ED" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Grid.Background>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="44" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Border Grid.Row="0" Background="{StaticResource ChromeSurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="0,0,0,1">
+                    <!-- Subtle layered header (zone B) without changing its 44px height. -->
+                    <Border Grid.Row="0" BorderBrush="#CBD3DE" BorderThickness="0,0,0,1">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#F5F7FA" Offset="0"/>
+                                <GradientStop Color="#EAEFF5" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
                         <Grid Margin="20,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -419,14 +442,20 @@
                                 <TextBlock x:Name="CurrentStatusText" Text="尚未接入" FontSize="12.5"
                                            Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                             </StackPanel>
-                            <Border Grid.Column="1" Padding="10,4" Background="#EBF3FF" BorderBrush="#D2E4FF"
-                                    BorderThickness="1" CornerRadius="7" VerticalAlignment="Center">
-                                <TextBlock Text="本地客户端" Foreground="{StaticResource AccentBrush}" FontSize="10.5" />
-                            </Border>
+                            <TextBlock Grid.Column="1" Text="本地运行 · 不读取聊天数据"
+                                       FontSize="11.5" Foreground="#667085"
+                                       VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                     </Border>
                     <Grid x:Name="ClientArea" Grid.Row="1" ClipToBounds="True"
-                          SnapsToDevicePixels="True" Background="{StaticResource WorkspaceSurfaceBrush}">
+                          SnapsToDevicePixels="True">
+                        <Grid.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#E9EDF2" Offset="0"/>
+                                <GradientStop Color="#E4E9F0" Offset="0.93"/>
+                                <GradientStop Color="#DBE2EA" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Grid.Background>
                         <!-- 通铺式嵌入：原生窗口直接铺满整个工作区，不做卡片包装
                              （无留白/无边框/无圆角/无投影）。窗口左右紧贴侧栏与外壳，
                              视觉上作为界面的一部分存在，而非悬浮的独立卡片。 -->
@@ -463,8 +492,13 @@
                     </StackPanel>
                     <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="11.5"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Column="2" Text="本地运行 · 不读取聊天数据" FontSize="11.5"
-                               Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="LocalDateText" FontSize="11.5" Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="11.5" Foreground="#475467"
+                                   FontWeight="SemiBold" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="11.5"
+                                   Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>
