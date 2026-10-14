@@ -26,6 +26,9 @@ public sealed class ExternalWindowHost : HwndHost
     private bool _ownerMinimized;
     private int _modalDialogSuppressionCount;
     private int _zOrderSuppressionCount;
+    // Opt-in only: WS_CHILD can suppress native WeChat shell notifications.
+    private static readonly bool ExperimentalChildHosting =
+        Environment.GetEnvironmentVariable("JNEST_CHILD_HOST") == "1";
 
     public ExternalWindowHost()
     {
@@ -86,6 +89,30 @@ public sealed class ExternalWindowHost : HwndHost
                 originalRegion);
 
             NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+            if (ExperimentalChildHosting)
+            {
+                var childStyle = unchecked((long)(uint)state.Style.ToInt64());
+                childStyle &= ~(NativeMethods.WS_POPUP | NativeMethods.WS_CAPTION
+                    | NativeMethods.WS_THICKFRAME | NativeMethods.WS_SYSMENU
+                    | NativeMethods.WS_MINIMIZEBOX | NativeMethods.WS_MAXIMIZEBOX);
+                childStyle |= NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE;
+                NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE,
+                    new IntPtr(childStyle));
+                NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE,
+                    CreateOverlayExtendedStyle(state.ExtendedStyle));
+                NativeMethods.SetParent(handle, _hostHandle);
+                if (NativeMethods.GetParent(handle) == _hostHandle)
+                {
+                    _hostedWindows.TryAdd(handle, state with { ChildHosted = true });
+                    if (makeActive) ShowOnly(handle);
+                    else NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
+                    return true;
+                }
+                NativeMethods.SetParent(handle, IntPtr.Zero);
+                NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
+                NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE,
+                    state.ExtendedStyle);
+            }
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
             NativeMethods.SetWindowLongPtr(
                 handle,
@@ -143,7 +170,9 @@ public sealed class ExternalWindowHost : HwndHost
         {
             if (hostedHandle != handle && NativeMethods.IsWindow(hostedHandle))
             {
-                ParkWindowOffScreen(hostedHandle);
+                if (_hostedWindows.TryGetValue(hostedHandle, out var other) && other.ChildHosted)
+                    NativeMethods.ShowWindow(hostedHandle, NativeMethods.SW_HIDE);
+                else ParkWindowOffScreen(hostedHandle);
             }
         }
 
@@ -293,6 +322,8 @@ public sealed class ExternalWindowHost : HwndHost
         if (!NativeMethods.SetWindowRgn(handle, restoreRegion, true)
             && restoreRegion != IntPtr.Zero)
             NativeMethods.DeleteObject(restoreRegion);
+        if (state.ChildHosted)
+            NativeMethods.SetParent(handle, IntPtr.Zero);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, state.Owner);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
@@ -360,6 +391,14 @@ public sealed class ExternalWindowHost : HwndHost
             || !NativeMethods.GetClientRect(_hostHandle, out var hostRect)
             || !_hostedWindows.TryGetValue(_currentHandle, out var state)) return;
 
+        if (state.ChildHosted)
+        {
+            NativeMethods.SetWindowPos(_currentHandle, IntPtr.Zero, 0, 0,
+                Math.Max(1, hostRect.Width), Math.Max(1, hostRect.Height),
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE
+                | NativeMethods.SWP_SHOWWINDOW);
+            return;
+        }
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
         // 边界对齐（旧版基线）：窗口矩形 = 容器客户区 + 四周 insets，位置 = 容器原点 - insets。
@@ -434,6 +473,16 @@ public sealed class ExternalWindowHost : HwndHost
         if (!_hostedWindows.TryGetValue(handle, out var state) || !NativeMethods.IsWindow(handle)) return;
         var selected = _currentHandle == handle && !_ownerMinimized
             && _modalDialogSuppressionCount == 0;
+        if (state.ChildHosted)
+        {
+            if (selected)
+            {
+                ResizeCurrentWindow();
+                NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
+            }
+            else NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
+            return;
+        }
         // 托管窗口统一保持 WS_VISIBLE：选中的在容器内显示，非选中的停靠到屏幕外。
         // 若按 selected 清除 WS_VISIBLE，非选中窗口会被"隐藏"，其标题栏无法闪烁，
         // FlashWindowEx/HSHELL_FLASH 来消息通知会失效。真正的显隐区分交给停靠位置。
@@ -625,5 +674,6 @@ public sealed class ExternalWindowHost : HwndHost
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
         NativeMethods.WINDOWPLACEMENT? Placement,
-        IntPtr OriginalRegion);
+        IntPtr OriginalRegion,
+        bool ChildHosted = false);
 }
