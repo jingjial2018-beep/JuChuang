@@ -75,7 +75,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _scanTimer.Tick += ScanTimer_Tick;
         _statusResetTimer.Tick += (_, _) => ClearTemporaryStatus();
         StateChanged += MainWindow_StateChanged;
-        Activated += (_, _) => TriggerForegroundBadgeCalibration();
+        Activated += (_, _) =>
+        {
+            TriggerForegroundBadgeCalibration();
+            if (SelectedEntry is { } entry && WindowState != WindowState.Minimized)
+                DismissAccountToast(entry);
+        };
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
     }
