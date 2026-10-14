@@ -306,9 +306,9 @@ public partial class MainWindow
 
             _notifyIcon?.ShowBalloonTip(
                 3000,
-                "JNest",
-                $"{entry.DisplayName} 收到新消息。",
-                WinForms.ToolTipIcon.Info);
+                entry.DisplayName,
+                "收到新消息。",
+                WinForms.ToolTipIcon.None);
         }
 
         var flashInfo = new NativeMethods.FLASHWINFO
