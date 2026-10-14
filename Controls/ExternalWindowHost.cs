@@ -154,7 +154,7 @@ public sealed class ExternalWindowHost : HwndHost
         }
         else
         {
-            ParkWindowOffScreen(handle);
+            ParkHostedWindow(handle);
         }
         return true;
     }
@@ -232,7 +232,7 @@ public sealed class ExternalWindowHost : HwndHost
         {
             foreach (var handle in _hostedWindows.Keys)
             {
-                ParkWindowOffScreen(handle);
+                ParkHostedWindow(handle);
             }
             return;
         }
@@ -250,7 +250,7 @@ public sealed class ExternalWindowHost : HwndHost
     {
         foreach (var handle in _hostedWindows.Keys)
         {
-            ParkWindowOffScreen(handle);
+            ParkHostedWindow(handle);
         }
         _currentHandle = IntPtr.Zero;
     }
@@ -262,7 +262,7 @@ public sealed class ExternalWindowHost : HwndHost
 
         foreach (var handle in _hostedWindows.Keys)
         {
-            ParkWindowOffScreen(handle);
+            ParkHostedWindow(handle);
         }
     }
 
@@ -311,7 +311,12 @@ public sealed class ExternalWindowHost : HwndHost
     {
         if (!_hostedWindows.TryRemove(handle, out var state)) return false;
         if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
-        if (!NativeMethods.IsWindow(handle)) return true;
+        if (!NativeMethods.IsWindow(handle))
+        {
+            if (state.OriginalRegion != IntPtr.Zero)
+                NativeMethods.DeleteObject(state.OriginalRegion);
+            return true;
+        }
 
         // Restore the native window *before* restoring its rectangle:
         // SW_RESTORE after SetWindowPos can overwrite the saved geometry with a
@@ -501,7 +506,7 @@ public sealed class ExternalWindowHost : HwndHost
             // 失去标题栏与任务栏按钮，客户端调用 FlashWindowEx 时无法闪烁，也就收不到
             // HSHELL_FLASH 来消息通知。屏幕外停靠后窗口对系统仍是"可见"的，标题栏闪烁
             // 能正常触发通知，而用户看不到它（屏幕外 + 最小化窗口栏外）。
-            ParkWindowOffScreen(handle);
+            ParkHostedWindow(handle);
             return;
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
@@ -634,6 +639,15 @@ public sealed class ExternalWindowHost : HwndHost
 
     private IntPtr GetOwnerRoot() => _hostHandle == IntPtr.Zero
         ? IntPtr.Zero : NativeMethods.GetAncestor(_hostHandle, NativeMethods.GA_ROOT);
+
+    // In child mode hiding is safe; overlay mode must remain visible off-screen
+    // so WeChat's HSHELL_FLASH can still trigger notification detection.
+    private void ParkHostedWindow(IntPtr handle)
+    {
+        if (_hostedWindows.TryGetValue(handle, out var state) && state.ChildHosted)
+            NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
+        else ParkWindowOffScreen(handle);
+    }
 
     // 把非选中窗口"停靠"到屏幕外（-32000,-32000）并保持显示，而不是 SW_HIDE。
     // SW_HIDE 会移除窗口的标题栏与任务栏按钮，导致客户端 FlashWindowEx 无法闪烁、
