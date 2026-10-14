@@ -26,7 +26,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly Dictionary<string, WeChatLocalProfile> _profilesByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, WeChatAccountIdentity> _resolvedWeChatAccounts = [];
-    private readonly HashSet<int> _accountResolutionLoads = [];
+    private readonly Dictionary<int, long> _accountResolutionLoads = [];
+    private long _accountResolutionSequence;
     private readonly Dictionary<int, DateTime> _accountResolutionRetryAfter = [];
     private readonly Dictionary<int, int> _accountResolutionFailures = [];
     private readonly HashSet<IntPtr> _dismissedWindowHandles = [];
@@ -1560,14 +1561,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (_accountResolutionLoads.Contains(processId)
+        if (_accountResolutionLoads.ContainsKey(processId)
             || (_accountResolutionRetryAfter.TryGetValue(processId, out var retryAfter)
                 && retryAfter > DateTime.UtcNow))
         {
             return;
         }
 
-        _accountResolutionLoads.Add(processId);
+        var resolutionToken = ++_accountResolutionSequence;
+        _accountResolutionLoads[processId] = resolutionToken;
         if (entry.ProfileState is not AccountProfileState.Ready
             and not AccountProfileState.ReadyFromCache
             and not AccountProfileState.ReadyWithoutAvatar)
@@ -1696,7 +1698,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         finally
         {
-            _accountResolutionLoads.Remove(processId);
+            // A previous request must not clear a newer request for a reused PID.
+            if (_accountResolutionLoads.TryGetValue(processId, out var currentToken)
+                && currentToken == resolutionToken)
+            {
+                _accountResolutionLoads.Remove(processId);
+            }
         }
     }
 
