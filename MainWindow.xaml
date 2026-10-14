@@ -207,26 +207,7 @@
                                    Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,18,0">
-                        <Button x:Name="AddWeChatButton" Style="{StaticResource ToolbarButtonStyle}"
-                                Content="添加微信" Click="NewWeChat_Click"
-                                ToolTip="启动并接入一个新的微信窗口" />
-                        <Button x:Name="AddWhatsAppMenuItem" Style="{StaticResource ToolbarButtonStyle}"
-                                Content="添加 WhatsApp" Click="AddWhatsApp_Click"
-                                ToolTip="启动并接入 WhatsApp 桌面客户端" />
-                        <Button x:Name="PopOutButton" Style="{StaticResource ToolbarButtonStyle}" IsEnabled="False"
-                                Click="PopOutButton_Click" ToolTip="将当前客户端恢复为桌面独立窗口">
-                            <TextBlock x:Name="PopOutButtonText" Text="弹出窗口" VerticalAlignment="Center" />
-                        </Button>
-                        <Button Style="{StaticResource ToolbarButtonStyle}" Click="ReconnectAll_Click"
-                                Content="全部接入"
-                                ToolTip="把容器外的微信和 WhatsApp 主窗口全部接入" />
-                        <Button Style="{StaticResource ToolbarButtonStyle}" Click="ScanClients_Click"
-                                Content="扫描客户端"
-                                ToolTip="扫描当前正在运行的本地客户端" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
+<StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
                         <Button x:Name="MainMenuButton" Width="44" Height="44"
                                 Style="{StaticResource WindowControlButtonStyle}" ToolTip="菜单"
                                 Click="OpenMainMenu_Click">
@@ -244,6 +225,19 @@
                                             <Setter Property="Padding" Value="14,6"/>
                                         </Style>
                                     </ContextMenu.Resources>
+                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"
+                                              ToolTip="启动并接入一个新的微信窗口"/>
+                                    <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"
+                                              ToolTip="启动并接入 WhatsApp 桌面客户端"/>
+                                    <MenuItem x:Name="PopOutButton" IsEnabled="False" Click="PopOutButton_Click"
+                                              ToolTip="将当前客户端恢复为桌面独立窗口">
+                                        <MenuItem.Header>
+                                            <TextBlock x:Name="PopOutButtonText" Text="弹出窗口"/>
+                                        </MenuItem.Header>
+                                    </MenuItem>
+                                    <MenuItem Header="全部接入" Click="ReconnectAll_Click"/>
+                                    <MenuItem Header="扫描客户端" Click="ScanClients_Click"/>
+                                    <Separator/>
                                     <MenuItem Header="设置" Click="Settings_Click"/>
                                     <MenuItem Header="关于 JNest" Click="About_Click"/>
                                     <Separator/>
