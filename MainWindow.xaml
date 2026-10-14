@@ -455,11 +455,24 @@
                                 <GradientStop Color="#DBE2EA" Offset="1"/>
                             </LinearGradientBrush>
                         </Grid.Background>
-                        <!-- 通铺式嵌入：原生窗口直接铺满整个工作区，不做卡片包装
-                             （无留白/无边框/无圆角/无投影）。窗口左右紧贴侧栏与外壳，
-                             视觉上作为界面的一部分存在，而非悬浮的独立卡片。 -->
-                        <controls:ExternalWindowHost x:Name="WindowHost" Visibility="Collapsed" />
-                        <Grid x:Name="EmptyState" Background="{StaticResource WorkspaceSurfaceBrush}">
+                        <!-- Experimental recessed slot: the existing native overlay remains
+                             untouched; only its WPF layout rectangle is inset by 6 DIP.
+                             The frame sits BEHIND the HWND, never on top of input. -->
+                        <Border Margin="5" CornerRadius="8" Background="#CAD2DD"
+                                BorderBrush="#BAC5D2" BorderThickness="1"
+                                IsHitTestVisible="False" SnapsToDevicePixels="True">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#334155" ShadowDepth="2"
+                                                  BlurRadius="9" Opacity="0.22"/>
+                            </Border.Effect>
+                        </Border>
+                        <Border Margin="6" Background="#F7F8FA" CornerRadius="5"
+                                BorderBrush="#E7EBF0" BorderThickness="1"
+                                IsHitTestVisible="False"/>
+                        <controls:ExternalWindowHost x:Name="WindowHost"
+                                                     Margin="6" Visibility="Collapsed" />
+                        <Grid x:Name="EmptyState" Margin="6"
+                              Background="{StaticResource WorkspaceSurfaceBrush}">
                             <StackPanel Width="420" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border Width="56" Height="56" Background="#EAF2FF" CornerRadius="16">
                                     <Path Width="22" Height="22" Stretch="Uniform" Stroke="{StaticResource AccentBrush}"
