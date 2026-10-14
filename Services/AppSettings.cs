@@ -19,6 +19,12 @@ public sealed class AppSettings
 
     public bool LaunchAtStartup { get; set; }
 
+    public bool EnableTaskbarFlash { get; set; } = true;
+
+    public bool EnableToastNotifications { get; set; } = true;
+
+    public bool EnableNotificationSound { get; set; } = true;
+
     public double? SidebarWidth { get; set; }
 
     public Dictionary<string, string> AccountNamesByIdentity { get; set; } = new(StringComparer.OrdinalIgnoreCase);
