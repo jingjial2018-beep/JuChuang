@@ -101,6 +101,8 @@
         </Style>
 
         <Style x:Key="AccountItemStyle" TargetType="ListBoxItem">
+            <!-- Suppress only the default dotted keyboard focus border; preserve the blue selected-account accent. -->
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Margin" Value="8,2" />
             <Setter Property="Padding" Value="0" />
