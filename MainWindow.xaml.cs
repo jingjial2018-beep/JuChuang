@@ -1320,28 +1320,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
-        // 弹窗期间抑制嵌入窗口置顶/激活：否则窗口锁定定时器会反复把客户端
-        // SetWindowPos(HWND_TOP)，把"关于"对话框顶到嵌入窗口之下。
         WindowHost.SuspendOverlayZOrder();
         try
         {
-            // 版本号从程序集元数据动态读取，避免与 csproj 的 <Version> 脱节。
-            var version = typeof(MainWindow).Assembly.GetName().Version;
-            var displayVersion = version is null
-                ? "未知"
-                : $"{version.Major}.{version.Minor}.{version.Build}";
-            MessageBox.Show(
-                this,
-                $"JNest {displayVersion}\n\n" +
-                "统一管理本地微信与 WhatsApp 窗口。\n" +
-                "微信版本从当前本地客户端自动读取。\n" +
-                "嵌入窗口固定在容器内，只能通过顶部“弹出窗口”恢复独立窗口。\n" +
-                "嵌入时保留客户端完整原生样式（标题栏、边框、圆角与阴影）。\n" +
-                "仅在本机只读获取当前微信账号的昵称与头像缓存，不读取聊天数据或登录凭据。\n" +
-                "客户端发出 Windows 注意请求时会显示消息提示；JNest 在后台或最小化时通过任务栏闪烁与托盘提示补充提醒。",
-                "关于JNest",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            new AboutDialog { Owner = this }.ShowDialog();
         }
         finally
         {

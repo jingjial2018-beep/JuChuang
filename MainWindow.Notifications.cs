@@ -1,4 +1,6 @@
 using System.Media;
+using System.IO;
+using Microsoft.Toolkit.Uwp.Notifications;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -304,11 +306,7 @@ public partial class MainWindow
                 Show();
             }
 
-            _notifyIcon?.ShowBalloonTip(
-                3000,
-                "JNest",
-                $"{entry.DisplayName} 收到新消息。",
-                WinForms.ToolTipIcon.Info);
+            ShowAccountNotification(entry);
         }
 
         var flashInfo = new NativeMethods.FLASHWINFO
@@ -322,6 +320,51 @@ public partial class MainWindow
         // 返回值是调用前标题栏是否处于活动状态，不能作为调用是否成功的判断。
         NativeMethods.FlashWindowEx(ref flashInfo);
         DiagnosticLogService.WriteActivityEvent("taskbar-flash-requested", entry.ProcessId);
+    }
+
+    /// <summary>Use the existing account avatar cache for Windows toast; retain a legacy tray fallback.</summary>
+    private void ShowAccountNotification(ClientWindowEntry entry)
+    {
+        try
+        {
+            var toast = new ToastContentBuilder()
+                .AddText(entry.DisplayName)
+                .AddText("收到新消息。");
+
+            var avatar = entry.AvatarPath;
+            if (!string.IsNullOrWhiteSpace(avatar) && File.Exists(avatar))
+            {
+                toast.AddAppLogoOverride(new Uri(Path.GetFullPath(avatar)),
+                    ToastGenericAppLogoCrop.Circle);
+            }
+            else
+            {
+                // Only a public app logo is written to the temporary image cache.
+                // Chat/message content and account profile data are never exported.
+                var fallback = Path.Combine(Path.GetTempPath(), "JNest-brand-toast.png");
+                if (!File.Exists(fallback))
+                {
+                    var resource = Application.GetResourceStream(
+                        new Uri("pack://application:,,,/Assets/app-logo.png"));
+                    if (resource is not null)
+                    {
+                        using var input = resource.Stream;
+                        using var output = File.Create(fallback);
+                        input.CopyTo(output);
+                    }
+                }
+                if (File.Exists(fallback))
+                    toast.AddAppLogoOverride(new Uri(fallback), ToastGenericAppLogoCrop.Circle);
+            }
+            toast.Show();
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteActivityEvent(
+                "toast-fallback-" + exception.GetType().Name, entry.ProcessId);
+            _notifyIcon?.ShowBalloonTip(3000, entry.DisplayName,
+                "收到新消息。", WinForms.ToolTipIcon.None);
+        }
     }
 
 }
