@@ -74,6 +74,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _scanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _scanTimer.Tick += ScanTimer_Tick;
         _statusResetTimer.Tick += (_, _) => ClearTemporaryStatus();
+        _clockTimer.Tick += (_, _) => UpdateLocalClock();
+        UpdateLocalClock();
+        _clockTimer.Start();
         StateChanged += MainWindow_StateChanged;
         Activated += (_, _) =>
         {
@@ -86,6 +89,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private void UpdateLocalClock()
+    {
+        var now = DateTimeOffset.Now;
+        LocalDateText.Text = now.ToString("yyyy/MM/dd", System.Globalization.CultureInfo.InvariantCulture);
+        LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+        var offset = now.Offset;
+        LocalTimeZoneText.Text = $"UTC{(offset < TimeSpan.Zero ? "-" : "+")}{Math.Abs(offset.Hours):00}:{Math.Abs(offset.Minutes):00}";
+    }
     private string? _pendingStatusText;
     private ClientWindowEntry? _pendingMessageEntry;
 
@@ -337,6 +349,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SaveWindowPlacement();
         _scanTimer.Stop();
         _statusResetTimer.Stop();
+        _clockTimer.Stop();
         StopBadgePolling();
         StopClientActivityMonitoring();
         if (_windowSource is not null)
@@ -644,7 +657,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         entry.SessionState = ClientSessionState.Main;
                     }
 
-                    entry.Status = entry.IsAttached ? "已嵌入" : "独立窗口";
+                    entry.Status = entry.IsAttached ? "已接入" : "独立窗口";
                     continue;
                 }
 
@@ -719,7 +732,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         existingEntry.IsAttached = WindowHost.AttachWindow(
                             existingEntry.Handle,
                             makeActive: false);
-                        existingEntry.Status = existingEntry.IsAttached ? "已嵌入" : "接入失败";
+                        existingEntry.Status = existingEntry.IsAttached ? "已接入" : "接入失败";
                     }
 
                     TryCompletePendingLaunch(candidate, existingEntry);
@@ -750,7 +763,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         rebindingEntry.IsAttached = WindowHost.AttachWindow(
                             candidate.Handle,
                             makeActive);
-                        rebindingEntry.Status = rebindingEntry.IsAttached ? "已嵌入" : "接入失败";
+                        rebindingEntry.Status = rebindingEntry.IsAttached ? "已接入" : "接入失败";
                         if (makeActive && rebindingEntry.IsAttached)
                         {
                             QueueHostedWindowRefresh(rebindingEntry);
@@ -783,7 +796,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 ApplySavedAccountOrder();
 
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false);
-                entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+                entry.Status = entry.IsAttached ? "已接入" : "接入失败";
                 TryCompletePendingLaunch(candidate, entry);
             }
 
@@ -1214,7 +1227,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         CurrentStatusText.Text = entry.IsAttached
-            ? BuildCurrentStatusText(entry, "已嵌入 · 运行中")
+            ? BuildCurrentStatusText(entry, "已接入 · 运行中")
             : BuildCurrentStatusText(entry, "当前为独立窗口");
     }
 
@@ -1262,7 +1275,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已嵌入 · 运行中");
+        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入 · 运行中");
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
@@ -1295,7 +1308,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
-            entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
                 entry.IsAttached ? "manual-attach" : "manual-attach-failed");
@@ -1373,7 +1386,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false);
-            entry.Status = entry.IsAttached ? "已嵌入" : "接入失败";
+            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             if (entry.IsAttached)
             {
                 attachedCount++;
@@ -1499,7 +1512,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             clientVersion,
             ClientSessionState.Main)
         {
-            Status = "已嵌入",
+            Status = "已接入",
             IsOnline = true,
             IsAttached = true
         };
