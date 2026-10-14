@@ -28,7 +28,9 @@ public sealed class ExternalWindowHost : HwndHost
     private int _zOrderSuppressionCount;
     // Opt-in only: WS_CHILD can suppress native WeChat shell notifications.
     private static readonly bool ExperimentalChildHosting =
-        Environment.GetEnvironmentVariable("JNEST_CHILD_HOST") == "1";
+        Environment.GetEnvironmentVariable("JNEST_CHILD_HOST") == "1"
+        || Environment.GetCommandLineArgs().Any(arg =>
+            arg.Equals("--child-host", StringComparison.OrdinalIgnoreCase));
 
     public ExternalWindowHost()
     {
@@ -327,8 +329,12 @@ public sealed class ExternalWindowHost : HwndHost
         if (!NativeMethods.SetWindowRgn(handle, restoreRegion, true)
             && restoreRegion != IntPtr.Zero)
             NativeMethods.DeleteObject(restoreRegion);
+        // A child must lose WS_CHILD before it can become a desktop top-level window.
         if (state.ChildHosted)
+        {
+            NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
             NativeMethods.SetParent(handle, IntPtr.Zero);
+        }
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, state.Owner);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
