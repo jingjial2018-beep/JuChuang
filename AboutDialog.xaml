@@ -2,26 +2,37 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="关于 JNest" Icon="Assets/app.ico"
-        Width="520" SizeToContent="Height" MinHeight="260"
-        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
-        Background="#FFFFFF" ShowInTaskbar="False">
-    <Grid Margin="24">
+        Width="540" Height="378" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="#FFFFFF" ShowInTaskbar="False"
+        FontFamily="Microsoft YaHei UI, Segoe UI">
+    <Grid Margin="28,24,28,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
-            <Image Source="Assets/app-logo.png" Width="64" Height="64" Stretch="Uniform" Margin="0,0,16,0"/>
+        <StackPanel Grid.Row="0" Orientation="Horizontal">
+            <Image Source="Assets/app-logo.png" Width="56" Height="56" Stretch="Uniform" Margin="0,0,16,0"/>
             <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="JNest" FontSize="24" FontWeight="SemiBold" Foreground="#171B24"/>
-                <TextBlock x:Name="VersionText" FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+                <TextBlock Text="JNest" FontSize="23" FontWeight="SemiBold" Foreground="#182230"/>
+                <TextBlock Text="本地多账号窗口管理工具" FontSize="12.5" Foreground="#667085" Margin="0,2,0,0"/>
+                <TextBlock x:Name="VersionText" FontSize="11.5" Foreground="#667085" Margin="0,3,0,0"/>
             </StackPanel>
         </StackPanel>
-        <TextBlock Grid.Row="1" TextWrapping="Wrap" FontSize="13" LineHeight="22" Foreground="#344054"
-                   Text="统一管理本地微信与 WhatsApp 窗口。支持多账号切换、未读角标与任务栏提醒。消息检测在本机完成，不读取聊天消息正文。"/>
-        <Button Grid.Row="2" Content="确定" Width="92" Height="34"
-                HorizontalAlignment="Right" Margin="0,24,0,0"
-                IsDefault="True" Click="Close_Click"/>
+        <Border Grid.Row="1" Background="#E4E7EC" Height="1" Margin="0,20,0,18"/>
+        <StackPanel Grid.Row="2">
+            <TextBlock TextWrapping="Wrap" LineHeight="22" FontSize="13" Foreground="#344054"
+                       Text="JNest 为本地运行的微信与 WhatsApp 桌面客户端提供统一的窗口管理环境，支持多账号切换、窗口接入与恢复，以及未读状态和系统通知提醒。"/>
+            <TextBlock Text="本地运行与隐私" FontSize="13" FontWeight="SemiBold" Foreground="#344054"
+                       Margin="0,19,0,7"/>
+            <TextBlock TextWrapping="Wrap" LineHeight="21" FontSize="12.5" Foreground="#667085"
+                       Text="JNest 保留原生客户端界面，不读取聊天消息正文，也不提供聊天内容的云端同步服务。"/>
+        </StackPanel>
+        <Grid Grid.Row="3">
+            <TextBlock Text="Windows 11 · 64 位" FontSize="11.5" Foreground="#98A2B3" VerticalAlignment="Center"/>
+            <Button Content="确定" Width="96" Height="34" HorizontalAlignment="Right"
+                    IsDefault="True" Click="Close_Click"/>
+        </Grid>
     </Grid>
 </Window>
