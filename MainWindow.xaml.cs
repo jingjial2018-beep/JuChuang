@@ -1320,14 +1320,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
-        WindowHost.SuspendForModalDialog();
+        WindowHost.SuspendOverlayZOrder();
         try
         {
-            new AboutWindow { Owner = this }.ShowDialog();
+            new AboutDialog { Owner = this }.ShowDialog();
         }
         finally
         {
-            WindowHost.ResumeAfterModalDialog();
+            WindowHost.ResumeOverlayZOrder();
         }
     }
 
