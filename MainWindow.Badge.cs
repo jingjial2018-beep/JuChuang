@@ -234,6 +234,7 @@ public partial class MainWindow
 
         if (result is null)
         {
+            // Unavailable captures must never be mistaken for "no unread".
             DiagnosticLogService.WriteActivityEvent("badge-scan-unavailable", scannedProcessId);
             return;
         }
