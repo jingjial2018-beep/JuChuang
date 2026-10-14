@@ -213,16 +213,51 @@
                                 Click="OpenMainMenu_Click">
                             <Button.ContextMenu>
                                 <ContextMenu x:Name="MainMenuPopup" Placement="Bottom"
-                                             Background="#F7F8FA" BorderBrush="#D9DEE5"
-                                             BorderThickness="1" Padding="6"
-                                             MinWidth="196">
+                                             Background="#F8F9FB" BorderBrush="#D9DEE5"
+                                             BorderThickness="1" Padding="8" Width="240"
+                                             HasDropShadow="True">
+                                    <ContextMenu.Template>
+                                        <ControlTemplate TargetType="ContextMenu">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="1" CornerRadius="13" Padding="6">
+                                                <StackPanel IsItemsHost="True"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </ContextMenu.Template>
                                     <ContextMenu.Resources>
                                         <Style TargetType="MenuItem">
                                             <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
-                                            <Setter Property="FontSize" Value="13"/>
+                                            <Setter Property="FontSize" Value="13.5"/>
                                             <Setter Property="Foreground" Value="#263041"/>
                                             <Setter Property="Height" Value="39"/>
-                                            <Setter Property="Padding" Value="14,6"/>
+                                            <Setter Property="Padding" Value="17,0"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="MenuItem">
+                                                        <Border x:Name="MenuRow" Background="Transparent" CornerRadius="7" Margin="2,1">
+                                                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                                                              HorizontalAlignment="Left" Margin="{TemplateBinding Padding}"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsHighlighted" Value="True">
+                                                                <Setter TargetName="MenuRow" Property="Background" Value="#E8EDF3"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                <Setter Property="Opacity" Value="0.42"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                        <Style TargetType="Separator">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Separator">
+                                                        <Border Height="1" Margin="12,8" Background="#DDE2E9"/>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
                                         </Style>
                                     </ContextMenu.Resources>
                                     <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"
@@ -254,8 +289,9 @@
                         </Button>
                         <Button x:Name="MaximizeButton" Style="{StaticResource WindowControlButtonStyle}"
                                 ToolTip="最大化" Click="Maximize_Click">
-                            <Path x:Name="MaximizeGlyph" Width="10" Height="10" Stretch="Uniform" Stroke="#344054"
-                                  StrokeThickness="1.3" StrokeLineJoin="Miter" Data="M1,1 H9 V9 H1 Z" />
+                            <Path x:Name="MaximizeGlyph" Width="13" Height="13" Stretch="Uniform" Stroke="#344054"
+                                  StrokeThickness="1.15" StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" Data="M2,2 H11 V11 H2 Z" />
                         </Button>
                         <Button ToolTip="关闭" Tag="Close" Click="Close_Click">
                             <Button.Style>
