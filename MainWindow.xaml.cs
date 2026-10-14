@@ -819,14 +819,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (_isPreviewMode)
             {
-                StatusMessageText.Text = "预览模式不会启动本地客户端。";
+                ShowTemporaryStatus("预览模式不会启动本地客户端。");
             }
             return;
         }
 
         try
         {
-            StatusMessageText.Text = "正在准备微信客户端…";
+            ShowTemporaryStatus("正在准备微信客户端…");
             await Dispatcher.Yield(DispatcherPriority.Input);
 
             // Process/registry probing can be slow on machines with many client
@@ -844,7 +844,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 if (dialog.ShowDialog(this) != true)
                 {
-                    StatusMessageText.Text = "未选择微信客户端。";
+                    ShowTemporaryStatus("未选择微信客户端。");
                     return;
                 }
 
@@ -869,9 +869,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _pendingLaunchContext.ExpectProcess(createdProcessId);
             }
 
-            StatusMessageText.Text = launchResult.UsedMultiInstanceBypass
+            ShowTemporaryStatus(launchResult.UsedMultiInstanceBypass
                 ? $"微信多开进程已启动（PID {launchResult.ProcessId}），正在等待窗口…"
-                : "微信已启动，正在等待新窗口…";
+                : "微信已启动，正在等待新窗口…");
             await WaitForExpectedWindowAsync(ClientKind.WeChat);
         }
         catch (Exception exception)
@@ -892,7 +892,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (_isPreviewMode)
             {
-                StatusMessageText.Text = "预览模式不会启动本地客户端。";
+                ShowTemporaryStatus("预览模式不会启动本地客户端。");
             }
             return;
         }
@@ -907,17 +907,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SelectedEntry = existing;
                 AccountsList.SelectedItem = existing;
-                StatusMessageText.Text = "WhatsApp 已经在管理器中。";
+                ShowTemporaryStatus("WhatsApp 已经在管理器中。");
                 return;
             }
 
-            StatusMessageText.Text = "正在准备 WhatsApp 客户端…";
+            ShowTemporaryStatus("正在准备 WhatsApp 客户端…");
             await Dispatcher.Yield(DispatcherPriority.Input);
             _dismissedWindowHandles.Clear();
             _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WhatsApp);
             _selectNextKind = ClientKind.WhatsApp;
             await Task.Run(ClientLauncher.StartWhatsApp);
-            StatusMessageText.Text = "WhatsApp 已启动，正在等待窗口…";
+            ShowTemporaryStatus("WhatsApp 已启动，正在等待窗口…");
             await WaitForExpectedWindowAsync(ClientKind.WhatsApp);
         }
         catch (Exception exception)
@@ -963,7 +963,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_selectNextKind == kind)
         {
             ClearPendingLaunch(kind);
-            StatusMessageText.Text = "客户端可能仍在启动；窗口出现后会自动接入。";
+            ShowTemporaryStatus("客户端可能仍在启动；窗口出现后会自动接入。");
         }
     }
 
@@ -1064,7 +1064,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             Entries.Move(oldIndex, insertionIndex);
             SaveAccountOrder();
-            StatusMessageText.Text = "账号顺序已保存。";
+            ShowTemporaryStatus("账号顺序已保存。");
         }
 
         if (_selectionBeforeAccountDrag is not null && Entries.Contains(_selectionBeforeAccountDrag))
@@ -1274,7 +1274,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.IsAttached = false;
             entry.Status = "独立窗口";
             DiagnosticLogService.WriteAccountEvent(entry, "manual-detach");
-            StatusMessageText.Text = $"{entry.DisplayName} 已弹出到桌面。";
+            ShowTemporaryStatus($"{entry.DisplayName} 已弹出到桌面。");
         }
         else
         {
@@ -1286,9 +1286,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             DiagnosticLogService.WriteAccountEvent(
                 entry,
                 entry.IsAttached ? "manual-attach" : "manual-attach-failed");
-            StatusMessageText.Text = entry.IsAttached
+            ShowTemporaryStatus(entry.IsAttached
                 ? $"{entry.DisplayName} 已重新嵌入。"
-                : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。";
+                : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。",
+                entry.IsAttached ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
         }
 
         UpdateWindowCount();
@@ -1843,7 +1844,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             Clipboard.SetText(DiagnosticLogService.BuildClipboardReport(entry));
             DiagnosticLogService.WriteAccountEvent(entry, "diagnostic-copied");
-            StatusMessageText.Text = $"{entry.DisplayName} 的诊断信息已复制到剪贴板。";
+            ShowTemporaryStatus($"{entry.DisplayName} 的诊断信息已复制到剪贴板。");
         }
         catch (Exception exception)
         {
@@ -1880,7 +1881,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CurrentTitleText.Text = entry.DisplayName;
         }
 
-        StatusMessageText.Text = $"账号名称已更新为“{entry.DisplayName}”。";
+        ShowTemporaryStatus($"账号名称已更新为“{entry.DisplayName}”。");
     }
 
     private void CloseEntry_Click(object sender, RoutedEventArgs e)
@@ -1901,7 +1902,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_isPreviewMode)
         {
-            StatusMessageText.Text = "预览模式不会关闭本地客户端。";
+            ShowTemporaryStatus("预览模式不会关闭本地客户端。");
             return;
         }
 
@@ -1937,9 +1938,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             IntPtr.Zero);
         var displayName = entry.DisplayName;
         RemoveEntry(entry);
-        StatusMessageText.Text = closeRequested
+        ShowTemporaryStatus(closeRequested
             ? $"已关闭并移除 {displayName}。"
-            : $"已从列表移除 {displayName}；客户端未响应关闭请求。";
+            : $"已从列表移除 {displayName}；客户端未响应关闭请求。",
+            closeRequested ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
     }
 
     private void ShowClientSelfTestPopup()
