@@ -504,8 +504,8 @@
                                 <TextBlock x:Name="CurrentStatusText" Text="尚未接入" FontSize="12.5"
                                            Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="本地运行 · 不读取聊天数据"
-                                       FontSize="11.5" Foreground="#667085"
+                            <TextBlock Grid.Column="1" Text="本地管理 · 不读取聊天消息正文"
+                                       FontSize="12.5" Foreground="#667085"
                                        VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                     </Border>
@@ -549,16 +549,16 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="8" Height="8" Fill="#12B76A" />
-                        <TextBlock x:Name="WindowCountText" Text="已连接 0 个窗口" Margin="8,0,0,0"
-                                   FontSize="11.5" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="WindowCountText" Text="已接入 0 个窗口" Margin="8,0,0,0"
+                                   FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="11.5"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="LocalDateText" FontSize="11.5" Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
-                        <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="11.5" Foreground="#475467"
+                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="14" Foreground="#475467"
                                    FontWeight="SemiBold" FontFamily="Consolas" VerticalAlignment="Center" />
-                        <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="11.5"
+                        <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="13"
                                    Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>

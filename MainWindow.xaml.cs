@@ -1227,7 +1227,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         CurrentStatusText.Text = entry.IsAttached
-            ? BuildCurrentStatusText(entry, "已接入 · 运行中")
+            ? BuildCurrentStatusText(entry, "已接入")
             : BuildCurrentStatusText(entry, "当前为独立窗口");
     }
 
@@ -1275,7 +1275,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入 · 运行中");
+        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入");
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
@@ -1410,17 +1410,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OpenMainMenu_Click(object sender, RoutedEventArgs e)
     {
-        // Anchor the popup to the main window's upper-right inner edge,
-        // not the hamburger button. Use Custom placement to avoid WPF
-        // flipping a Bottom popup when its rightward offset crosses the screen.
-        MainMenuPopup.PlacementTarget = this;
+        // Popup coordinates must be relative to the target BUTTON. The previous
+        // Window target positioned the popup inside the caption area under WPF
+        // WindowChrome on high-DPI maximized windows.
+        MainMenuPopup.PlacementTarget = MainMenuButton;
         MainMenuPopup.Placement = PlacementMode.Custom;
         MainMenuPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
-        [
-            new CustomPopupPlacement(
-                new Point(Math.Max(0, targetSize.Width - popupSize.Width - 8), 48),
-                PopupPrimaryAxis.Horizontal)
-        ];
+        {
+            var left = MainMenuButton.TransformToAncestor(this).Transform(new Point(0, 0)).X;
+            var rightInset = 10d;
+            var x = ActualWidth - left - popupSize.Width - rightInset;
+            var y = targetSize.Height + 4;
+            return [new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.Horizontal)];
+        };
         MainMenuPopup.HorizontalOffset = 0;
         MainMenuPopup.VerticalOffset = 0;
         MainMenuPopup.IsOpen = true;
@@ -1518,7 +1520,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var online = Entries.Count(entry =>
             entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle));
-        WindowCountText.Text = $"已连接 {online} 个窗口";
+        WindowCountText.Text = $"已接入 {online} 个窗口";
     }
 
     private void LoadPreviewEntries()
@@ -1529,7 +1531,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Entries.Add(firstWeChat);
         Entries.Add(CreatePreviewEntry(ClientKind.WeChat, "示例账号 B", "4.1.13.12"));
         Entries.Add(CreatePreviewEntry(ClientKind.WhatsApp, "WhatsApp"));
-        WindowCountText.Text = "已连接 3 个窗口";
+        WindowCountText.Text = "已接入 3 个窗口";
         AccountsList.SelectedIndex = 1;
     }
 
