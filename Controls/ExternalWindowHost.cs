@@ -405,7 +405,7 @@ public sealed class ExternalWindowHost : HwndHost
         // 托管窗口统一保持 WS_VISIBLE：选中的在容器内显示，非选中的停靠到屏幕外。
         // 若按 selected 清除 WS_VISIBLE，非选中窗口会被"隐藏"，其标题栏无法闪烁，
         // FlashWindowEx/HSHELL_FLASH 来消息通知会失效。真正的显隐区分交给停靠位置。
-        var expectedStyle = CreateOverlayStyle(state.Style, isVisible: true);
+        var expectedStyle = CreateOverlayStyle(state.Style, isVisible: true, disableMaximize: state.DisableMaximize);
         if (NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE) != expectedStyle)
             NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, expectedStyle);
         var expectedExStyle = CreateOverlayExtendedStyle(state.ExtendedStyle);
