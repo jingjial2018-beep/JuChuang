@@ -1448,7 +1448,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             var dialog = new Window
             {
-                Title = "历史微信账号（只读）",
+                Title = "历史微信账号",
                 Owner = this,
                 Width = 620,
                 Height = 480,
@@ -1462,7 +1462,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             root.Children.Add(heading);
             var info = new TextBlock
             {
-                Text = "显示 JNest 已确认的缓存资料及尚未验证的本地登录目录。只读，不修改配置或自动登录。",
+                Text = "选择历史账号，可切换已经运行的微信或启动微信登录。不会修改微信配置文件。",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = System.Windows.Media.Brushes.DimGray,
                 Margin = new Thickness(0, 0, 0, 15)
@@ -1537,6 +1537,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 dialog.Tag = accountId;
                 dialog.Close();
             };
+            var actionButton = new Button
+            {
+                Content = "启动微信 / 切换窗口",
+                HorizontalAlignment = HorizontalAlignment.Right,
+                MinWidth = 155,
+                Padding = new Thickness(16, 8, 16, 8),
+                Margin = new Thickness(0, 12, 0, 0),
+                IsEnabled = false
+            };
+            void UpdateHistoryAction()
+            {
+                if (list.SelectedItem is not ListBoxItem rowItem
+                    || rowItem.Tag is not string accountId)
+                {
+                    actionButton.IsEnabled = false;
+                    return;
+                }
+                var running = Entries.Any(entry =>
+                    entry.Kind == ClientKind.WeChat && entry.IsAttached
+                    && NativeMethods.IsWindow(entry.Handle)
+                    && string.Equals(entry.AccountId, accountId, StringComparison.OrdinalIgnoreCase));
+                actionButton.IsEnabled = true;
+                actionButton.Content = running ? "切换窗口" : "启动微信";
+            }
+            list.SelectionChanged += (_, _) => UpdateHistoryAction();
+            actionButton.Click += (_, _) =>
+            {
+                if (list.SelectedItem is not ListBoxItem rowItem
+                    || rowItem.Tag is not string accountId) return;
+                dialog.Tag = accountId;
+                dialog.Close();
+            };
+            DockPanel.SetDock(actionButton, Dock.Bottom);
+            root.Children.Add(actionButton);
             root.Children.Add(list);
             dialog.Content = root;
             dialog.ShowDialog();
