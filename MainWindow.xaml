@@ -264,10 +264,8 @@
                                             </Setter>
                                         </Style>
                                     </ContextMenu.Resources>
-                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"
-                                              ToolTip="启动并接入一个新的微信窗口"/>
-                                    <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"
-                                              ToolTip="启动并接入 WhatsApp 桌面客户端"/>
+                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"/>
+                                    <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"/>
                                     <MenuItem x:Name="PopOutButton" IsEnabled="False" Click="PopOutButton_Click"
                                               ToolTip="将当前客户端恢复为桌面独立窗口">
                                         <MenuItem.Header>
