@@ -1480,7 +1480,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     Foreground = System.Windows.Media.Brushes.DimGray,
                     FontSize = 12
                 });
-                list.Items.Add(new ListBoxItem { Content = item, IsEnabled = false });
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(profile.AvatarPath)
+                        && System.IO.File.Exists(profile.AvatarPath))
+                    {
+                        var avatar = new System.Windows.Media.Imaging.BitmapImage();
+                        avatar.BeginInit();
+                        avatar.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                        avatar.UriSource = new Uri(profile.AvatarPath, UriKind.Absolute);
+                        avatar.EndInit();
+                        avatar.Freeze();
+                        row.Children.Add(new System.Windows.Shapes.Ellipse
+                        {
+                            Width = 40,
+                            Height = 40,
+                            Margin = new Thickness(0, 0, 12, 0),
+                            Fill = new System.Windows.Media.ImageBrush(avatar)
+                        });
+                    }
+                }
+                catch
+                {
+                    // Missing or corrupt avatar is not a reason to hide history.
+                }
+                row.Children.Add(item);
+                list.Items.Add(new ListBoxItem { Content = row, IsEnabled = false });
             }
             var cachedIds = new HashSet<string>(
                 profiles.Select(item => item.AccountId),
