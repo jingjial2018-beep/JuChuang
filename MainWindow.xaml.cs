@@ -1420,6 +1420,60 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         MainMenuPopup.IsOpen = true;
     }
 
+    private void HistoryAccounts_Click(object sender, RoutedEventArgs e)
+    {
+        var profiles = _profileCache.GetHistorySnapshot();
+        WindowHost.SuspendOverlayZOrder();
+        try
+        {
+            var dialog = new Window
+            {
+                Title = "历史微信账号（只读）",
+                Owner = this,
+                Width = 620,
+                Height = 480,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = System.Windows.Media.Brushes.White,
+                ShowInTaskbar = false
+            };
+            var root = new DockPanel { Margin = new Thickness(22) };
+            var heading = new TextBlock { Text = "历史微信账号", FontSize = 21, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 10) };
+            DockPanel.SetDock(heading, Dock.Top);
+            root.Children.Add(heading);
+            var info = new TextBlock
+            {
+                Text = "仅列出 JNest 已成功识别并缓存的账号。不修改微信配置、不自动登录。",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = System.Windows.Media.Brushes.DimGray,
+                Margin = new Thickness(0, 0, 0, 15)
+            };
+            DockPanel.SetDock(info, Dock.Top);
+            root.Children.Add(info);
+            var list = new ListBox { BorderThickness = new Thickness(0) };
+            foreach (var profile in profiles)
+            {
+                var item = new StackPanel { Margin = new Thickness(4, 8, 4, 8) };
+                item.Children.Add(new TextBlock { Text = profile.Nickname, FontSize = 15, FontWeight = FontWeights.SemiBold });
+                item.Children.Add(new TextBlock
+                {
+                    Text = $"账号：{profile.AccountId}  ·  最近缓存：{profile.UpdatedUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
+                    Foreground = System.Windows.Media.Brushes.DimGray,
+                    FontSize = 12
+                });
+                list.Items.Add(new ListBoxItem { Content = item, IsEnabled = false });
+            }
+            if (profiles.Count == 0)
+                list.Items.Add(new ListBoxItem { Content = "目前没有已确认的缓存账号。", IsEnabled = false });
+            root.Children.Add(list);
+            dialog.Content = root;
+            dialog.ShowDialog();
+        }
+        finally
+        {
+            WindowHost.ResumeOverlayZOrder();
+        }
+    }
+
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         WindowHost.SuspendOverlayZOrder();
