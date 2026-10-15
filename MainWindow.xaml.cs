@@ -517,7 +517,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _activityRetryGeneration.Remove(entry);
 
         var index = Entries.IndexOf(entry);
-        entry.DisplayName = index >= 0 ? $"微信 {index + 1}" : "微信";
+        entry.DisplayName = "微信 · 登录中";
 
         if (ReferenceEquals(entry, SelectedEntry))
         {
@@ -818,7 +818,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (candidate.Kind == ClientKind.WeChat)
         {
             _wechatNumber++;
-            displayName = $"微信 {_wechatNumber}";
+            displayName = "微信 · 登录中";
         }
         else
         {
@@ -1569,6 +1569,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 dialog.Tag = accountId;
                 dialog.Close();
             };
+            actionButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(248, 249, 251));
+            actionButton.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(38, 48, 65));
+            actionButton.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(217, 222, 229));
+            actionButton.BorderThickness = new Thickness(1);
+            actionButton.FontSize = 13;
+            actionButton.FontWeight = FontWeights.Medium;
+            actionButton.Height = 40;
+            var roundedButtonTemplate = new ControlTemplate(typeof(Button));
+            var roundedButtonBorder = new FrameworkElementFactory(typeof(Border));
+            roundedButtonBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
+            roundedButtonBorder.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            roundedButtonBorder.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            roundedButtonBorder.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            var roundedButtonContent = new FrameworkElementFactory(typeof(ContentPresenter));
+            roundedButtonContent.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            roundedButtonContent.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            roundedButtonBorder.AppendChild(roundedButtonContent);
+            roundedButtonTemplate.VisualTree = roundedButtonBorder;
+            actionButton.Template = roundedButtonTemplate;
             DockPanel.SetDock(actionButton, Dock.Bottom);
             root.Children.Add(actionButton);
             root.Children.Add(list);
