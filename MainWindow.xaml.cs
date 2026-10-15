@@ -1934,6 +1934,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             var account = resolution.Account;
             var profile = resolution.Result.Profile;
+            if (_requestedHistoryAccountId is not null
+                && (!_requestedHistoryProcessId.HasValue || _requestedHistoryProcessId.Value == processId))
+            {
+                var matched = string.Equals(_requestedHistoryAccountId, profile.AccountId,
+                    StringComparison.OrdinalIgnoreCase);
+                ShowTemporaryStatus(matched
+                    ? "历史微信账号身份验证成功，已自动接入。"
+                    : "登录身份与所选历史账号不一致；JNest 将显示实际账号，不会绑定成所选账号。",
+                    TimeSpan.FromSeconds(12));
+                _requestedHistoryAccountId = null;
+                _requestedHistoryProcessId = null;
+            }
             _resolvedWeChatAccounts[processId] = account;
             if (processStartTicks.HasValue)
                 _resolvedAccountProcessStarts[processId] = processStartTicks.Value;
