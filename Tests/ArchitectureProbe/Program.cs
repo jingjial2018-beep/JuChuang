@@ -64,7 +64,7 @@ Run("Account profile status is independent from HWND", () =>
         "fully ready profile state should stay hidden in the compact status summary");
 
     entry.ProfileState = AccountProfileState.ReadyWithoutAvatar;
-    Assert(entry.StatusSummary.Contains("头像待缓存", StringComparison.Ordinal),
+    Assert(entry.StatusSummary.Contains("头像待更新", StringComparison.Ordinal),
         "incomplete profile state should remain visible in the status summary");
 
     entry.ProfileState = AccountProfileState.Ready;

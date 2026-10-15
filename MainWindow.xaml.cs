@@ -106,6 +106,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ClientWindowEntry? messageEntry = null)
     {
         _statusResetTimer.Stop();
+        // Only trim sentence punctuation at the end of UI feedback.
+        // Never alter account names, version numbers or embedded periods.
+        message = message.TrimEnd().TrimEnd('。');
         StatusMessageText.Text = message;
         _pendingStatusText = message;
         _pendingMessageEntry = messageEntry;
@@ -253,10 +256,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             WindowState = WindowState.Maximized;
         }
 
-        if (_settings.SidebarWidth is { } sidebarWidth && sidebarWidth >= SidebarColumn.MinWidth)
-        {
-            SidebarColumn.Width = new GridLength(sidebarWidth);
-        }
     }
 
     private void SaveWindowPlacement()
@@ -269,22 +268,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _settings.WindowWidth = Width;
             _settings.WindowHeight = Height;
         }
-        _settings.SidebarWidth = SidebarColumn.Width.Value;
-        _settings.Save();
-    }
-
-    private void SidebarSplitter_DragDelta(object sender, DragDeltaEventArgs e)
-    {
-        // 拖动分隔条时实时调整侧栏宽度，Clamp 到 MinWidth/MaxWidth。
-        var target = SidebarColumn.Width.Value + e.HorizontalChange;
-        target = Math.Max(SidebarColumn.MinWidth, Math.Min(SidebarColumn.MaxWidth, target));
-        SidebarColumn.Width = new GridLength(target);
-    }
-
-    private void SidebarSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
-    {
-        // 拖动结束即时持久化，避免仅依赖窗口关闭时保存。
-        _settings.SidebarWidth = SidebarColumn.Width.Value;
         _settings.Save();
     }
 
@@ -1410,19 +1393,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OpenMainMenu_Click(object sender, RoutedEventArgs e)
     {
-        // Popup coordinates must be relative to the target BUTTON. The previous
-        // Window target positioned the popup inside the caption area under WPF
-        // WindowChrome on high-DPI maximized windows.
-        MainMenuPopup.PlacementTarget = MainMenuButton;
+        // Both horizontal coordinates are relative to the close button,
+        // whose right edge tracks the main window's right edge.
+        MainMenuPopup.PlacementTarget = CloseWindowButton;
         MainMenuPopup.Placement = PlacementMode.Custom;
         MainMenuPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
-        {
-            var left = MainMenuButton.TransformToAncestor(this).Transform(new Point(0, 0)).X;
-            var rightInset = 2d;
-            var x = ActualWidth - left - popupSize.Width - rightInset;
-            var y = targetSize.Height + 4;
-            return [new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.Horizontal)];
-        };
+        [
+            new CustomPopupPlacement(
+                new Point(targetSize.Width - popupSize.Width - 8, targetSize.Height + 4),
+                PopupPrimaryAxis.Horizontal)
+        ];
         MainMenuPopup.HorizontalOffset = 0;
         MainMenuPopup.VerticalOffset = 0;
         MainMenuPopup.IsOpen = true;

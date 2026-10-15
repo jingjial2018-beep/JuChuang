@@ -297,7 +297,7 @@
                                   StrokeThickness="1.15" StrokeLineJoin="Round" StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round" Data="M4,3 H10 Q11,3 11,4 V10 Q11,11 10,11 H4 Q3,11 3,10 V4 Q3,3 4,3 Z" />
                         </Button>
-                        <Button ToolTip="关闭" Tag="Close" Click="Close_Click">
+                        <Button x:Name="CloseWindowButton" ToolTip="关闭" Tag="Close" Click="Close_Click">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource WindowControlButtonStyle}">
                                     <Style.Triggers>
@@ -319,8 +319,8 @@
 
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="SidebarColumn" Width="292" MinWidth="220" MaxWidth="460" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition x:Name="SidebarColumn" Width="310" />
+                    <ColumnDefinition Width="1" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -466,16 +466,8 @@
                     </Grid>
                 </Border>
 
-                <GridSplitter Grid.Column="1"
-                              FocusVisualStyle="{x:Null}"
-                              Width="5"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch"
-                              Background="Transparent"
-                              Cursor="SizeWE"
-                              ShowsPreview="False"
-                              DragDelta="SidebarSplitter_DragDelta"
-                              DragCompleted="SidebarSplitter_DragCompleted" />
+                <!-- Fixed 1-DIP divider: do not intercept input or resize sidebar. -->
+                <Border Grid.Column="1" Background="#CBD2DB" IsHitTestVisible="False" />
 
                 <!-- Zone B/C: a calm recessed workspace surface behind native windows.
                      No hosting bounds, clipping, window styles or input behavior change. -->
