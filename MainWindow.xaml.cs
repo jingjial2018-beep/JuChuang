@@ -86,6 +86,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
+        ClientArea.SizeChanged += (_, _) => UpdateWorkspaceChamferClip();
+        Loaded += (_, _) => UpdateWorkspaceChamferClip();
     }
 
     private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -175,6 +177,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public void ReleaseHostedWindowsForShutdown() => WindowHost.DetachAll();
+
+    // Only the WPF workspace surface is chamfered; native clients keep their
+    // exact beta2 HWND region and original rounded-corner policy.
+    private void UpdateWorkspaceChamferClip()
+    {
+        var width = ClientArea.ActualWidth;
+        var height = ClientArea.ActualHeight;
+        if (width <= 0 || height <= 0) return;
+        const double cut = 8.0; // WPF DIP, independent of pixel scaling
+        var d = Math.Min(cut, Math.Min(width, height) / 2);
+        var figure = new PathFigure { StartPoint = new Point(d, 0), IsClosed = true, IsFilled = true };
+        foreach (var point in new[]
+        {
+            new Point(width - d, 0), new Point(width, d),
+            new Point(width, height - d), new Point(width - d, height),
+            new Point(d, height), new Point(0, height - d), new Point(0, d)
+        }) figure.Segments.Add(new LineSegment(point, true));
+        ClientArea.Clip = new PathGeometry(new[] { figure });
+    }
 
     private void QueueOverlayBoundsUpdate()
     {
