@@ -1,0 +1,46 @@
+name: Build and publish JNest beta7
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-beta7-from-main.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout beta7 source
+        uses: actions/checkout@v4
+        with:
+          ref: beta/v0.3.34-client-panel-rounded-beta7
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish framework-dependent
+        shell: pwsh
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o publish/framework
+      - name: Publish self-contained
+        shell: pwsh
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o publish/selfcontained
+      - name: Zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish/framework/* -DestinationPath JNest-v0.3.34-beta7-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path publish/selfcontained/* -DestinationPath JNest-v0.3.34-beta7-SelfContained-win-x64.zip
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v0.3.34-beta7-win-x64
+          path: JNest-v0.3.34-beta7-*.zip
+      - name: Release beta7
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.3.34-beta7 *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'beta7 release already exists; will not overwrite' }
+          gh release create v0.3.34-beta7 JNest-v0.3.34-beta7-FrameworkDependent-win-x64.zip JNest-v0.3.34-beta7-SelfContained-win-x64.zip --target beta/v0.3.34-client-panel-rounded-beta7 --title 'JNest v0.3.34-beta7' --prerelease --notes 'Right content panel 20 DIP rounded corners. Beta test only, unsigned Windows x64.'
