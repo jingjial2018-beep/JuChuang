@@ -28,11 +28,9 @@ jobs:
           $existingTag = git ls-remote --tags origin 'refs/tags/v0.3.35'
           if ($LASTEXITCODE -ne 0) { throw 'Unable to verify remote tags' }
           if ($existingTag) { throw 'Tag v0.3.35 already exists; release cancelled' }
-          # A missing Release is expected: avoid PowerShell native stderr promotion.
-          $release = gh api 'repos/${{ github.repository }}/releases/tags/v0.3.35' --silent 2>$null
-          if ($LASTEXITCODE -eq 0) { throw 'Release v0.3.35 already exists; release cancelled' }
-          $apiStatus = gh api 'repos/${{ github.repository }}/releases/tags/v0.3.35' --include 2>$null | Select-Object -First 1
-          if ($apiStatus -notmatch '404') { throw "Unable to confirm that v0.3.35 Release is absent: $apiStatus" }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $response = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.35' -Headers $headers -SkipHttpErrorCheck
+          if ($response.StatusCode -ne 404) { throw "Release not safely absent (HTTP $($response.StatusCode)); cancelling" }
       - name: Compile x64 Release
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
       - name: Architecture regression checks
@@ -59,6 +57,7 @@ jobs:
         run: |
           $existingTag = git ls-remote --tags origin 'refs/tags/v0.3.35'
           if ($LASTEXITCODE -ne 0 -or $existingTag) { throw 'v0.3.35 tag check failed or tag already exists' }
-          $apiStatus = gh api 'repos/${{ github.repository }}/releases/tags/v0.3.35' --include 2>$null | Select-Object -First 1
-          if ($apiStatus -notmatch '404') { throw "v0.3.35 Release exists or cannot be checked: $apiStatus" }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $response = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.35' -Headers $headers -SkipHttpErrorCheck
+          if ($response.StatusCode -ne 404) { throw "Release not safely absent (HTTP $($response.StatusCode)); cancelling" }
           gh release create v0.3.35 JNest-v0.3.35-FrameworkDependent-win-x64.zip JNest-v0.3.35-SelfContained-win-x64.zip --repo ${{ github.repository }} --target dev/from-v0.3.34-stable --title 'JNest v0.3.35' --notes 'Stable build based strictly on v0.3.34 source: centered compact WeChat login window in the right workspace and removed Add WeChat / Add WhatsApp menu tooltips. Windows x64 unsigned packages.' --latest
