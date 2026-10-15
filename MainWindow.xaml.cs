@@ -571,7 +571,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task ScanAndAttachAsync(bool waitForActiveScan = false)
     {
-        if (!(waitForActiveScan ? await _scanLock.WaitAsync() : await _scanLock.WaitAsync(0)))
+        if (waitForActiveScan)
+        {
+            await _scanLock.WaitAsync();
+        }
+        else if (!await _scanLock.WaitAsync(0))
         {
             return;
         }
