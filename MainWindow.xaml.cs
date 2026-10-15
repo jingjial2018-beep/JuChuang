@@ -319,6 +319,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? "未发现正在运行的客户端，可从顶部新建。"
             : "客户端接入检查完成");
         _scanTimer.Start();
+        StartNativeCaptionShield();
         StartBadgePolling();
         if (_isClientSelfTestMode)
         {
@@ -329,6 +330,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         _isClosing = true;
+        StopNativeCaptionShield();
         SaveWindowPlacement();
         _scanTimer.Stop();
         _statusResetTimer.Stop();
