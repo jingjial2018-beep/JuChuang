@@ -35,6 +35,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ClientWindowEntry? _selectedEntry;
     private ClientKind? _selectNextKind;
     private ClientLaunchContext? _pendingLaunchContext;
+    private string? _requestedHistoryAccountId;
+    private int? _requestedHistoryProcessId;
     private int _wechatNumber;
     private bool _isClosing;
     private bool _isPreviewMode;
@@ -835,6 +837,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private async void NewWeChat_Click(object sender, RoutedEventArgs e)
+        => await LaunchWeChatAsync(null);
+
+    private async Task LaunchWeChatAsync(string? historyAccountId)
     {
         if (_isPreviewMode || !TryBeginClientLaunch())
         {
@@ -874,7 +879,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _settings.Save();
             }
 
-            _dismissedWindowHandles.Clear();
+            _requestedHistoryAccountId = historyAccountId;
+            _requestedHistoryProcessId = null;
             _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WeChat);
             ClientMetadataService.InvalidateLoginAccountCache();
             _selectNextKind = ClientKind.WeChat;
@@ -888,6 +894,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 // EV 式多开或首个正常实例由 CreateProcessW 直接返回权威 PID；
                 // 后续窗口扫描只接受该 PID，避免多微信环境下认错实例。
                 _pendingLaunchContext.ExpectProcess(createdProcessId);
+                if (historyAccountId is not null) _requestedHistoryProcessId = createdProcessId;
             }
 
             ShowTemporaryStatus(launchResult.UsedMultiInstanceBypass
@@ -898,6 +905,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch (Exception exception)
         {
             ClearPendingLaunch(ClientKind.WeChat);
+            _requestedHistoryAccountId = null;
+            _requestedHistoryProcessId = null;
             ShowOwnedMessageBox($"无法启动微信：\n{exception.Message}", "JNest",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -1497,7 +1506,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     // Missing or corrupt avatar is not a reason to hide history.
                 }
                 row.Children.Add(item);
-                list.Items.Add(new ListBoxItem { Content = row, IsEnabled = false });
+                list.Items.Add(new ListBoxItem { Content = row, Tag = profile.AccountId });
             }
             var cachedIds = new HashSet<string>(
                 profiles.Select(item => item.AccountId),
@@ -1517,7 +1526,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     Foreground = System.Windows.Media.Brushes.DimGray,
                     FontSize = 12
                 });
-                list.Items.Add(new ListBoxItem { Content = item, IsEnabled = false });
+                list.Items.Add(new ListBoxItem { Content = item, Tag = account.AccountId });
             }
             if (profiles.Count == 0 && loginCandidates.Count == 0)
                 list.Items.Add(new ListBoxItem { Content = "没有发现已缓存账号或可读取的本地登录目录。", IsEnabled = false });
