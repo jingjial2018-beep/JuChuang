@@ -100,7 +100,7 @@ public static class ClientWindowDiscovery
                     title.Trim(),
                     windowClass,
                     kind,
-                    ResolveWindowRole(kind, title),
+                    ResolveWindowRole(kind, title, rect.Width, rect.Height),
                     (long)rect.Width * rect.Height,
                     TryReadClientVersion(processId, kind)));
             }
@@ -194,7 +194,7 @@ public static class ClientWindowDiscovery
                || normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login";
     }
 
-    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title)
+    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title, int width, int height)
     {
         if (kind == ClientKind.WhatsApp)
         {
@@ -206,6 +206,13 @@ public static class ClientWindowDiscovery
         {
             return ClientWindowRole.Login;
         }
+
+        // WeChat 4.x uses the generic title "微信" for both quick-login and
+        // chats. Compact windows are login UI even when the caption is generic.
+        // Thresholds require BOTH dimensions to be small to avoid classifying
+        // a normally resized chat window as login.
+        if (IsGenericMainTitle(title) && width <= 520 && height <= 680)
+            return ClientWindowRole.Login;
 
         return IsGenericMainTitle(title)
             ? ClientWindowRole.Main
