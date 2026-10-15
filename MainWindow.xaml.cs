@@ -626,7 +626,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var selfTestTargetProcessId = _selfTestTargetProcessId;
             var scanResult = await Task.Run(() =>
             {
-                var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(selfTestTargetProcessId)
+                var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(selfTestTargetProcessId, logRejected: waitForActiveScan)
                     .Where(candidate => !dismissedHandles.Contains(candidate.Handle))
                     .ToArray();
                 if (selfTestTargetProcessId.HasValue)
