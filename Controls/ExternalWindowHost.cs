@@ -503,7 +503,13 @@ public sealed class ExternalWindowHost : HwndHost
         // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
         // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
         style &= ~NativeMethods.WS_CHILD;
-        if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
+        // While hosted, the manager owns window state. Strip all native caption
+        // controls (minimize / maximize / close) without altering WS_CAPTION or
+        // WS_THICKFRAME, which the client/DWM still need for correct bounds.
+        // DetachWindow restores state.Style in full for standalone operation.
+        style &= ~(NativeMethods.WS_MINIMIZEBOX
+            | NativeMethods.WS_MAXIMIZEBOX
+            | NativeMethods.WS_SYSMENU);
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
         else style &= ~NativeMethods.WS_VISIBLE;
         return new IntPtr(style);
