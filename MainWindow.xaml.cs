@@ -108,7 +108,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _statusResetTimer.Stop();
         // Only trim sentence punctuation at the end of UI feedback.
         // Never alter account names, version numbers or embedded periods.
-        message = message.TrimEnd().TrimEnd('。', '.');
+        message = message.TrimEnd().TrimEnd('。');
         StatusMessageText.Text = message;
         _pendingStatusText = message;
         _pendingMessageEntry = messageEntry;
