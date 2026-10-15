@@ -549,7 +549,7 @@
                         <TextBlock x:Name="WindowCountText" Text="已接入 0 个窗口" Margin="8,0,0,0"
                                    FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
-                    <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="11.5"
+                    <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="13"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
