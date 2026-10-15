@@ -1,0 +1,42 @@
+name: Build JNest beta7 Windows packages
+on:
+  push:
+    branches:
+      - beta/v0.3.34-client-area-rounded-beta7
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build framework dependent
+        shell: pwsh
+        run: dotnet publish JuChuang.csproj --configuration Release --runtime win-x64 --self-contained false -p:Platform=x64 --output output/framework
+      - name: Build self contained
+        shell: pwsh
+        run: dotnet publish JuChuang.csproj --configuration Release --runtime win-x64 --self-contained true -p:Platform=x64 --output output/standalone
+      - name: Package releases
+        shell: pwsh
+        run: |
+          Compress-Archive -Path output/framework/* -DestinationPath JNest-v0.3.34-beta7-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path output/standalone/* -DestinationPath JNest-v0.3.34-beta7-SelfContained-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v0.3.34-beta7-windows-x64
+          path: JNest-v0.3.34-beta7-*.zip
+      - name: Create beta7 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v0.3.34-beta7'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to overwrite." }
+          gh release create $tag JNest-v0.3.34-beta7-FrameworkDependent-win-x64.zip JNest-v0.3.34-beta7-SelfContained-win-x64.zip --target "${{ github.sha }}" --title "JNest v0.3.34-beta7" --prerelease --notes "Beta2-based test: 20-DIP rounded corners on right-side white content viewport only. No additional workspace margins. Windows 11 x64 testing needed. Unsigned binaries."
