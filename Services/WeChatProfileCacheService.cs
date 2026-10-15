@@ -126,6 +126,18 @@ public sealed class WeChatProfileCacheService
         }
     }
 
+    // Read-only snapshot of previously verified accounts; no WeChat files modified.
+    public IReadOnlyList<CachedWeChatProfile> GetHistorySnapshot()
+    {
+        lock (_syncRoot)
+        {
+            return _profiles.Values
+                .Where(item => !string.IsNullOrWhiteSpace(item.AccountId))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ToArray();
+        }
+    }
+
     private void LoadIndex()
     {
         try
