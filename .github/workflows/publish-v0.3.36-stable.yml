@@ -32,6 +32,7 @@ jobs:
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
           $r = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.36' -Headers $headers -SkipHttpErrorCheck
           if ($r.StatusCode -ne 404) { throw "v0.3.36 release may already exist (HTTP $($r.StatusCode)); refusing overwrite" }
+      # Source includes explicit/manual semaphore wait correction (002aad86).
       - name: Build Windows x64 Release
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
       - name: Architecture regression checks
