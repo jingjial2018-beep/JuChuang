@@ -86,6 +86,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
+        ClientArea.SizeChanged += (_, _) => UpdateClientAreaCornerClip();
+        Loaded += (_, _) => UpdateClientAreaCornerClip();
     }
 
     private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -175,6 +177,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public void ReleaseHostedWindowsForShutdown() => WindowHost.DetachAll();
+
+    // Clip the content viewport only: not the title strip, sidebar or outer window.
+    // The hosted HWND uses a matching native rounded region (ExternalWindowHost).
+    private void UpdateClientAreaCornerClip()
+    {
+        var width = ClientArea.ActualWidth;
+        var height = ClientArea.ActualHeight;
+        if (width <= 0 || height <= 0) return;
+        const double radius = 10.0;
+        ClientArea.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
+    }
 
     private void QueueOverlayBoundsUpdate()
     {
