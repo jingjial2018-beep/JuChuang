@@ -276,7 +276,7 @@
                                     </MenuItem>
                                     <MenuItem Header="全部接入" Click="ReconnectAll_Click"/>
                                     <MenuItem Header="扫描客户端" Click="ScanClients_Click"/>
-                                    <MenuItem Header="历史账号（只读）" Click="HistoryAccounts_Click" ToolTip="显示之前成功识别的账号，不修改微信配置文件"/>
+                                    <MenuItem Header="历史微信账号" Click="HistoryAccounts_Click" ToolTip="显示之前成功识别的账号，不修改微信配置文件"/>
                                     <Separator/>
                                     <MenuItem Header="设置" Click="Settings_Click"/>
                                     <MenuItem Header="关于 JNest" Click="About_Click"/>
