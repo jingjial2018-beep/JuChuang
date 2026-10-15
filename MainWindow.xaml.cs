@@ -1363,8 +1363,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         foreach (var entry in Entries.Where(entry =>
                      entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle)))
         {
-            // “扫描客户端/全部接入”是用户显式重新接入动作，因此解除账号级弹出保护。
-            entry.IsManuallyDetached = false;
+            // Ordinary scanning must not undo a user's explicit pop-out choice.
+            // Only “全部接入” clears this protection above.
+            if (!clearDismissed
+                && (entry.IsManuallyDetached || _dismissedWindowHandles.Contains(entry.Handle)))
+            {
+                continue;
+            }
 
             if (entry.IsAttached)
             {
