@@ -40,6 +40,15 @@ public sealed class ExternalWindowHost : HwndHost
     public bool IsReady => _hostHandle != IntPtr.Zero;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
 
+    // Login UI is intentionally compact; chat windows still fill the workspace.
+    public void SetLoginLayout(IntPtr handle, bool isLogin)
+    {
+        if (!_hostedWindows.TryGetValue(handle, out var state)) return;
+        if (state.IsLoginLayout == isLogin) return;
+        _hostedWindows[handle] = state with { IsLoginLayout = isLogin };
+        if (_currentHandle == handle) ResizeCurrentWindow();
+    }
+
     /// <summary>
     /// True only while the manager itself or its displayed native client owns
     /// the foreground. Background overlays must not compete with Chrome or
@@ -335,8 +344,9 @@ public sealed class ExternalWindowHost : HwndHost
         // 边框（Extended Frame Bounds），insets 即这圈边框的宽度。放大并反向偏移后，客户端
         // 的可见内容才能精确填满容器，否则会出现悬浮间隙或内容越界。
         var insets = state.Insets;
-        var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
-        var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
+        var bounds = CalculateTargetBounds(state, hostRect, origin);
+        var width = bounds.Width;
+        var height = bounds.Height;
         var dpi = VisualTreeHelper.GetDpi(this);
         // 仅裁剪可见客户区的四角，不增加容器外边距，也不改变 HWND/insets 位置。
         // WPF 设计尺寸为 8 DIP，转换成物理像素以适配高 DPI。
@@ -346,10 +356,10 @@ public sealed class ExternalWindowHost : HwndHost
             ? 0u
             : NativeMethods.SWP_NOZORDER;
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
-            origin.X - insets.Left, origin.Y - insets.Top, width, height,
+            bounds.Left, bounds.Top, width, height,
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
-        ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, cornerRadius);
+        ApplyClipRegion(_currentHandle, width - insets.Left - insets.Right, height - insets.Top - insets.Bottom, insets, cornerRadius);
     }
 
     /// <summary>
@@ -434,20 +444,32 @@ public sealed class ExternalWindowHost : HwndHost
         }
     }
 
+    private static NativeMethods.RECT CalculateTargetBounds(
+        HostedWindowState state, NativeMethods.RECT hostRect, NativeMethods.POINT origin)
+    {
+        var insets = state.Insets;
+        var hostWidth = Math.Max(1, hostRect.Width);
+        var hostHeight = Math.Max(1, hostRect.Height);
+        var clientWidth = state.IsLoginLayout ? Math.Min(hostWidth, Math.Max(1, state.Rect.Width - insets.Left - insets.Right)) : hostWidth;
+        var clientHeight = state.IsLoginLayout ? Math.Min(hostHeight, Math.Max(1, state.Rect.Height - insets.Top - insets.Bottom)) : hostHeight;
+        var left = origin.X + (hostWidth - clientWidth) / 2 - insets.Left;
+        var top = origin.Y + (hostHeight - clientHeight) / 2 - insets.Top;
+        return new NativeMethods.RECT
+        {
+            Left = left,
+            Top = top,
+            Right = left + clientWidth + insets.Left + insets.Right,
+            Bottom = top + clientHeight + insets.Top + insets.Bottom
+        };
+    }
+
     private bool TryGetExpectedBounds(HostedWindowState state, out NativeMethods.RECT bounds)
     {
         bounds = default;
         if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)) return false;
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return false;
-        // 期望矩形 = 容器客户区向外扩展 insets（与 ResizeCurrentWindow 一致）。
-        bounds = new NativeMethods.RECT
-        {
-            Left = origin.X - state.Insets.Left,
-            Top = origin.Y - state.Insets.Top,
-            Right = origin.X + hostRect.Width + state.Insets.Right,
-            Bottom = origin.Y + hostRect.Height + state.Insets.Bottom
-        };
+        bounds = CalculateTargetBounds(state, hostRect, origin);
         return true;
     }
 
@@ -597,5 +619,6 @@ public sealed class ExternalWindowHost : HwndHost
         NativeMethods.RECT Rect,
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
-        bool DisableMaximize);
+        bool DisableMaximize,
+        bool IsLoginLayout = false);
 }
