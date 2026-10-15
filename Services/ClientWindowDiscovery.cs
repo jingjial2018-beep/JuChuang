@@ -26,7 +26,7 @@ public static class ClientWindowDiscovery
     private static readonly ConcurrentDictionary<int, ProcessNameCacheEntry> ProcessNameCache = [];
     private static readonly TimeSpan ProcessNameCacheLifetime = TimeSpan.FromSeconds(10);
 
-    public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null)
+    public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null, bool logRejected = false)
     {
         var candidates = new List<WindowCandidate>();
         var ownProcessId = Environment.ProcessId;
@@ -58,11 +58,15 @@ public static class ClientWindowDiscovery
                     StringComparison.OrdinalIgnoreCase);
                 if (string.IsNullOrWhiteSpace(title) && !processLooksLikeWhatsApp)
                 {
+                    if (logRejected && LooksLikeWeChat(processName))
+                        DiagnosticLogService.WriteActivityEvent("wechat-scan rejected=blank-title", processId);
                     return true;
                 }
 
                 if (!NativeMethods.GetWindowRect(handle, out var rect) || rect.Width < 280 || rect.Height < 200)
                 {
+                    if (logRejected && LooksLikeWeChat(processName))
+                        DiagnosticLogService.WriteActivityEvent("wechat-scan rejected=small-or-unreadable-rect", processId);
                     return true;
                 }
 
@@ -70,12 +74,16 @@ public static class ClientWindowDiscovery
                 // the main chat window. They must remain regular desktop popups.
                 if (NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != IntPtr.Zero)
                 {
+                    if (logRejected && LooksLikeWeChat(processName))
+                        DiagnosticLogService.WriteActivityEvent("wechat-scan rejected=owned-window", processId);
                     return true;
                 }
 
                 var style = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE).ToInt64();
                 if ((style & NativeMethods.WS_EX_TOOLWINDOW) != 0)
                 {
+                    if (logRejected && LooksLikeWeChat(processName))
+                        DiagnosticLogService.WriteActivityEvent("wechat-scan rejected=tool-window", processId);
                     return true;
                 }
 
@@ -86,6 +94,8 @@ public static class ClientWindowDiscovery
                 var kind = default(ClientKind);
                 if (!isForcedSelfTestTarget && !TryGetKind(processName, title, windowClass, out kind))
                 {
+                    if (logRejected && LooksLikeWeChat(processName))
+                        DiagnosticLogService.WriteActivityEvent($"wechat-scan rejected=kind class={windowClass}", processId);
                     return true;
                 }
                 if (isForcedSelfTestTarget)
@@ -93,6 +103,9 @@ public static class ClientWindowDiscovery
                     kind = ClientKind.WeChat;
                 }
 
+                if (logRejected && kind == ClientKind.WeChat)
+                    DiagnosticLogService.WriteActivityEvent(
+                        $"wechat-scan accepted class={windowClass} width={rect.Width} height={rect.Height}", processId);
                 candidates.Add(new WindowCandidate(
                     handle,
                     processId,
@@ -180,6 +193,10 @@ public static class ClientWindowDiscovery
         kind = default;
         return false;
     }
+
+    private static bool LooksLikeWeChat(string processName)
+        => processName.Contains("wechat", StringComparison.OrdinalIgnoreCase)
+            || processName.Contains("weixin", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsGenericMainTitle(string title)
     {
