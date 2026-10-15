@@ -61,10 +61,14 @@ jobs:
           git tag -f v0.99 HEAD
           git push --force origin refs/tags/v0.99
           if ($LASTEXITCODE -ne 0) { throw 'Unable to update v0.99 tag' }
-          $releaseExists = $false
-          $releaseCheck = gh api 'repos/${{ github.repository }}/releases/tags/v0.99' --silent 2>$null
-          if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
-          if ($releaseExists) {
+          # A missing release is expected for the first publish. Avoid native
+          # command stderr being promoted to a terminating PowerShell error.
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; 'X-GitHub-Api-Version' = '2022-11-28' }
+          $check = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.99' -Headers $headers -SkipHttpErrorCheck
+          if ($check.StatusCode -ne 200 -and $check.StatusCode -ne 404) {
+            throw "Release lookup failed with HTTP $($check.StatusCode)"
+          }
+          if ($check.StatusCode -eq 200) {
             gh release upload v0.99 JNest-v0.99-FrameworkDependent-win-x64.zip JNest-v0.99-SelfContained-win-x64.zip --clobber --repo ${{ github.repository }}
             if ($LASTEXITCODE -ne 0) { throw 'Replacing ZIP files failed' }
             gh release edit v0.99 --repo ${{ github.repository }} --title 'JNest v0.99' --notes-file RELEASE-NOTES-v0.99.md --latest
