@@ -49,7 +49,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          $current = (git ls-remote --tags origin 'refs/tags/v0.99').Trim()
+          $current = [string](git ls-remote --tags origin 'refs/tags/v0.99')
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing release tag' }
           if ($current) {
             $oldSha = ($current -split '\s+')[0]
@@ -61,8 +61,10 @@ jobs:
           git tag -f v0.99 HEAD
           git push --force origin refs/tags/v0.99
           if ($LASTEXITCODE -ne 0) { throw 'Unable to update v0.99 tag' }
-          gh release view v0.99 --repo ${{ github.repository }} *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = $false
+          $releaseCheck = gh api 'repos/${{ github.repository }}/releases/tags/v0.99' --silent 2>$null
+          if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+          if ($releaseExists) {
             gh release upload v0.99 JNest-v0.99-FrameworkDependent-win-x64.zip JNest-v0.99-SelfContained-win-x64.zip --clobber --repo ${{ github.repository }}
             if ($LASTEXITCODE -ne 0) { throw 'Replacing ZIP files failed' }
             gh release edit v0.99 --repo ${{ github.repository }} --title 'JNest v0.99' --notes-file RELEASE-NOTES-v0.99.md --latest
