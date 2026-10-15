@@ -232,7 +232,7 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
         AccountProfileState.Pending => "资料识别中",
         AccountProfileState.Ready => string.Empty,
         AccountProfileState.ReadyFromCache => "使用资料缓存",
-        AccountProfileState.ReadyWithoutAvatar => "昵称已识别 · 头像待缓存",
+        AccountProfileState.ReadyWithoutAvatar => "头像待更新",
         AccountProfileState.WaitingForLocalData => "等待本地资料",
         AccountProfileState.CompatibilityIssue => "资料解析待适配",
         AccountProfileState.Error => "资料读取失败",
