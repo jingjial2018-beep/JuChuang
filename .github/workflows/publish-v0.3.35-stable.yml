@@ -66,5 +66,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Unable to update v0.3.35 tag' }
           gh release upload v0.3.35 JNest-v0.3.35-FrameworkDependent-win-x64.zip JNest-v0.3.35-SelfContained-win-x64.zip --clobber --repo $repo
           if ($LASTEXITCODE -ne 0) { throw 'Unable to replace ZIP assets' }
-          gh release edit v0.3.35 --repo $repo --title 'JNest v0.3.35' --notes 'Updated v0.3.35 stable build: fix centered WeChat 4.x compact quick-login window (generic 微信 title). Preserve WhatsApp and remove Add WeChat / Add WhatsApp menu tooltip. Previous release commit preserved under a numbered backup tag. Unsigned Windows x64 packages.'
+          gh release edit v0.3.35 --repo $repo --title 'JNest v0.3.35' --notes 'Updated v0.3.35 stable build: dedicated CenterInHost layout for compact WeChat login HWND, using native size and consistent position monitoring. Preserve WhatsApp and remove Add WeChat / Add WhatsApp menu tooltip. Previous release commit preserved under a numbered backup tag. Unsigned Windows x64 packages.'
           if ($LASTEXITCODE -ne 0) { throw 'Unable to update release notes' }
