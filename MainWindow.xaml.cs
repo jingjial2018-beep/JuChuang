@@ -637,10 +637,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     entry.IsOnline = true;
                     entry.LastSeenUtc = scanUtc;
                     entry.WindowMissingSinceUtc = null;
-                    if (entry.SessionState == ClientSessionState.Rebinding)
-                    {
-                        entry.SessionState = ClientSessionState.Main;
-                    }
+                    // Keep Rebinding until the discovered window role is verified.
+                    // HWND existence alone is not proof of an authenticated main window.
 
                     entry.Status = entry.IsAttached ? "已接入" : "独立窗口";
                     continue;
@@ -1418,6 +1416,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         MainMenuPopup.HorizontalOffset = 0;
         MainMenuPopup.VerticalOffset = 0;
         MainMenuPopup.IsOpen = true;
+    }
+
+    private void CalibrateUnreadBadges_Click(object sender, RoutedEventArgs e)
+    {
+        TriggerForegroundBadgeCalibration();
+        ShowTemporaryStatus("已请求重新校准未读角标");
     }
 
     private void HistoryAccounts_Click(object sender, RoutedEventArgs e)
