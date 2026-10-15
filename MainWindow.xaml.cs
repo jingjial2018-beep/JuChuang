@@ -721,6 +721,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         existingEntry.Status = existingEntry.IsAttached ? "已接入" : "接入失败";
                     }
 
+                    if (existingEntry.IsAttached && candidate.Kind == ClientKind.WeChat)
+                        WindowHost.SetWeChatLoginLayout(existingEntry.Handle, candidate.Role != ClientWindowRole.Main);
                     TryCompletePendingLaunch(candidate, existingEntry);
                     continue;
                 }
@@ -758,6 +760,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     }
 
                     DiagnosticLogService.WriteAccountEvent(rebindingEntry, "window-rebound");
+                    if (rebindingEntry.IsAttached && candidate.Kind == ClientKind.WeChat)
+                        WindowHost.SetWeChatLoginLayout(rebindingEntry.Handle, candidate.Role != ClientWindowRole.Main);
                     TryCompletePendingLaunch(candidate, rebindingEntry);
                     if (ReferenceEquals(rebindingEntry, SelectedEntry))
                     {
@@ -785,6 +789,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false,
                     disableMaximize: entry.Kind == ClientKind.WhatsApp);
                 entry.Status = entry.IsAttached ? "已接入" : "接入失败";
+                if (entry.IsAttached && candidate.Kind == ClientKind.WeChat)
+                    WindowHost.SetWeChatLoginLayout(entry.Handle, candidate.Role != ClientWindowRole.Main);
                 TryCompletePendingLaunch(candidate, entry);
             }
 
