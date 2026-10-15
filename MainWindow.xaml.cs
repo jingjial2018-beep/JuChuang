@@ -1427,15 +1427,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         MainMenuPopup.IsOpen = true;
     }
 
-    private void CalibrateUnreadBadges_Click(object sender, RoutedEventArgs e)
-    {
-        var accounts = Entries.Where(entry => entry.Handle != IntPtr.Zero
-            && NativeMethods.IsWindow(entry.Handle)).ToArray();
-        foreach (var entry in accounts)
-            TriggerImmediateBadgeScan(entry);
-        ShowTemporaryStatus($"已请求校准 {accounts.Length} 个客户端的未读角标");
-    }
-
     private void HistoryAccounts_Click(object sender, RoutedEventArgs e)
     {
         // Merge previously verified JNest cache with discoverable local login
