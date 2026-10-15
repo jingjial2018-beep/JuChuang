@@ -86,6 +86,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
+        ClientArea.SizeChanged += (_, _) => UpdateWorkspaceRoundedClip();
+        Loaded += (_, _) => UpdateWorkspaceRoundedClip();
     }
 
     private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -175,6 +177,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public void ReleaseHostedWindowsForShutdown() => WindowHost.DetachAll();
+
+    // Round ONLY the WPF workspace viewport. Keep the external client HWND's
+    // existing beta2 region, size, insets and native corner styling unchanged.
+    private void UpdateWorkspaceRoundedClip()
+    {
+        var width = ClientArea.ActualWidth;
+        var height = ClientArea.ActualHeight;
+        if (width <= 0 || height <= 0) return;
+        var radius = Math.Min(8.0, Math.Min(width, height) / 2);
+        ClientArea.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
+    }
 
     private void QueueOverlayBoundsUpdate()
     {
