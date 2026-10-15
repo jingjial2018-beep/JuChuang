@@ -471,8 +471,7 @@
 
                 <!-- Zone B/C: a calm recessed workspace surface behind native windows.
                      No hosting bounds, clipping, window styles or input behavior change. -->
-                <Border Grid.Column="2" Margin="7,7,7,7" Padding="7" Background="#D5DDE7" CornerRadius="14" SnapsToDevicePixels="True">
-                  <Grid>
+                <Grid Grid.Column="2">
                     <Grid.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                             <GradientStop Color="#E9EDF2" Offset="0"/>
@@ -537,8 +536,7 @@
                             </StackPanel>
                         </Grid>
                     </Grid>
-                  </Grid>
-                </Border>
+                </Grid>
             </Grid>
 
             <Border Grid.Row="2" Background="{StaticResource ChromeSurfaceBrush}"
