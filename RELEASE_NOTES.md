@@ -1,3 +1,11 @@
+## v0.3.34-beta4 — 右侧工作区四角倒角实验
+
+- 从 v0.3.34-beta2 派生；不包含 beta3 对原生嵌入窗口圆角的改动。
+- 仅针对 JNest WPF 的 ClientArea 工作区容器使用 8 DIP 四角倒角 Clip；左侧账号栏、主窗口及客户端原生窗口的 SetWindowRgn 都不变。
+- 重要：由于微信/WhatsApp 是独立的顶层窗口，WPF Clip 可能无法在实机上遮住原生窗口四角。该版只用于验证容器层能否形成所需视觉效果；不保证已解决原生窗口边缘空白。
+
+---
+
 ## v0.3.34-beta2 — WhatsApp 最大化窗口样式实验
 
 - 基于 v0.3.33 正式版。仅当 WhatsApp 嵌入 JNest 时清除其 `WS_MAXIMIZEBOX` 样式，尝试禁用 Windows 11 原生 Snap Layouts 的最大化按钮悬停菜单。
