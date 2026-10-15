@@ -51,7 +51,7 @@ public sealed class ExternalWindowHost : HwndHost
             GetOwnerRoot(),
             _currentHandle);
 
-    public bool AttachWindow(IntPtr handle, bool makeActive)
+    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false)
     {
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
         {
@@ -68,14 +68,15 @@ public sealed class ExternalWindowHost : HwndHost
                 NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE),
                 originalRect,
                 CalculateHostInsets(handle, originalRect),
-                nativeChrome);
+                nativeChrome,
+                disableMaximize);
 
             NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_STYLE,
-                CreateOverlayStyle(state.Style, isVisible: true));
+                CreateOverlayStyle(state.Style, isVisible: true, state.DisableMaximize));
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_EXSTYLE,
@@ -495,13 +496,14 @@ public sealed class ExternalWindowHost : HwndHost
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => EnforceHostedWindow(window)));
     }
 
-    private static IntPtr CreateOverlayStyle(IntPtr originalStyle, bool isVisible)
+    private static IntPtr CreateOverlayStyle(IntPtr originalStyle, bool isVisible, bool disableMaximize)
     {
         var style = unchecked((long)(uint)originalStyle.ToInt64());
         // 保留 WS_CAPTION/WS_THICKFRAME：微信 4.x 与 WhatsApp 都是自绘窗口，原生标题栏
         // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
         // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
         style &= ~NativeMethods.WS_CHILD;
+        if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
         else style &= ~NativeMethods.WS_VISIBLE;
         return new IntPtr(style);
@@ -590,5 +592,6 @@ public sealed class ExternalWindowHost : HwndHost
         IntPtr ExtendedStyle,
         NativeMethods.RECT Rect,
         HostInsets Insets,
-        NativeMethods.DwmChromeState ChromeState);
+        NativeMethods.DwmChromeState ChromeState,
+        bool DisableMaximize);
 }
