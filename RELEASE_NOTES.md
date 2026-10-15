@@ -1,3 +1,12 @@
+## v0.3.34-beta3 — 四角 8 DIP 圆角裁剪测试
+
+- 基于 v0.3.34-beta2：保留 WhatsApp 嵌入状态下暂时清除 WS_MAXIMIZEBOX 的功能。
+- 对微信和 WhatsApp 嵌入窗口四角统一使用 8 DIP（按 DPI 缩放）圆角裁剪，无额外边距，不更改 HWND 位置和尺寸。
+- 继续复用原有 SetWindowRgn 与 insets 边框补偿；圆角外侧露出原工作区背景。
+- 警告：原生窗口自带绘制边缘与容器背景仍可能出现颜色不一致，必须在普通窗口/最大化及不同 DPI 下实际检查；未实测前不能发布正式版。
+
+---
+
 ## v0.3.34-beta2 — WhatsApp 最大化窗口样式实验
 
 - 基于 v0.3.33 正式版。仅当 WhatsApp 嵌入 JNest 时清除其 `WS_MAXIMIZEBOX` 样式，尝试禁用 Windows 11 原生 Snap Layouts 的最大化按钮悬停菜单。
