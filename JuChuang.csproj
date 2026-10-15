@@ -16,6 +16,7 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <Version>0.3.33</Version>
+    <!-- Stable release: mouse caption guard verified on WeChat and WhatsApp. -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
