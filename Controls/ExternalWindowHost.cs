@@ -357,6 +357,22 @@ public sealed class ExternalWindowHost : HwndHost
             target.Left, target.Top, width, height,
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
+        if (state.IsLogin && NativeMethods.GetWindowRect(_currentHandle, out var measured)
+            && measured.Width > 0 && measured.Height > 0)
+        {
+            // WeChat 4.x may ignore requested window dimensions in its compact
+            // quick-login mode. Center the ACTUAL window, not only the target RECT.
+            var centeredLeft = origin.X + (hostRect.Width - measured.Width) / 2;
+            var centeredTop = origin.Y + (hostRect.Height - measured.Height) / 2;
+            if (measured.Left != centeredLeft || measured.Top != centeredTop)
+            {
+                NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
+                    centeredLeft, centeredTop, 0, 0,
+                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | zOrderFlags);
+            }
+            width = measured.Width;
+            height = measured.Height;
+        }
         ApplyClipRegion(_currentHandle, width - insets.Left - insets.Right, height - insets.Top - insets.Bottom, insets, cornerRadius);
     }
 
