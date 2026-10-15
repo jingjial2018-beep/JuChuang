@@ -705,6 +705,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
                 if (existingEntry is not null)
                 {
+                    if (candidate.Kind == ClientKind.WeChat
+                        && existingEntry.SessionState != MapSessionState(candidate.Role))
+                        DiagnosticLogService.WriteActivityEvent(
+                            $"wechat-role-transition {existingEntry.SessionState}->{candidate.Role} class={candidate.WindowClass} area={candidate.PixelArea}",
+                            candidate.ProcessId);
                     PrepareEntryForCandidate(existingEntry, candidate);
                     QueueOrApplyWeChatIdentity(existingEntry, candidate, weChatAccounts);
 
@@ -783,6 +788,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     continue;
                 }
 
+                if (candidate.Kind == ClientKind.WeChat)
+                    DiagnosticLogService.WriteActivityEvent(
+                        $"wechat-discovered role={candidate.Role} class={candidate.WindowClass} title={candidate.WindowTitle} area={candidate.PixelArea} center={candidate.Role == ClientWindowRole.Login}",
+                        candidate.ProcessId);
                 var entry = CreateEntry(candidate);
                 Entries.Add(entry);
                 QueueOrApplyWeChatIdentity(entry, candidate, weChatAccounts);
