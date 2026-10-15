@@ -20,6 +20,10 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Build Windows x64
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Run window and account architecture regression checks
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Run unread badge regression checks
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
       - name: Publish test ZIP
         shell: pwsh
         run: |
