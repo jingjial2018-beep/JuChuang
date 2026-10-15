@@ -75,6 +75,7 @@
         </Style>
 
         <Style x:Key="WindowControlButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Width" Value="44" />
             <Setter Property="Height" Value="44" />
             <Setter Property="Background" Value="Transparent" />
@@ -90,6 +91,9 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ControlBorder" Property="Background" Value="#E1E5EA" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ControlBorder" Property="Background" Value="#E8EDF3" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="ControlBorder" Property="Background" Value="#DDE0E5" />
@@ -291,7 +295,7 @@
                                 ToolTip="最大化" Click="Maximize_Click">
                             <Path x:Name="MaximizeGlyph" Width="13" Height="13" Stretch="Uniform" Stroke="#344054"
                                   StrokeThickness="1.15" StrokeLineJoin="Round" StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round" Data="M2,2 H11 V11 H2 Z" />
+                                  StrokeEndLineCap="Round" Data="M4,3 H10 Q11,3 11,4 V10 Q11,11 10,11 H4 Q3,11 3,10 V4 Q3,3 4,3 Z" />
                         </Button>
                         <Button ToolTip="关闭" Tag="Close" Click="Close_Click">
                             <Button.Style>
@@ -463,6 +467,7 @@
                 </Border>
 
                 <GridSplitter Grid.Column="1"
+                              FocusVisualStyle="{x:Null}"
                               Width="5"
                               HorizontalAlignment="Stretch"
                               VerticalAlignment="Stretch"
