@@ -221,60 +221,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 : "M 4,3 H 10 Q 11,3 11,4 V 10 Q 11,11 10,11 H 4 Q 3,11 3,10 V 4 Q 3,3 4,3 Z");
     }
 
-    private void RestoreWindowPlacement()
-    {
-        if (_settings.WindowWidth is { } windowWidth && windowWidth > 0)
-        {
-            Width = windowWidth;
-        }
-
-        if (_settings.WindowHeight is { } windowHeight && windowHeight > 0)
-        {
-            Height = windowHeight;
-        }
-
-        if (_settings.WindowLeft is { } savedLeft && _settings.WindowTop is { } savedTop)
-        {
-            // Only restore the position when the window would be at least partially
-            // visible on the current virtual screen, so it never opens off-screen
-            // after a monitor has been unplugged.
-            var virtualLeft = SystemParameters.VirtualScreenLeft;
-            var virtualTop = SystemParameters.VirtualScreenTop;
-            var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
-            var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
-
-            if (savedLeft < virtualRight && savedLeft + Width > virtualLeft
-                && savedTop < virtualBottom && savedTop + Height > virtualTop)
-            {
-                Left = savedLeft;
-                Top = savedTop;
-            }
-        }
-
-        if (_settings.WindowMaximized)
-        {
-            WindowState = WindowState.Maximized;
-        }
-
-    }
-
-    private void SaveWindowPlacement()
-    {
-        _settings.WindowMaximized = WindowState == WindowState.Maximized;
-        if (WindowState == WindowState.Normal)
-        {
-            _settings.WindowLeft = Left;
-            _settings.WindowTop = Top;
-            _settings.WindowWidth = Width;
-            _settings.WindowHeight = Height;
-        }
-        _settings.Save();
-    }
-
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
-        RestoreWindowPlacement();
+        // Always launch with the XAML default 1440 x 900 centered window.
         _isPreviewMode = Environment.GetCommandLineArgs()
             .Any(argument => argument.Equals("--preview", StringComparison.OrdinalIgnoreCase));
 
@@ -331,7 +281,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _isClosing = true;
         StopNativeCaptionGuard();
-        SaveWindowPlacement();
+        // Window placement is intentionally not persisted.
         _scanTimer.Stop();
         _statusResetTimer.Stop();
         _clockTimer.Stop();
@@ -619,9 +569,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async Task ScanAndAttachAsync()
+    private async Task ScanAndAttachAsync(bool waitForActiveScan = false)
     {
-        if (!await _scanLock.WaitAsync(0))
+        if (!(waitForActiveScan ? await _scanLock.WaitAsync() : await _scanLock.WaitAsync(0)))
         {
             return;
         }
@@ -1376,7 +1326,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
-        await ScanAndAttachAsync();
+        await ScanAndAttachAsync(waitForActiveScan: true);
 
         var attachedCount = 0;
         foreach (var entry in Entries.Where(entry =>
