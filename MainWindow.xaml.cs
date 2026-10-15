@@ -330,6 +330,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         _isClosing = true;
+        StopNativeCaptionShield();
         SaveWindowPlacement();
         _scanTimer.Stop();
         _statusResetTimer.Stop();
