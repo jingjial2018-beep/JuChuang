@@ -214,8 +214,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         MaximizeGlyph.Data = Geometry.Parse(
             WindowState == WindowState.Maximized
-                ? "M 7,2 H 12 V 9 H 10 M 4,5 H 10 V 12 H 4 Q 2,12 2,10 V 7 Q 2,5 4,5 Z"
-                : "M 3,3 H 11 V 11 H 3 Z");
+                ? "M 7,2 H 11 Q 12,2 12,3 V 8 Q 12,9 11,9 H 10 M 4,5 H 9 Q 10,5 10,6 V 11 Q 10,12 9,12 H 4 Q 3,12 3,11 V 6 Q 3,5 4,5 Z"
+                : "M 4,3 H 10 Q 11,3 11,4 V 10 Q 11,11 10,11 H 4 Q 3,11 3,10 V 4 Q 3,3 4,3 Z");
     }
 
     private void RestoreWindowPlacement()
@@ -1418,7 +1418,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         MainMenuPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
         {
             var left = MainMenuButton.TransformToAncestor(this).Transform(new Point(0, 0)).X;
-            var rightInset = 10d;
+            var rightInset = 2d;
             var x = ActualWidth - left - popupSize.Width - rightInset;
             var y = targetSize.Height + 4;
             return [new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.Horizontal)];
