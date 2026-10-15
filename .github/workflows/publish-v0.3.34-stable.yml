@@ -1,0 +1,47 @@
+name: Publish JNest v0.3.34 stable
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v0.3.34-stable.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout stable candidate
+        uses: actions/checkout@v4
+        with:
+          ref: release/v0.3.34-scan-attach-fix
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile x64 release
+        shell: pwsh
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Publish framework dependent
+        shell: pwsh
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/framework
+      - name: Publish self contained
+        shell: pwsh
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o out/selfcontained
+      - name: Archive artifacts
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/framework/* -DestinationPath JNest-v0.3.34-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path out/selfcontained/* -DestinationPath JNest-v0.3.34-SelfContained-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v0.3.34-stable-win-x64
+          path: JNest-v0.3.34-*.zip
+      - name: Create stable release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.3.34 *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'v0.3.34 already exists; will not overwrite' }
+          gh release create v0.3.34 JNest-v0.3.34-FrameworkDependent-win-x64.zip JNest-v0.3.34-SelfContained-win-x64.zip --target release/v0.3.34-scan-attach-fix --title 'JNest v0.3.34' --notes 'Stable release based on v0.3.34-beta3: Scan Clients preserves manually detached client windows; Attach All explicitly reattaches them. Workspace round-corner experiments omitted. Unsigned Windows x64 packages.'
