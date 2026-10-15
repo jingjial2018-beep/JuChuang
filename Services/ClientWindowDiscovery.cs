@@ -217,7 +217,10 @@ public static class ClientWindowDiscovery
         // chats. Compact windows are login UI even when the caption is generic.
         // Thresholds require BOTH dimensions to be small to avoid classifying
         // a normally resized chat window as login.
-        if (IsGenericMainTitle(title) && width <= 520 && height <= 680)
+        var isQtWindow = windowClass.StartsWith("Qt", StringComparison.OrdinalIgnoreCase)
+            && windowClass.EndsWith("QWindowIcon", StringComparison.OrdinalIgnoreCase);
+        if (IsGenericMainTitle(title) && isQtWindow
+            && width >= 280 && height >= 200 && (long)width * height < 1_000_000)
             return ClientWindowRole.Login;
 
         return IsGenericMainTitle(title)
