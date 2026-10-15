@@ -338,10 +338,10 @@ public sealed class ExternalWindowHost : HwndHost
         var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
         var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
         var dpi = VisualTreeHelper.GetDpi(this);
-        // 通铺式嵌入：不做圆角裁剪（cornerRadius=0 → CreateRoundRectRgn 退化为矩形），
-        // 原生窗口以直角原样铺满工作区，左右紧贴侧栏与外壳，视觉上是界面的一部分。
-        // 但仍用 SetWindowRgn 裁掉超出客户区的不可见缩放边框与 DWM 阴影，避免溢出。
-        var cornerRadius = 0;
+        // 仅裁剪可见客户区的四角，不增加容器外边距，也不改变 HWND/insets 位置。
+        // WPF 设计尺寸为 8 DIP，转换成物理像素以适配高 DPI。
+        // 四角以容器边界为基准裁剪，圆角外露出的是原工作区背景。
+        var cornerRadius = Math.Max(1, (int)Math.Round(8 * dpi.DpiScaleX));
         var zOrderFlags = ShouldPromoteCurrentWindow()
             ? 0u
             : NativeMethods.SWP_NOZORDER;
