@@ -213,11 +213,14 @@ public static class ClientWindowDiscovery
         if (windowClass.Contains("WeChatLoginWndForPC", StringComparison.OrdinalIgnoreCase))
             return ClientWindowRole.Login;
 
-        // WeChat 4.x uses the generic title "微信" for both quick-login and
-        // chats. Compact windows are login UI even when the caption is generic.
-        // Thresholds require BOTH dimensions to be small to avoid classifying
-        // a normally resized chat window as login.
-        if (IsGenericMainTitle(title) && width <= 520 && height <= 680)
+        // WeChat 4.x Qt windows share the generic "微信" title and the same
+        // versioned Qt window class between login and chat. The observed login
+        // window is ~453k px² vs ~3.2m for a normal main window. Use a
+        // conservative area-based fallback only for the Qt class family.
+        var isQtWindow = windowClass.StartsWith("Qt", StringComparison.OrdinalIgnoreCase)
+            && windowClass.EndsWith("QWindowIcon", StringComparison.OrdinalIgnoreCase);
+        if (IsGenericMainTitle(title) && isQtWindow
+            && width >= 280 && height >= 200 && (long)width * height < 1_000_000)
             return ClientWindowRole.Login;
 
         return IsGenericMainTitle(title)
