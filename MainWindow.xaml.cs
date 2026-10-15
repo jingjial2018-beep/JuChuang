@@ -214,8 +214,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         MaximizeGlyph.Data = Geometry.Parse(
             WindowState == WindowState.Maximized
-                ? "M 4,1.5 H 11 V 8.5 H 4 Z M 2,4 H 9 V 11 H 2 Z"
-                : "M 2,2 H 11 V 11 H 2 Z");
+                ? "M 7,2 H 12 V 9 H 10 M 4,5 H 10 V 12 H 4 Q 2,12 2,10 V 7 Q 2,5 4,5 Z"
+                : "M 3,3 H 11 V 11 H 3 Z");
     }
 
     private void RestoreWindowPlacement()
@@ -1410,11 +1410,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OpenMainMenu_Click(object sender, RoutedEventArgs e)
     {
-        MainMenuPopup.PlacementTarget = MainMenuButton;
-        // Align the dropdown's right edge with the window's inner right edge.
-        // Coordinates are WPF DIPs; transforms account for window size and DPI.
-        var buttonLeft = MainMenuButton.TransformToAncestor(this).Transform(new Point(0, 0)).X;
-        MainMenuPopup.HorizontalOffset = Math.Max(0, ActualWidth - buttonLeft - MainMenuPopup.Width - 8);
+        // Anchor the popup to the main window's upper-right inner edge,
+        // not the hamburger button. Use Custom placement to avoid WPF
+        // flipping a Bottom popup when its rightward offset crosses the screen.
+        MainMenuPopup.PlacementTarget = this;
+        MainMenuPopup.Placement = PlacementMode.Custom;
+        MainMenuPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
+        [
+            new CustomPopupPlacement(
+                new Point(Math.Max(0, targetSize.Width - popupSize.Width - 8), 48),
+                PopupPrimaryAxis.Horizontal)
+        ];
+        MainMenuPopup.HorizontalOffset = 0;
+        MainMenuPopup.VerticalOffset = 0;
         MainMenuPopup.IsOpen = true;
     }
 
