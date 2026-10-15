@@ -411,7 +411,7 @@ public partial class MainWindow
         {
             var toast = new ToastContentBuilder()
                 .AddText(entry.DisplayName)
-                .AddText("收到新消息。");
+                .AddText("收到新消息");
 
             var avatar = entry.AvatarPath;
             if (!string.IsNullOrWhiteSpace(avatar) && File.Exists(avatar))
@@ -451,7 +451,7 @@ public partial class MainWindow
             DiagnosticLogService.WriteActivityEvent(
                 "toast-fallback-" + exception.GetType().Name, entry.ProcessId);
             _notifyIcon?.ShowBalloonTip(3000, entry.DisplayName,
-                "收到新消息。", WinForms.ToolTipIcon.None);
+                "收到新消息", WinForms.ToolTipIcon.None);
         }
     }
 
