@@ -1,0 +1,66 @@
+name: Publish JNest v0.3.36 stable
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v0.3.36-stable.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout stable source
+        uses: actions/checkout@v4
+        with:
+          ref: dev/from-v0.3.34-stable
+          fetch-depth: 0
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Check release tag and existing release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $existing = git ls-remote --tags origin 'refs/tags/v0.3.36'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect remote tags' }
+          if ($existing) { throw 'v0.3.36 tag exists: refusing overwrite' }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $r = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.36' -Headers $headers -SkipHttpErrorCheck
+          if ($r.StatusCode -ne 404) { throw "v0.3.36 release may already exist (HTTP $($r.StatusCode)); refusing overwrite" }
+      - name: Build Windows x64 Release
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Architecture regression checks
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Unread badge regression checks
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
+      - name: Publish framework dependent
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/framework
+      - name: Publish self contained
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o out/selfcontained
+      - name: Package ZIP files
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/framework/* -DestinationPath JNest-v0.3.36-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path out/selfcontained/* -DestinationPath JNest-v0.3.36-SelfContained-win-x64.zip
+      - name: Upload CI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v0.3.36-stable-win-x64
+          path: JNest-v0.3.36-*.zip
+      - name: Publish new stable GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tagCheck = git ls-remote --tags origin 'refs/tags/v0.3.36'
+          if ($LASTEXITCODE -ne 0 -or $tagCheck) { throw 'v0.3.36 tag already exists or cannot be verified' }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $check = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.36' -Headers $headers -SkipHttpErrorCheck
+          if ($check.StatusCode -ne 404) { throw "Release exists or cannot be checked, HTTP $($check.StatusCode)" }
+          gh release create v0.3.36 JNest-v0.3.36-FrameworkDependent-win-x64.zip JNest-v0.3.36-SelfContained-win-x64.zip --repo ${{ github.repository }} --target dev/from-v0.3.34-stable --title 'JNest v0.3.36' --notes-file RELEASE-NOTES-v0.3.36.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
