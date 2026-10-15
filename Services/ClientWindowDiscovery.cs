@@ -100,7 +100,7 @@ public static class ClientWindowDiscovery
                     title.Trim(),
                     windowClass,
                     kind,
-                    ResolveWindowRole(kind, title, rect.Width, rect.Height),
+                    ResolveWindowRole(kind, title, windowClass, rect.Width, rect.Height),
                     (long)rect.Width * rect.Height,
                     TryReadClientVersion(processId, kind)));
             }
@@ -194,7 +194,7 @@ public static class ClientWindowDiscovery
                || normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login";
     }
 
-    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title, int width, int height)
+    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title, string windowClass, int width, int height)
     {
         if (kind == ClientKind.WhatsApp)
         {
@@ -206,6 +206,12 @@ public static class ClientWindowDiscovery
         {
             return ClientWindowRole.Login;
         }
+
+        // A confirmed login-specific native class is a stronger signal than
+        // the generic "微信" caption. This is additive: unknown versions
+        // continue to use the compact-window fallback below.
+        if (windowClass.Contains("WeChatLoginWndForPC", StringComparison.OrdinalIgnoreCase))
+            return ClientWindowRole.Login;
 
         // WeChat 4.x uses the generic title "微信" for both quick-login and
         // chats. Compact windows are login UI even when the caption is generic.
