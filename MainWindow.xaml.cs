@@ -1530,9 +1530,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             if (profiles.Count == 0 && loginCandidates.Count == 0)
                 list.Items.Add(new ListBoxItem { Content = "没有发现已缓存账号或可读取的本地登录目录。", IsEnabled = false });
+            list.MouseDoubleClick += (_, _) =>
+            {
+                if (list.SelectedItem is not ListBoxItem selected
+                    || selected.Tag is not string accountId) return;
+                dialog.Tag = accountId;
+                dialog.Close();
+            };
             root.Children.Add(list);
             dialog.Content = root;
             dialog.ShowDialog();
+            if (dialog.Tag is string accountId)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                    new Action(async () =>
+                    {
+                        var running = Entries.FirstOrDefault(entry =>
+                            entry.Kind == ClientKind.WeChat
+                            && entry.IsAttached
+                            && string.Equals(entry.AccountId, accountId, StringComparison.OrdinalIgnoreCase));
+                        if (running is not null)
+                        {
+                            SelectedEntry = running;
+                            AccountsList.SelectedItem = running;
+                            ShowSelectedEntry();
+                            return;
+                        }
+                        await LaunchWeChatAsync(accountId);
+                    }));
+            }
         }
         finally
         {
