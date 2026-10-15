@@ -40,10 +40,10 @@ public sealed class ExternalWindowHost : HwndHost
     public bool IsReady => _hostHandle != IntPtr.Zero;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
 
-    public void SetWeChatLoginLayout(IntPtr handle, bool isLogin)
+    public void SetCenterInHost(IntPtr handle, bool centerInHost)
     {
-        if (!_hostedWindows.TryGetValue(handle, out var state) || state.IsLogin == isLogin) return;
-        _hostedWindows[handle] = state with { IsLogin = isLogin };
+        if (!_hostedWindows.TryGetValue(handle, out var state) || state.CenterInHost == centerInHost) return;
+        _hostedWindows[handle] = state with { CenterInHost = centerInHost };
         if (_currentHandle == handle) ResizeCurrentWindow();
     }
 
@@ -58,7 +58,7 @@ public sealed class ExternalWindowHost : HwndHost
             GetOwnerRoot(),
             _currentHandle);
 
-    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false)
+    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
     {
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
         {
@@ -76,7 +76,8 @@ public sealed class ExternalWindowHost : HwndHost
                 originalRect,
                 CalculateHostInsets(handle, originalRect),
                 nativeChrome,
-                disableMaximize);
+                disableMaximize,
+                centerInHost);
 
             NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
@@ -337,43 +338,29 @@ public sealed class ExternalWindowHost : HwndHost
 
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
-        // 边界对齐（旧版基线）：窗口矩形 = 容器客户区 + 四周 insets，位置 = 容器原点 - insets。
-        // 顶层窗口带 WS_THICKFRAME 时，GetWindowRect 比可见客户区多出一圈不可见的 DWM 缩放
-        // 边框（Extended Frame Bounds），insets 即这圈边框的宽度。放大并反向偏移后，客户端
-        // 的可见内容才能精确填满容器，否则会出现悬浮间隙或内容越界。
-        var insets = state.Insets;
         var target = CalculateHostedBounds(state, hostRect, origin);
-        var width = target.Width;
-        var height = target.Height;
-        var dpi = VisualTreeHelper.GetDpi(this);
-        // 仅裁剪可见客户区的四角，不增加容器外边距，也不改变 HWND/insets 位置。
-        // WPF 设计尺寸为 8 DIP，转换成物理像素以适配高 DPI。
-        // 四角以容器边界为基准裁剪，圆角外露出的是原工作区背景。
-        var cornerRadius = 0;
-        var zOrderFlags = ShouldPromoteCurrentWindow()
-            ? 0u
-            : NativeMethods.SWP_NOZORDER;
+        var zOrderFlags = ShouldPromoteCurrentWindow() ? 0u : NativeMethods.SWP_NOZORDER;
+        if (state.CenterInHost)
+        {
+            // Compact WeChat login windows have native size constraints.
+            // Never request workspace-sized dimensions or crop this dialog.
+            NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
+                target.Left, target.Top, target.Width, target.Height,
+                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
+                | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
+            NativeMethods.SetWindowRgn(_currentHandle, IntPtr.Zero, true);
+            return;
+        }
+
+        // Original v0.3.34 full-workspace layout for chat and WhatsApp.
+        var insets = state.Insets;
+        var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
+        var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
-            target.Left, target.Top, width, height,
+            origin.X - insets.Left, origin.Y - insets.Top, width, height,
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
-        if (state.IsLogin && NativeMethods.GetWindowRect(_currentHandle, out var measured)
-            && measured.Width > 0 && measured.Height > 0)
-        {
-            // WeChat 4.x may ignore requested window dimensions in its compact
-            // quick-login mode. Center the ACTUAL window, not only the target RECT.
-            var centeredLeft = origin.X + (hostRect.Width - measured.Width) / 2;
-            var centeredTop = origin.Y + (hostRect.Height - measured.Height) / 2;
-            if (measured.Left != centeredLeft || measured.Top != centeredTop)
-            {
-                NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
-                    centeredLeft, centeredTop, 0, 0,
-                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | zOrderFlags);
-            }
-            width = measured.Width;
-            height = measured.Height;
-        }
-        ApplyClipRegion(_currentHandle, width - insets.Left - insets.Right, height - insets.Top - insets.Bottom, insets, cornerRadius);
+        ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, 0);
     }
 
     /// <summary>
@@ -461,19 +448,14 @@ public sealed class ExternalWindowHost : HwndHost
     private static NativeMethods.RECT CalculateHostedBounds(
         HostedWindowState state, NativeMethods.RECT host, NativeMethods.POINT origin)
     {
-        var inset = state.Insets;
-        var originalWidth = Math.Max(1, state.Rect.Width - inset.Left - inset.Right);
-        var originalHeight = Math.Max(1, state.Rect.Height - inset.Top - inset.Bottom);
-        var clientWidth = state.IsLogin ? Math.Min(host.Width, originalWidth) : host.Width;
-        var clientHeight = state.IsLogin ? Math.Min(host.Height, originalHeight) : host.Height;
-        var left = origin.X + (host.Width - clientWidth) / 2 - inset.Left;
-        var top = origin.Y + (host.Height - clientHeight) / 2 - inset.Top;
-        return new NativeMethods.RECT
-        {
-            Left = left, Top = top,
-            Right = left + clientWidth + inset.Left + inset.Right,
-            Bottom = top + clientHeight + inset.Top + inset.Bottom
-        };
+        var insets = state.Insets;
+        var winW = state.CenterInHost ? Math.Max(1, state.Rect.Width) :
+            Math.Max(1, host.Width + insets.Left + insets.Right);
+        var winH = state.CenterInHost ? Math.Max(1, state.Rect.Height) :
+            Math.Max(1, host.Height + insets.Top + insets.Bottom);
+        var x = state.CenterInHost ? origin.X + Math.Max(0, (host.Width - winW) / 2) : origin.X - insets.Left;
+        var y = state.CenterInHost ? origin.Y + Math.Max(0, (host.Height - winH) / 2) : origin.Y - insets.Top;
+        return new NativeMethods.RECT { Left = x, Top = y, Right = x + winW, Bottom = y + winH };
     }
 
     private bool TryGetExpectedBounds(HostedWindowState state, out NativeMethods.RECT bounds)
@@ -483,17 +465,6 @@ public sealed class ExternalWindowHost : HwndHost
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return false;
         bounds = CalculateHostedBounds(state, hostRect, origin);
-        if (state.IsLogin && _currentHandle != IntPtr.Zero
-            && NativeMethods.GetWindowRect(_currentHandle, out var measured)
-            && measured.Width > 0 && measured.Height > 0)
-        {
-            // Compare against a centered ACTUAL-size compact window so the
-            // location hook does not repeatedly overwrite WeChat's own size.
-            var x = origin.X + (hostRect.Width - measured.Width) / 2;
-            var y = origin.Y + (hostRect.Height - measured.Height) / 2;
-            bounds = new NativeMethods.RECT { Left = x, Top = y,
-                Right = x + measured.Width, Bottom = y + measured.Height };
-        }
         return true;
     }
 
@@ -640,5 +611,5 @@ public sealed class ExternalWindowHost : HwndHost
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
         bool DisableMaximize,
-        bool IsLogin = false);
+        bool CenterInHost = false);
 }
