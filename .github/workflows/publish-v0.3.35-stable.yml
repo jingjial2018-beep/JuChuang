@@ -58,8 +58,9 @@ jobs:
           $old = (gh api "repos/$repo/git/ref/tags/v0.3.35" --jq '.object.sha').Trim()
           if ($LASTEXITCODE -ne 0 -or !$old) { throw 'Unable to read existing release tag' }
           $backup = 'v0.3.35-before-login-centering-fix'
-          gh api "repos/$repo/git/ref/tags/$backup" --silent 2>$null
-          if ($LASTEXITCODE -eq 0) { throw 'Backup tag already exists; refusing an unverified second overwrite' }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $check = Invoke-WebRequest -Uri "https://api.github.com/repos/$repo/git/ref/tags/$backup" -Headers $headers -SkipHttpErrorCheck
+          if ($check.StatusCode -ne 404) { throw "Cannot safely create backup tag (HTTP $($check.StatusCode))" }
           gh api -X POST "repos/$repo/git/refs" -f "ref=refs/tags/$backup" -f "sha=$old"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot preserve old release tag' }
           $commit = (git rev-parse HEAD).Trim()
