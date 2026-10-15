@@ -185,7 +185,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var width = ClientArea.ActualWidth;
         var height = ClientArea.ActualHeight;
         if (width <= 0 || height <= 0) return;
-        const double radius = 10.0;
+        const double radius = 20.0;
         ClientArea.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
     }
 
