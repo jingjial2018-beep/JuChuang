@@ -1290,10 +1290,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // “全部接入”是用户显式请求把容器外所有受支持的客户端都接入，
         // 包括之前从列表移除的窗口。
         ShowTemporaryStatus("正在接入容器外的客户端窗口…");
-        var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
-        ShowTemporaryStatus(attachedCount > 0
-            ? "接入检查完成"
-            : "未发现可接入的客户端窗口");
+        var result = await ScanAndReattachAsync(clearDismissed: true);
+        ShowTemporaryStatus($"全部接入：发现 {result.Found} 个客户端，新增接入 {result.NewAttached} 个，失败 {result.Failed} 个");
     }
 
     private async void ScanClients_Click(object sender, RoutedEventArgs e)
@@ -1304,10 +1302,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         ShowTemporaryStatus("正在扫描并接入本地客户端…");
-        var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
-        ShowTemporaryStatus(attachedCount > 0
-            ? "扫描完成"
-            : "未发现新的客户端窗口");
+        var result = await ScanAndReattachAsync(clearDismissed: false);
+        ShowTemporaryStatus($"扫描完成：发现 {result.Found} 个客户端，新增接入 {result.NewAttached} 个，失败 {result.Failed} 个");
     }
 
     /// <summary>
@@ -1315,8 +1311,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// 不打扰用户主动弹出的窗口），这里会显式重试所有未接入的窗口，用于修复
     /// 启动时因宿主未就绪而导致的“接入失败”状态。
     /// </summary>
-    private async Task<int> ScanAndReattachAsync(bool clearDismissed)
+    private async Task<(int Found, int NewAttached, int Failed)> ScanAndReattachAsync(bool clearDismissed)
     {
+        var previouslyAttached = Entries.Where(entry => entry.IsAttached && NativeMethods.IsWindow(entry.Handle))
+            .Select(entry => entry.Handle).ToHashSet();
         if (clearDismissed)
         {
             _dismissedWindowHandles.Clear();
@@ -1370,7 +1368,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ShowSelectedEntry();
         }
 
-        return attachedCount;
+        var active = Entries.Where(entry => entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle)).ToArray();
+        var newAttached = active.Count(entry => entry.IsAttached && !previouslyAttached.Contains(entry.Handle));
+        var failed = active.Count(entry => !entry.IsAttached && !entry.IsManuallyDetached
+            && (clearDismissed || !_dismissedWindowHandles.Contains(entry.Handle)));
+        DiagnosticLogService.WriteActivityEvent(
+            $"manual-scan complete force={clearDismissed} found={active.Length} new={newAttached} failed={failed}");
+        return (active.Length, newAttached, failed);
     }
 
     private void OpenMainMenu_Click(object sender, RoutedEventArgs e)
