@@ -483,6 +483,17 @@ public sealed class ExternalWindowHost : HwndHost
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return false;
         bounds = CalculateHostedBounds(state, hostRect, origin);
+        if (state.IsLogin && _currentHandle != IntPtr.Zero
+            && NativeMethods.GetWindowRect(_currentHandle, out var measured)
+            && measured.Width > 0 && measured.Height > 0)
+        {
+            // Compare against a centered ACTUAL-size compact window so the
+            // location hook does not repeatedly overwrite WeChat's own size.
+            var x = origin.X + (hostRect.Width - measured.Width) / 2;
+            var y = origin.Y + (hostRect.Height - measured.Height) / 2;
+            bounds = new NativeMethods.RECT { Left = x, Top = y,
+                Right = x + measured.Width, Bottom = y + measured.Height };
+        }
         return true;
     }
 
