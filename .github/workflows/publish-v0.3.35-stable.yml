@@ -1,0 +1,61 @@
+name: Publish JNest v0.3.35 stable
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v0.3.35-stable.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout stable source from v0.3.34 baseline
+        uses: actions/checkout@v4
+        with:
+          ref: dev/from-v0.3.34-stable
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Refuse to overwrite v0.3.35 tag or Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $existingTag = git ls-remote --tags origin 'refs/tags/v0.3.35'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to verify remote tags' }
+          if ($existingTag) { throw 'Tag v0.3.35 already exists; release cancelled' }
+          gh release view v0.3.35 --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Release v0.3.35 already exists; release cancelled' }
+      - name: Compile x64 Release
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Architecture regression checks
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Unread badge regression checks
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
+      - name: Publish framework dependent
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/framework
+      - name: Publish self contained
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o out/selfcontained
+      - name: Archive packages
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/framework/* -DestinationPath JNest-v0.3.35-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path out/selfcontained/* -DestinationPath JNest-v0.3.35-SelfContained-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v0.3.35-stable-win-x64
+          path: JNest-v0.3.35-*.zip
+      - name: Create stable GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $existingTag = git ls-remote --tags origin 'refs/tags/v0.3.35'
+          if ($LASTEXITCODE -ne 0 -or $existingTag) { throw 'v0.3.35 tag check failed or tag already exists' }
+          gh release view v0.3.35 --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'v0.3.35 Release already exists' }
+          gh release create v0.3.35 JNest-v0.3.35-FrameworkDependent-win-x64.zip JNest-v0.3.35-SelfContained-win-x64.zip --repo ${{ github.repository }} --target dev/from-v0.3.34-stable --title 'JNest v0.3.35' --notes 'Stable build based strictly on v0.3.34 source: centered compact WeChat login window in the right workspace and removed Add WeChat / Add WhatsApp menu tooltips. Windows x64 unsigned packages.' --latest
