@@ -734,6 +734,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var rebindingEntry = Entries.FirstOrDefault(entry =>
                     entry.Kind == candidate.Kind
                     && entry.ProcessId == candidate.ProcessId
+                    // Do not attach a reused PID to the previous WeChat identity.
+                    && (!_resolvedAccountProcessStarts.TryGetValue(entry.ProcessId, out var verifiedStart)
+                        || TryGetProcessStartUtcTicks(candidate.ProcessId) == verifiedStart)
                     && (entry.SessionState == ClientSessionState.Rebinding
                         || entry.Handle == IntPtr.Zero
                         || !NativeMethods.IsWindow(entry.Handle)));
