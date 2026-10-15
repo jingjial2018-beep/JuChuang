@@ -20,17 +20,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Refuse to overwrite v0.3.35 tag or Release
+      - name: Verify existing v0.3.35 and proposed repair source
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $existingTag = git ls-remote --tags origin 'refs/tags/v0.3.35'
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to verify remote tags' }
-          if ($existingTag) { throw 'Tag v0.3.35 already exists; release cancelled' }
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
-          $response = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.35' -Headers $headers -SkipHttpErrorCheck
-          if ($response.StatusCode -ne 404) { throw "Release not safely absent (HTTP $($response.StatusCode)); cancelling" }
+          $tag = git ls-remote --tags origin 'refs/tags/v0.3.35'
+          if ($LASTEXITCODE -ne 0 -or !$tag) { throw 'Expected existing v0.3.35 tag is missing' }
+          gh release view v0.3.35 --repo ${{ github.repository }} --json tagName --jq .tagName
+          if ($LASTEXITCODE -ne 0) { throw 'Existing v0.3.35 Release cannot be verified' }
+          if ((git rev-parse --short HEAD) -eq '') { throw 'Checkout not found' }
       - name: Compile x64 Release
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
       - name: Architecture regression checks
@@ -50,14 +49,23 @@ jobs:
         with:
           name: JNest-v0.3.35-stable-win-x64
           path: JNest-v0.3.35-*.zip
-      - name: Create stable GitHub Release
+      - name: Backup old tag, replace v0.3.35 assets and tag after tests
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $existingTag = git ls-remote --tags origin 'refs/tags/v0.3.35'
-          if ($LASTEXITCODE -ne 0 -or $existingTag) { throw 'v0.3.35 tag check failed or tag already exists' }
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
-          $response = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v0.3.35' -Headers $headers -SkipHttpErrorCheck
-          if ($response.StatusCode -ne 404) { throw "Release not safely absent (HTTP $($response.StatusCode)); cancelling" }
-          gh release create v0.3.35 JNest-v0.3.35-FrameworkDependent-win-x64.zip JNest-v0.3.35-SelfContained-win-x64.zip --repo ${{ github.repository }} --target dev/from-v0.3.34-stable --title 'JNest v0.3.35' --notes 'Stable build based strictly on v0.3.34 source: centered compact WeChat login window in the right workspace and removed Add WeChat / Add WhatsApp menu tooltips. Windows x64 unsigned packages.' --latest
+          $repo = '${{ github.repository }}'
+          $old = (gh api "repos/$repo/git/ref/tags/v0.3.35" --jq '.object.sha').Trim()
+          if ($LASTEXITCODE -ne 0 -or !$old) { throw 'Unable to read existing release tag' }
+          $backup = 'v0.3.35-before-login-centering-fix'
+          gh api "repos/$repo/git/ref/tags/$backup" --silent 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'Backup tag already exists; refusing an unverified second overwrite' }
+          gh api -X POST "repos/$repo/git/refs" -f "ref=refs/tags/$backup" -f "sha=$old"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot preserve old release tag' }
+          $commit = (git rev-parse HEAD).Trim()
+          gh api -X PATCH "repos/$repo/git/refs/tags/v0.3.35" -f "sha=$commit" -F "force=true"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to update v0.3.35 tag' }
+          gh release upload v0.3.35 JNest-v0.3.35-FrameworkDependent-win-x64.zip JNest-v0.3.35-SelfContained-win-x64.zip --clobber --repo $repo
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to replace ZIP assets' }
+          gh release edit v0.3.35 --repo $repo --title 'JNest v0.3.35' --notes 'Updated v0.3.35 stable build: fix centered WeChat 4.x compact quick-login window (generic 微信 title). Preserve WhatsApp and remove Add WeChat / Add WhatsApp menu tooltip. Previous release commit preserved under v0.3.35-before-login-centering-fix. Unsigned Windows x64 packages.'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to update release notes' }
