@@ -341,7 +341,7 @@ public sealed class ExternalWindowHost : HwndHost
         // 仅裁剪可见客户区的四角，不增加容器外边距，也不改变 HWND/insets 位置。
         // WPF 设计尺寸为 8 DIP，转换成物理像素以适配高 DPI。
         // 四角以容器边界为基准裁剪，圆角外露出的是原工作区背景。
-        var cornerRadius = Math.Max(1, (int)Math.Round(8 * dpi.DpiScaleX));
+        var cornerRadius = 0;
         var zOrderFlags = ShouldPromoteCurrentWindow()
             ? 0u
             : NativeMethods.SWP_NOZORDER;
