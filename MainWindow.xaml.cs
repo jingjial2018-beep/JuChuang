@@ -1426,7 +1426,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void HistoryAccounts_Click(object sender, RoutedEventArgs e)
     {
+        // Merge previously verified JNest cache with discoverable local login
+        // directories. Directory entries are candidates, not authenticated identities.
+        ClientMetadataService.InvalidateLoginAccountCache();
         var profiles = _profileCache.GetHistorySnapshot();
+        var loginCandidates = ClientMetadataService.FindLoginAccounts();
         WindowHost.SuspendOverlayZOrder();
         try
         {
@@ -1446,7 +1450,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             root.Children.Add(heading);
             var info = new TextBlock
             {
-                Text = "仅列出 JNest 已成功识别并缓存的账号。不修改微信配置、不自动登录。",
+                Text = "显示 JNest 已确认的缓存资料及尚未验证的本地登录目录。只读，不修改配置或自动登录。",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = System.Windows.Media.Brushes.DimGray,
                 Margin = new Thickness(0, 0, 0, 15)
@@ -1466,8 +1470,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 });
                 list.Items.Add(new ListBoxItem { Content = item, IsEnabled = false });
             }
-            if (profiles.Count == 0)
-                list.Items.Add(new ListBoxItem { Content = "目前没有已确认的缓存账号。", IsEnabled = false });
+            var cachedIds = new HashSet<string>(
+                profiles.Select(item => item.AccountId),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var account in loginCandidates.Where(item => !cachedIds.Contains(item.AccountId)))
+            {
+                var item = new StackPanel { Margin = new Thickness(4, 8, 4, 8) };
+                item.Children.Add(new TextBlock
+                {
+                    Text = account.DisplayName,
+                    FontSize = 15,
+                    FontWeight = FontWeights.SemiBold
+                });
+                item.Children.Add(new TextBlock
+                {
+                    Text = $"本地登录目录候选：{account.AccountId}  ·  资料未验证",
+                    Foreground = System.Windows.Media.Brushes.DimGray,
+                    FontSize = 12
+                });
+                list.Items.Add(new ListBoxItem { Content = item, IsEnabled = false });
+            }
+            if (profiles.Count == 0 && loginCandidates.Count == 0)
+                list.Items.Add(new ListBoxItem { Content = "没有发现已缓存账号或可读取的本地登录目录。", IsEnabled = false });
             root.Children.Add(list);
             dialog.Content = root;
             dialog.ShowDialog();
