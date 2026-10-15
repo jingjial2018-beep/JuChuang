@@ -274,7 +274,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
-        RestoreWindowPlacement();
+        // Fixed startup size and centered position come from MainWindow.xaml.
         _isPreviewMode = Environment.GetCommandLineArgs()
             .Any(argument => argument.Equals("--preview", StringComparison.OrdinalIgnoreCase));
 
@@ -331,7 +331,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _isClosing = true;
         StopNativeCaptionGuard();
-        SaveWindowPlacement();
+        // Fixed window sizing: do not remember prior position, size or maximized state.
         _scanTimer.Stop();
         _statusResetTimer.Stop();
         _clockTimer.Stop();
