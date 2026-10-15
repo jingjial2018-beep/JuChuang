@@ -57,16 +57,14 @@ jobs:
           $repo = '${{ github.repository }}'
           $old = (gh api "repos/$repo/git/ref/tags/v0.3.35" --jq '.object.sha').Trim()
           if ($LASTEXITCODE -ne 0 -or !$old) { throw 'Unable to read existing release tag' }
-          $backup = 'v0.3.35-before-login-centering-fix'
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
-          $check = Invoke-WebRequest -Uri "https://api.github.com/repos/$repo/git/ref/tags/$backup" -Headers $headers -SkipHttpErrorCheck
-          if ($check.StatusCode -ne 404) { throw "Cannot safely create backup tag (HTTP $($check.StatusCode))" }
+          # Preserve the exact currently published build on every replacement.
+          $backup = "v0.3.35-before-centering-hotfix-${{ github.run_number }}"
           gh api -X POST "repos/$repo/git/refs" -f "ref=refs/tags/$backup" -f "sha=$old"
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot preserve old release tag' }
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot preserve old release tag; refusing overwrite' }
           $commit = (git rev-parse HEAD).Trim()
           gh api -X PATCH "repos/$repo/git/refs/tags/v0.3.35" -f "sha=$commit" -F "force=true"
           if ($LASTEXITCODE -ne 0) { throw 'Unable to update v0.3.35 tag' }
           gh release upload v0.3.35 JNest-v0.3.35-FrameworkDependent-win-x64.zip JNest-v0.3.35-SelfContained-win-x64.zip --clobber --repo $repo
           if ($LASTEXITCODE -ne 0) { throw 'Unable to replace ZIP assets' }
-          gh release edit v0.3.35 --repo $repo --title 'JNest v0.3.35' --notes 'Updated v0.3.35 stable build: fix centered WeChat 4.x compact quick-login window (generic 微信 title). Preserve WhatsApp and remove Add WeChat / Add WhatsApp menu tooltip. Previous release commit preserved under v0.3.35-before-login-centering-fix. Unsigned Windows x64 packages.'
+          gh release edit v0.3.35 --repo $repo --title 'JNest v0.3.35' --notes 'Updated v0.3.35 stable build: fix centered WeChat 4.x compact quick-login window (generic 微信 title). Preserve WhatsApp and remove Add WeChat / Add WhatsApp menu tooltip. Previous release commit preserved under a numbered backup tag. Unsigned Windows x64 packages.'
           if ($LASTEXITCODE -ne 0) { throw 'Unable to update release notes' }
