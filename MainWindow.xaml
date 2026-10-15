@@ -9,13 +9,13 @@
         Title="JNest"
         Icon="Assets/app.ico"
         ShowInTaskbar="True"
-        Width="1440"
-        Height="900"
-        MinWidth="1120"
-        MinHeight="680"
+        Width="1297"
+        Height="862"
+        MinWidth="1297"
+        MinHeight="862"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-        ResizeMode="CanResize"
+        ResizeMode="CanMinimize"
         Background="{StaticResource WindowBackgroundBrush}"
         FontFamily="Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei, Segoe UI"
         UseLayoutRounding="True"
@@ -27,7 +27,7 @@
         SourceInitialized="Window_SourceInitialized">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="0"
-                            ResizeBorderThickness="7"
+                            ResizeBorderThickness="0"
                             CornerRadius="10"
                             GlassFrameThickness="0" />
     </shell:WindowChrome.WindowChrome>
