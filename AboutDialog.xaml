@@ -30,8 +30,44 @@
                        Text="JNest 保留原生客户端界面，不读取聊天消息正文，也不提供聊天内容的云端同步服务。"/>
         </StackPanel>
         <Grid Grid.Row="3">
+            <Grid.Resources>
+                <Style x:Key="AboutConfirmStyle" TargetType="Button">
+                    <Setter Property="Background" Value="#F8F9FB"/>
+                    <Setter Property="Foreground" Value="#263041"/>
+                    <Setter Property="BorderBrush" Value="#D9DEE5"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="FontSize" Value="13"/>
+                    <Setter Property="FontWeight" Value="Medium"/>
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Surface" CornerRadius="11"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#334155" Opacity="0.12" BlurRadius="5" ShadowDepth="1"/>
+                                    </Border.Effect>
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Surface" Property="Background" Value="#EEF2F6"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="Surface" Property="Background" Value="#E3E9F0"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Grid.Resources>
             <TextBlock Text="Windows 11 · 64 位" FontSize="11.5" Foreground="#98A2B3" VerticalAlignment="Center"/>
-            <Button Content="确定" Width="96" Height="34" HorizontalAlignment="Right"
+            <Button Content="确定" Width="112" Height="40" HorizontalAlignment="Right"
+                    Style="{StaticResource AboutConfirmStyle}"
                     IsDefault="True" Click="Close_Click"/>
         </Grid>
     </Grid>
