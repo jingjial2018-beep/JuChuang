@@ -341,7 +341,8 @@ public sealed class ExternalWindowHost : HwndHost
         // 通铺式嵌入：不做圆角裁剪（cornerRadius=0 → CreateRoundRectRgn 退化为矩形），
         // 原生窗口以直角原样铺满工作区，左右紧贴侧栏与外壳，视觉上是界面的一部分。
         // 但仍用 SetWindowRgn 裁掉超出客户区的不可见缩放边框与 DWM 阴影，避免溢出。
-        var cornerRadius = 0;
+        // Match ClientArea's 10-DIP corner radius without changing window bounds or insets.
+        var cornerRadius = Math.Max(1, (int)Math.Round(10 * dpi.DpiScaleX));
         var zOrderFlags = ShouldPromoteCurrentWindow()
             ? 0u
             : NativeMethods.SWP_NOZORDER;
