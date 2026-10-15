@@ -15,7 +15,7 @@ jobs:
       - name: Checkout stable source
         uses: actions/checkout@v4
         with:
-          ref: release/v0.99-fixed-window-from-v0.3.35
+          ref: release/v0.99-qr-centering
           fetch-depth: 0
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
