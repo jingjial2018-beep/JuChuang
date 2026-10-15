@@ -76,7 +76,7 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_STYLE,
-                CreateOverlayStyle(state.Style, isVisible: true, state.DisableMaximize));
+                CreateOverlayStyle(state.Style, isVisible: true, disableMaximize: state.DisableMaximize));
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_EXSTYLE,
