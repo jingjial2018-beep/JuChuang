@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -33,3 +33,18 @@ jobs:
         with:
           name: JNest-v0.3.35-beta6-P0-P1-P2-test
           path: JNest-v0.3.35-beta6-P0-P1-P2-test-win-x64.zip
+
+      - name: Publish GitHub prerelease after validation
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v0.3.35-beta6'
+          $package = 'JNest-v0.3.35-beta6-P0-P1-P2-test-win-x64.zip'
+          $notes = 'Beta test: centered WeChat login window, history account launch UI, login placeholder naming, and existing window hosting safeguards. Native self-drawn title-bar button suppression is not yet guaranteed and requires desktop compatibility testing. The stable v0.3.34 release remains unchanged.'
+          gh release view $tag --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $package --clobber --repo ${{ github.repository }}
+          } else {
+            gh release create $tag $package --repo ${{ github.repository }} --target dev/v0.3.35-p0-p1-p2 --title 'JNest v0.3.35-beta6 (test)' --notes $notes --prerelease
+          }
