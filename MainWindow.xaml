@@ -460,6 +460,7 @@
                                             <Setter TargetName="AccountItemGrid" Property="Margin" Value="0" />
                                             <Setter TargetName="AccountAvatarGrid" Property="Width" Value="48" />
                                             <Setter TargetName="AccountAvatarColumn" Property="Width" Value="48" />
+                                            <Setter TargetName="AccountCloseColumn" Property="Width" Value="0" />
                                         </DataTrigger>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
