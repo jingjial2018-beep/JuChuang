@@ -762,6 +762,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             foreach (var candidate in candidates)
             {
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
+                // Current window size is not a reliable login signal after WPF
+                // hosting resized a previously confirmed chat window.
+                if (existingEntry is not null
+                    && candidate.Kind == ClientKind.WeChat
+                    && candidate.Role == ClientWindowRole.Login
+                    && existingEntry.SessionState == ClientSessionState.Main
+                    && !candidate.WindowTitle.Contains("登录", StringComparison.OrdinalIgnoreCase)
+                    && !candidate.WindowClass.Contains("WeChatLoginWndForPC", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidate = candidate with { Role = ClientWindowRole.Main };
+                }
                 if (existingEntry is not null)
                 {
                     if (candidate.Kind == ClientKind.WeChat
@@ -769,8 +780,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         DiagnosticLogService.WriteActivityEvent(
                             $"wechat-role-transition {existingEntry.SessionState}->{candidate.Role} class={candidate.WindowClass} area={candidate.PixelArea}",
                             candidate.ProcessId);
+                    var resumedFromLogin = existingEntry.SessionState == ClientSessionState.Login
+                        && candidate.Role == ClientWindowRole.Main;
                     PrepareEntryForCandidate(existingEntry, candidate);
                     QueueOrApplyWeChatIdentity(existingEntry, candidate, weChatAccounts);
+                    if (resumedFromLogin)
+                    {
+                        _lastClientActivityScan.Remove(existingEntry);
+                        _activityRetryGeneration.Remove(existingEntry);
+                        QueueClientActivityScan(existingEntry, "login-to-main");
+                        DiagnosticLogService.WriteAccountEvent(existingEntry, "badge-monitor-rearmed");
+                    }
 
                     // 自动扫描只重试“接入失败”的窗口。用户主动“弹出窗口”会把句柄
                     // 放进 _dismissedWindowHandles，因此不会被后台扫描重新抓回容器。
@@ -803,8 +823,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 if (rebindingEntry is not null)
                 {
+                    var rebindingIntoMain = candidate.Kind == ClientKind.WeChat
+                        && candidate.Role == ClientWindowRole.Main;
                     PrepareEntryForCandidate(rebindingEntry, candidate);
                     QueueOrApplyWeChatIdentity(rebindingEntry, candidate, weChatAccounts);
+                    if (rebindingIntoMain)
+                    {
+                        _lastClientActivityScan.Remove(rebindingEntry);
+                        _activityRetryGeneration.Remove(rebindingEntry);
+                        QueueClientActivityScan(rebindingEntry, "window-rebound-main");
+                    }
                     if (rebindingEntry.IsManuallyDetached)
                     {
                         rebindingEntry.IsAttached = false;
