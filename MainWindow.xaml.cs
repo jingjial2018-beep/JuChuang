@@ -1271,13 +1271,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private string BuildCurrentStatusText(ClientWindowEntry entry, string baseText)
     {
-        if (entry.Kind != ClientKind.WeChat
+        if (entry.Kind != ClientKind.WeChat || baseText != "已接入")
+            return baseText;
+        if (entry.SessionState == ClientSessionState.Login)
+            return "已接入 · 等待登录";
+        if (entry.SessionState != ClientSessionState.Main
             || entry.ProfileState == AccountProfileState.NotApplicable
             || string.IsNullOrWhiteSpace(entry.ProfileStatusText))
-        {
             return baseText;
-        }
-
         return $"{baseText} · {entry.ProfileStatusText}";
     }
 
