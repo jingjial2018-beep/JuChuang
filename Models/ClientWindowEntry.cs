@@ -177,7 +177,11 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     public ClientSessionState SessionState
     {
         get => _sessionState;
-        set => SetField(ref _sessionState, value);
+        set
+        {
+            if (SetField(ref _sessionState, value))
+                OnPropertyChanged(nameof(StatusSummary));
+        }
     }
 
     /// <summary>
@@ -227,23 +231,37 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
         }
     }
 
+    // Detailed failure stages remain in ProfileDiagnosticCode/Detail, not the sidebar.
     public string ProfileStatusText => ProfileState switch
     {
-        AccountProfileState.Pending => "资料识别中",
+        AccountProfileState.Pending => "资料读取中",
         AccountProfileState.Ready => string.Empty,
-        AccountProfileState.ReadyFromCache => "使用资料缓存",
-        AccountProfileState.ReadyWithoutAvatar => "头像待更新",
-        AccountProfileState.WaitingForLocalData => "等待本地资料",
-        AccountProfileState.CompatibilityIssue => "资料解析待适配",
-        AccountProfileState.Error => "资料读取失败",
+        AccountProfileState.ReadyFromCache => "使用缓存资料",
+        AccountProfileState.ReadyWithoutAvatar => "资料待更新",
+        AccountProfileState.WaitingForLocalData => "资料待更新",
+        AccountProfileState.CompatibilityIssue => "资料待更新",
+        AccountProfileState.Error => "资料待更新",
         _ => string.Empty
     };
 
-    public string StatusSummary => Kind == ClientKind.WeChat
-        && ProfileState is not AccountProfileState.NotApplicable
-        && !string.IsNullOrWhiteSpace(ProfileStatusText)
-            ? $"{Status} · {ProfileStatusText}"
-            : Status;
+    // Native window role takes priority over local profile status. A QR login
+    // window can be attached before the user has logged in.
+    public string StatusSummary
+    {
+        get
+        {
+            if (Kind != ClientKind.WeChat || Status != "已接入")
+                return Status;
+            if (SessionState == ClientSessionState.Login)
+                return "已接入 · 等待登录";
+            // Unknown/transitioning window roles must not be guessed as logged in.
+            if (SessionState != ClientSessionState.Main
+                || ProfileState == AccountProfileState.NotApplicable
+                || string.IsNullOrWhiteSpace(ProfileStatusText))
+                return Status;
+            return $"{Status} · {ProfileStatusText}";
+        }
+    }
 
     public string ProfileDiagnosticText
     {
