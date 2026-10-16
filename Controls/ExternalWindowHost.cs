@@ -51,7 +51,7 @@ public sealed class ExternalWindowHost : HwndHost
             GetOwnerRoot(),
             _currentHandle);
 
-    public bool AttachWindow(IntPtr handle, bool makeActive)
+    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false)
     {
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
         {
@@ -68,14 +68,15 @@ public sealed class ExternalWindowHost : HwndHost
                 NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE),
                 originalRect,
                 CalculateHostInsets(handle, originalRect),
-                nativeChrome);
+                nativeChrome,
+                disableMaximize);
 
             NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_STYLE,
-                CreateOverlayStyle(state.Style, isVisible: true));
+                CreateOverlayStyle(state.Style, isVisible: true, disableMaximize: state.DisableMaximize));
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_EXSTYLE,
@@ -337,10 +338,10 @@ public sealed class ExternalWindowHost : HwndHost
         var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
         var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
         var dpi = VisualTreeHelper.GetDpi(this);
-        // 通铺式嵌入：不做圆角裁剪（cornerRadius=0 → CreateRoundRectRgn 退化为矩形），
-        // 原生窗口以直角原样铺满工作区，左右紧贴侧栏与外壳，视觉上是界面的一部分。
-        // 但仍用 SetWindowRgn 裁掉超出客户区的不可见缩放边框与 DWM 阴影，避免溢出。
-        var cornerRadius = 0;
+        // 仅裁剪可见客户区的四角，不增加容器外边距，也不改变 HWND/insets 位置。
+        // WPF 设计尺寸为 8 DIP，转换成物理像素以适配高 DPI。
+        // 四角以容器边界为基准裁剪，圆角外露出的是原工作区背景。
+        var cornerRadius = Math.Max(1, (int)Math.Round(8 * dpi.DpiScaleX));
         var zOrderFlags = ShouldPromoteCurrentWindow()
             ? 0u
             : NativeMethods.SWP_NOZORDER;
@@ -404,7 +405,7 @@ public sealed class ExternalWindowHost : HwndHost
         // 托管窗口统一保持 WS_VISIBLE：选中的在容器内显示，非选中的停靠到屏幕外。
         // 若按 selected 清除 WS_VISIBLE，非选中窗口会被"隐藏"，其标题栏无法闪烁，
         // FlashWindowEx/HSHELL_FLASH 来消息通知会失效。真正的显隐区分交给停靠位置。
-        var expectedStyle = CreateOverlayStyle(state.Style, isVisible: true);
+        var expectedStyle = CreateOverlayStyle(state.Style, isVisible: true, disableMaximize: state.DisableMaximize);
         if (NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE) != expectedStyle)
             NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, expectedStyle);
         var expectedExStyle = CreateOverlayExtendedStyle(state.ExtendedStyle);
@@ -495,13 +496,14 @@ public sealed class ExternalWindowHost : HwndHost
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => EnforceHostedWindow(window)));
     }
 
-    private static IntPtr CreateOverlayStyle(IntPtr originalStyle, bool isVisible)
+    private static IntPtr CreateOverlayStyle(IntPtr originalStyle, bool isVisible, bool disableMaximize)
     {
         var style = unchecked((long)(uint)originalStyle.ToInt64());
         // 保留 WS_CAPTION/WS_THICKFRAME：微信 4.x 与 WhatsApp 都是自绘窗口，原生标题栏
         // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
         // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
         style &= ~NativeMethods.WS_CHILD;
+        if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
         else style &= ~NativeMethods.WS_VISIBLE;
         return new IntPtr(style);
@@ -590,5 +592,6 @@ public sealed class ExternalWindowHost : HwndHost
         IntPtr ExtendedStyle,
         NativeMethods.RECT Rect,
         HostInsets Insets,
-        NativeMethods.DwmChromeState ChromeState);
+        NativeMethods.DwmChromeState ChromeState,
+        bool DisableMaximize);
 }
