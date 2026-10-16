@@ -158,6 +158,11 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSidebarCollapsed, ElementName=JNestMainWindow}" Value="True">
+                    <Setter Property="Margin" Value="2,2" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="AccountCloseButtonStyle" TargetType="Button">
