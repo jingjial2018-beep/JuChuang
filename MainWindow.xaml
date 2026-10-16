@@ -155,7 +155,7 @@
             </Setter>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsSidebarCollapsed, ElementName=JNestMainWindow}" Value="True">
-                    <Setter Property="Margin" Value="2,2" />
+                    <Setter Property="Margin" Value="6,2" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
