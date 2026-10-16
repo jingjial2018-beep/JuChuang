@@ -827,12 +827,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         && candidate.Role == ClientWindowRole.Main;
                     PrepareEntryForCandidate(rebindingEntry, candidate);
                     QueueOrApplyWeChatIdentity(rebindingEntry, candidate, weChatAccounts);
-                    if (rebindingIntoMain)
-                    {
-                        _lastClientActivityScan.Remove(rebindingEntry);
-                        _activityRetryGeneration.Remove(rebindingEntry);
-                        QueueClientActivityScan(rebindingEntry, "window-rebound-main");
-                    }
                     if (rebindingEntry.IsManuallyDetached)
                     {
                         rebindingEntry.IsAttached = false;
@@ -853,6 +847,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         }
                     }
 
+                    if (rebindingIntoMain && rebindingEntry.IsAttached)
+                    {
+                        _lastClientActivityScan.Remove(rebindingEntry);
+                        _activityRetryGeneration.Remove(rebindingEntry);
+                        QueueClientActivityScan(rebindingEntry, "window-rebound-main");
+                    }
                     DiagnosticLogService.WriteAccountEvent(rebindingEntry, "window-rebound");
                     if (rebindingEntry.IsAttached && candidate.Kind == ClientKind.WeChat)
                         WindowHost.SetCenterInHost(rebindingEntry.Handle, candidate.Role == ClientWindowRole.Login);
