@@ -397,7 +397,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition x:Name="AccountAvatarColumn" Width="60" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition x:Name="AccountCloseColumn" Width="30" />
                                         </Grid.ColumnDefinitions>
                                         <Grid x:Name="AccountAvatarGrid" Width="52" Height="52" VerticalAlignment="Center" ClipToBounds="False">
                                             <Ellipse x:Name="WeChatFallbackIcon" Width="48" Height="48" Visibility="Collapsed">
