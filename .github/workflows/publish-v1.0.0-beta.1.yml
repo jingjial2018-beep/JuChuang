@@ -42,15 +42,37 @@ jobs:
         with:
           name: JNest-v1.0.0-beta.1-win-x64
           path: JNest-v1.0.0-beta.1-*.zip
-      - name: Publish beta prerelease
+      - name: Backup previous beta tag and replace prerelease
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = 'v1.0.0-beta.1'
-          $existing = [string](git ls-remote --tags origin "refs/tags/$tag")
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect tag' }
-          if ($existing) { throw 'Beta tag already exists. Refusing to overwrite.' }
-          gh release create $tag JNest-v1.0.0-beta.1-FrameworkDependent-win-x64.zip JNest-v1.0.0-beta.1-SelfContained-win-x64.zip --repo ${{ github.repository }} --target beta/v1.0-sidebar-toggle --title 'JNest v1.0.0-beta.1' --notes-file RELEASE-NOTES-v1.0.0-beta.1.md --prerelease
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub prerelease creation failed' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $current = [string](git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect beta tag' }
+          if ($current) {
+            $oldSha = ($current -split '\s+')[0]
+            $backup = "v1.0.0-beta.1-before-avatar-fix-${{ github.run_number }}"
+            git tag $backup $oldSha
+            git push origin "refs/tags/$backup"
+            if ($LASTEXITCODE -ne 0) { throw 'Beta tag backup failed' }
+          }
+          git tag -f $tag HEAD
+          git push --force origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to update beta tag' }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; 'X-GitHub-Api-Version' = '2022-11-28' }
+          $check = Invoke-WebRequest -Uri 'https://api.github.com/repos/${{ github.repository }}/releases/tags/v1.0.0-beta.1' -Headers $headers -SkipHttpErrorCheck
+          if ($check.StatusCode -eq 200) {
+            gh release upload $tag JNest-v1.0.0-beta.1-FrameworkDependent-win-x64.zip JNest-v1.0.0-beta.1-SelfContained-win-x64.zip --clobber --repo ${{ github.repository }}
+            if ($LASTEXITCODE -ne 0) { throw 'Replacing beta ZIP assets failed' }
+            gh release edit $tag --repo ${{ github.repository }} --title 'JNest v1.0.0-beta.1' --notes-file RELEASE-NOTES-v1.0.0-beta.1.md --prerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Updating beta release notes failed' }
+          } elseif ($check.StatusCode -eq 404) {
+            gh release create $tag JNest-v1.0.0-beta.1-FrameworkDependent-win-x64.zip JNest-v1.0.0-beta.1-SelfContained-win-x64.zip --repo ${{ github.repository }} --title 'JNest v1.0.0-beta.1' --notes-file RELEASE-NOTES-v1.0.0-beta.1.md --prerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Creating beta prerelease failed' }
+          } else {
+            throw "Cannot check existing beta release: HTTP $($check.StatusCode)"
+          }
