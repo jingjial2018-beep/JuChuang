@@ -86,6 +86,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         LocationChanged += (_, _) => QueueOverlayBoundsUpdate();
         SizeChanged += (_, _) => QueueOverlayBoundsUpdate();
+        ClientArea.SizeChanged += (_, _) => UpdateWorkspaceRoundedClip();
+        Loaded += (_, _) => UpdateWorkspaceRoundedClip();
     }
 
     private readonly DispatcherTimer _statusResetTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -175,6 +177,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public void ReleaseHostedWindowsForShutdown() => WindowHost.DetachAll();
+
+    // Round ONLY the WPF workspace viewport. Keep the external client HWND's
+    // existing beta2 region, size, insets and native corner styling unchanged.
+    private void UpdateWorkspaceRoundedClip()
+    {
+        var width = ClientArea.ActualWidth;
+        var height = ClientArea.ActualHeight;
+        if (width <= 0 || height <= 0) return;
+        var radius = Math.Min(8.0, Math.Min(width, height) / 2);
+        ClientArea.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
+    }
 
     private void QueueOverlayBoundsUpdate()
     {
@@ -716,7 +729,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     {
                         existingEntry.IsAttached = WindowHost.AttachWindow(
                             existingEntry.Handle,
-                            makeActive: false);
+                            makeActive: false,
+                            disableMaximize: existingEntry.Kind == ClientKind.WhatsApp);
                         existingEntry.Status = existingEntry.IsAttached ? "已接入" : "接入失败";
                     }
 
@@ -747,7 +761,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         var makeActive = ReferenceEquals(rebindingEntry, SelectedEntry);
                         rebindingEntry.IsAttached = WindowHost.AttachWindow(
                             candidate.Handle,
-                            makeActive);
+                            makeActive,
+                            disableMaximize: rebindingEntry.Kind == ClientKind.WhatsApp);
                         rebindingEntry.Status = rebindingEntry.IsAttached ? "已接入" : "接入失败";
                         if (makeActive && rebindingEntry.IsAttached)
                         {
@@ -780,7 +795,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 QueueOrApplyWeChatIdentity(entry, candidate, weChatAccounts);
                 ApplySavedAccountOrder();
 
-                entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false);
+                entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false,
+                    disableMaximize: entry.Kind == ClientKind.WhatsApp);
                 entry.Status = entry.IsAttached ? "已接入" : "接入失败";
                 TryCompletePendingLaunch(candidate, entry);
             }
@@ -1292,7 +1308,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;
-            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
+            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
+                disableMaximize: entry.Kind == ClientKind.WhatsApp);
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
@@ -1370,7 +1387,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 continue;
             }
 
-            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false);
+            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false,
+                disableMaximize: entry.Kind == ClientKind.WhatsApp);
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             if (entry.IsAttached)
             {

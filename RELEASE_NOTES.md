@@ -1,3 +1,21 @@
+## v0.3.34-beta5 — 工作区四角平滑圆弧测试
+
+- 严格基于 v0.3.34-beta2；不继承 beta3 的原生客户端圆角变化，也不继承 beta4 的直切角代码。
+- 仅为 JNest WPF ClientArea 设置 8 DIP 的 RectangleGeometry 圆弧裁剪（四角），不改变原生微信和 WhatsApp 的 SetWindowRgn、尺寸和坐标。
+- 保留 WhatsApp 嵌入时 WS_MAXIMIZEBOX 屏蔽及 v0.3.33 原生点击保护。
+- 注意：客户端是单独的顶层 HWND，WPF Clip 不保证覆盖原生客户端；须测试空白工作区和已接入窗口两种状态，未通过实测不合并正式版。
+
+---
+
+## v0.3.34-beta2 — WhatsApp 最大化窗口样式实验
+
+- 基于 v0.3.33 正式版。仅当 WhatsApp 嵌入 JNest 时清除其 `WS_MAXIMIZEBOX` 样式，尝试禁用 Windows 11 原生 Snap Layouts 的最大化按钮悬停菜单。
+- 不拦截鼠标移动、不改微信、不修改系统设置；保持原有三个按钮的点击拦截。
+- WhatsApp 弹出后还原原始窗口样式；守护循环继续应用 WhatsApp 专属预期样式。
+- 此实验可能改变 WhatsApp 最大化按钮外观或窗口边框，需要实机检查嵌入布局和消息提醒。测试通过前不得合并正式版。
+
+---
+
 ## v0.3.33 — 窗口按钮保护、300 DIP 侧栏与状态栏字号优化
 
 - 固定左侧栏 300 DIP，继续保留不可拖动的 1 DIP 分隔线。
