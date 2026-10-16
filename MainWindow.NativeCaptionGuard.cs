@@ -11,6 +11,7 @@ namespace JuChuang;
 public partial class MainWindow
 {
     private const int WhMouseLl = 14;
+    private const int WmMouseMove = 0x0200;
     private const int WmLButtonDown = 0x0201;
     private const int WmLButtonUp = 0x0202;
     private const int WmLButtonDblClk = 0x0203;
@@ -50,6 +51,7 @@ public partial class MainWindow
     private IntPtr _guardedClient;
     private IntPtr _guardedOwner;
     private int _guardLeft, _guardTop, _guardRight, _guardBottom;
+    private bool _guardWhatsAppHover;
 
     private void StartNativeCaptionGuard()
     {
@@ -71,6 +73,7 @@ public partial class MainWindow
     {
         // Snapshot only on the dispatcher timer; hook callback must stay quick.
         _guardedClient = IntPtr.Zero;
+        _guardWhatsAppHover = false;
         if (_isClosing || _isPreviewMode || WindowState == WindowState.Minimized
             || !IsVisible || !WindowHost.IsReady || !WindowHost.IsVisible
             || SelectedEntry is not { IsAttached: true, Handle: var hwnd }
@@ -91,6 +94,7 @@ public partial class MainWindow
         _guardRight = (int)Math.Ceiling(topRight.X);
         _guardBottom = (int)Math.Ceiling(bottom.Y);
         _guardedOwner = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        _guardWhatsAppHover = SelectedEntry?.Kind == JuChuang.Models.ClientKind.WhatsApp;
         _guardedClient = hwnd;
     }
 
@@ -99,6 +103,24 @@ public partial class MainWindow
         if (code >= 0 && _guardedClient != IntPtr.Zero && !_isClosing)
         {
             var command = unchecked((int)msg.ToInt64());
+            // WhatsApp-only experiment: suppress hover movement over the middle
+            // caption button (maximize/Snap Layouts). Other mouse movement and
+            // all WeChat behavior are unchanged. Windows may still use physical
+            // cursor position to trigger Snap Layouts; validate on device.
+            if (command == WmMouseMove && _guardWhatsAppHover)
+            {
+                var pointer = Marshal.PtrToStructure<MouseHookData>(data).Point;
+                var width = _guardRight - _guardLeft;
+                var maximizeLeft = _guardRight - (width * 2 / 3);
+                var maximizeRight = _guardRight - (width / 3);
+                if (pointer.X >= maximizeLeft && pointer.X < maximizeRight
+                    && pointer.Y >= _guardTop && pointer.Y < _guardBottom)
+                {
+                    var fg = NativeMethods.GetForegroundWindow();
+                    if (fg == _guardedClient || fg == _guardedOwner)
+                        return new IntPtr(1);
+                }
+            }
             if (command is WmLButtonDown or WmLButtonUp or WmLButtonDblClk
                 or WmRButtonDown or WmRButtonUp or WmMButtonDown or WmMButtonUp
                 or WmXButtonDown or WmXButtonUp)
