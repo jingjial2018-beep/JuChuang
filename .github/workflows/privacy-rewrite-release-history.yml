@@ -1,0 +1,86 @@
+name: Privacy - Rewrite affected release history
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/privacy-rewrite-release-history.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sanitize-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout complete repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Rewrite only affected beta and stable refs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet git-filter-repo
+          python - <<'PY'
+          import json, subprocess, pathlib, re, os
+          def git(*args):
+              return subprocess.check_output(['git',*args],text=True).strip()
+          refs=[
+            'refs/heads/beta/v1.0-identity-beta5',
+            'refs/heads/release/v1.0.0-final',
+            'refs/tags/v1.0.0-beta.5',
+            'refs/tags/v1.0.0',
+          ]
+          for ref in refs:
+              subprocess.run(['git','fetch','origin',f'{ref}:{ref}'] if '/tags/' in ref else ['git','fetch','origin',ref],check=True,stdout=subprocess.DEVNULL)
+          for branch in ['beta/v1.0-identity-beta5','release/v1.0.0-final']:
+              subprocess.run(['git','branch','-f',branch,f'origin/{branch}'],check=True,stdout=subprocess.DEVNULL)
+          original={ref:git('rev-parse',ref) for ref in refs}
+          pathlib.Path('/tmp/jnest-original-refs.json').write_text(json.dumps(original))
+          source=git('show','5467546daf3e4244d7cc946af3545c034bd088af:RELEASE-NOTES-v1.0.0-beta.5.md')
+          lines=[line for line in source.splitlines() if line.startswith('1. 用 JNest 内已登录的 ')]
+          if len(lines)!=1:
+              raise SystemExit('Cannot safely identify source test case; aborting without changing refs')
+          match=re.search(r'已登录的 (.*?) 账号退出，在同一客户端扫码登录 (.*?)。',lines[0])
+          if not match or not match.group(1) or not match.group(2):
+              raise SystemExit('Failed to identify both test account markers')
+          terms=[match.group(1),match.group(2)]
+          path=pathlib.Path('/tmp/jnest-replacements.txt')
+          path.write_text(''.join(f'literal:{value}==>账号 {chr(65+i)}\n' for i,value in enumerate(terms)))
+          subprocess.run(['git','filter-repo','--force','--replace-text',str(path),'--refs',*refs],check=True)
+          rewritten={ref:git('rev-parse',ref) for ref in refs}
+          if not all(rewritten[ref]!=original[ref] for ref in refs):
+              raise SystemExit('Expected refs did not all change; aborting push')
+          # The old identity must not occur anywhere in the rewritten history reachable from these refs.
+          for ref in refs:
+              for filename in ('RELEASE-NOTES-v1.0.0-beta.5.md','RELEASE-NOTES-v1.0.0.md'):
+                  p=subprocess.run(['git','log',ref,'--format=%H','--',filename],capture_output=True,text=True,check=True)
+                  for commit in p.stdout.splitlines():
+                      blob=subprocess.run(['git','show',f'{commit}:{filename}'],capture_output=True,text=True)
+                      if blob.returncode==0 and any(term in blob.stdout for term in terms):
+                          raise SystemExit('Sensitive term remains in rewritten history; refusing push')
+          # Preserve an authenticated push URL; filter-repo may remove origin.
+          url=f'https://github.com/{os.environ["REPOSITORY"]}.git'
+          if subprocess.run(['git','remote','get-url','origin'],capture_output=True).returncode!=0:
+              subprocess.run(['git','remote','add','origin',url],check=True)
+          else:
+              subprocess.run(['git','remote','set-url','origin',url],check=True)
+          leases=[f'--force-with-lease={ref}:{old}' for ref,old in original.items()]
+          refspecs=['+'+ref+':'+ref for ref in refs]
+          # Atomic push: if a protected ref rejects rewriting, none of the four refs is changed.
+          import base64
+          header=base64.b64encode(('x-access-token:'+os.environ['GH_TOKEN']).encode()).decode()
+          subprocess.run(['git','-c',f'http.https://github.com/.extraheader=AUTHORIZATION: basic {header}','push','--atomic',*leases,'origin',*refspecs],check=True)
+          print('Sanitized four affected branch/tag references atomically.')
+          PY
+      - name: Update public beta Release description
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin beta/v1.0-identity-beta5
+          git show origin/beta/v1.0-identity-beta5:RELEASE-NOTES-v1.0.0-beta.5.md > /tmp/jnest-clean-beta5-notes.md
+          gh release edit v1.0.0-beta.5 --repo "${{ github.repository }}" --notes-file /tmp/jnest-clean-beta5-notes.md
