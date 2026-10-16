@@ -592,6 +592,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        // A login-screen transition invalidates the active identity even when
+        // WeChat reuses the same PID/HWND. Never reapply an old account to login UI.
+        if (candidate.Role == ClientWindowRole.Login)
+            return;
+
         if (_resolvedWeChatAccounts.TryGetValue(candidate.ProcessId, out var resolvedAccount))
         {
             var currentStart = TryGetProcessStartUtcTicks(candidate.ProcessId);
@@ -1795,9 +1800,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var accountGeneration = entry.AccountGeneration;
         var windowHandle = entry.Handle;
         var processStartTicks = TryGetProcessStartUtcTicks(processId);
+        if (entry.SessionState != ClientSessionState.Main)
+            return;
+
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
-            // The discovery path validates process lifetime before scheduling this read.
+            // Cached active identity is safe only within the current account
+            // generation. Login resets remove this PID association.
             ApplyWeChatAccountIdentity(entry, resolvedAccount);
             return;
         }
