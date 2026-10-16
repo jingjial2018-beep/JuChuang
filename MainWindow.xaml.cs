@@ -218,7 +218,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         IsSidebarCollapsed = collapsed;
         SidebarColumn.Width = new GridLength(collapsed ? 64 : 300);
         SidebarHeading.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        SidebarToggleButton.ToolTip = collapsed ? "显示侧边栏" : "隐藏侧边栏";
+        // No tooltip: it could overflow the window when the sidebar is collapsed.
         SidebarToggleButton.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Right;
         SidebarToggleButton.Margin = collapsed ? new Thickness(0) : new Thickness(0, 0, 10, 0);
         if (resizeNormalWindow && WindowState == WindowState.Normal)
