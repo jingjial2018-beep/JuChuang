@@ -41,6 +41,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isTitleBarInteraction;
     private bool _isSidebarCollapsed;
     private bool _sidebarCollapsedBeforeMaximize;
+    private bool _wasMaximized;
     public bool IsSidebarCollapsed
     {
         get => _isSidebarCollapsed;
@@ -234,7 +235,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (WindowState == WindowState.Maximized)
         {
-            _sidebarCollapsedBeforeMaximize = IsSidebarCollapsed;
+            if (!_wasMaximized)
+                _sidebarCollapsedBeforeMaximize = IsSidebarCollapsed;
+            _wasMaximized = true;
             SetSidebarCollapsed(false, resizeNormalWindow: false);
             SidebarToggleButton.IsEnabled = false;
             SidebarToggleButton.Visibility = Visibility.Collapsed;
@@ -243,7 +246,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             SidebarToggleButton.IsEnabled = true;
             SidebarToggleButton.Visibility = Visibility.Visible;
-            SetSidebarCollapsed(_sidebarCollapsedBeforeMaximize, resizeNormalWindow: false);
+            if (_wasMaximized)
+            {
+                _wasMaximized = false;
+                SetSidebarCollapsed(_sidebarCollapsedBeforeMaximize, resizeNormalWindow: false);
+            }
         }
         UpdateMaximizeGlyph();
         var isMinimized = WindowState == WindowState.Minimized;
