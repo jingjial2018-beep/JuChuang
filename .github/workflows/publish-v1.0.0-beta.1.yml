@@ -21,6 +21,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      # Rebuild from final sidebar-state fix (48b9fd2).
       - name: Build Windows x64
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
       - name: Architecture regression checks
