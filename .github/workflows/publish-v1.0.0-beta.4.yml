@@ -23,6 +23,7 @@ jobs:
           dotnet-version: '8.0.x'
       # Beta.3 rebuild: WeChat login lifecycle beta.4 build and regression checks.
       # Rebuild after fixing CS1656 foreach assignment in beta.4.
+      # Rebuild beta.4 after login identity reset and stale-name isolation fix.
       - name: Build Windows x64
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
       - name: Architecture regression checks
