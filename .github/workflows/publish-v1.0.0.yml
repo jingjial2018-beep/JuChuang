@@ -1,0 +1,55 @@
+name: Build and publish JNest v1.0.0 stable
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v1.0.0.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  beta:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout beta source
+        uses: actions/checkout@v4
+        with:
+          ref: release/v1.0.0-final
+          fetch-depth: 0
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows x64
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Architecture regression checks
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Badge regression checks
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
+      - name: Publish framework-dependent
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/framework
+      - name: Publish self-contained
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o out/selfcontained
+      - name: Create ZIP packages
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/framework/* -DestinationPath JNest-v1.0.0-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path out/selfcontained/* -DestinationPath JNest-v1.0.0-SelfContained-win-x64.zip
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v1.0.0-win-x64
+          path: JNest-v1.0.0-*.zip
+      - name: Publish stable release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v1.0.0'
+          $existing = [string](git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect tags' }
+          if ($existing) { throw 'Beta tag already exists; refusing to overwrite' }
+          gh release create $tag JNest-v1.0.0-FrameworkDependent-win-x64.zip JNest-v1.0.0-SelfContained-win-x64.zip --repo ${{ github.repository }} --target release/v1.0.0-final --title 'JNest v1.0.0' --notes-file RELEASE-NOTES-v1.0.0.md 
+          if ($LASTEXITCODE -ne 0) { throw 'Beta release creation failed' }
