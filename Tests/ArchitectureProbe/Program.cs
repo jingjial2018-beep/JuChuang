@@ -52,6 +52,40 @@ Run("ClientLaunchContext honors exact CreateProcess PID", () =>
     Assert(context.ClaimedProcessId == 43210, "exact PID was not stored after claim");
 });
 
+Run("WeChat relogin cannot reuse a stale previous identity", () =>
+{
+    var transition = new DateTime(2026, 10, 16, 5, 0, 0, DateTimeKind.Utc);
+    var oldAccount = new WeChatAccountIdentity(
+        "wechat-login:old", "old", "Old", transition.AddHours(-1));
+    var newAccount = new WeChatAccountIdentity(
+        "wechat-login:new", "new", "New", transition.AddSeconds(3));
+    WeChatAccountIdentity[] candidates = [oldAccount, newAccount];
+
+    var firstPass = WeChatLoginIdentityPolicy.NewAccountCandidates(
+        candidates, oldAccount.Key, transition);
+    Assert(firstPass.Count == 1 && firstPass[0].Key == newAccount.Key,
+        "a reused process must read the new account before an old key left in memory");
+    var unrelatedOldAccount = new WeChatAccountIdentity(
+        "wechat-login:unrelated", "unrelated", "Unrelated", transition.AddDays(-1));
+    Assert(WeChatLoginIdentityPolicy.NewAccountCandidates(
+        [oldAccount, unrelatedOldAccount], oldAccount.Key, transition).Count == 0,
+        "other historical login records must not be mistaken for a new login");
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        candidates, oldAccount.Key, transition, transition.AddMinutes(2)) is null,
+        "a stale old login record must never restore the previous account");
+
+    var refreshedOld = oldAccount with { LastLoginUtc = transition.AddSeconds(4) };
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        [refreshedOld, newAccount], oldAccount.Key, transition, transition.AddMinutes(2)) is null,
+        "a fresh different login must block same-account fallback");
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        [refreshedOld], oldAccount.Key, transition, transition.AddSeconds(20)) is null,
+        "same-account fallback must wait for the new session to settle");
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        [refreshedOld], oldAccount.Key, transition, transition.AddMinutes(1))?.Key == oldAccount.Key,
+        "a refreshed login record should permit signing back into the same account");
+});
+
 Run("WeChat profile status respects window role and keeps account identity on rebind", () =>
 {
     var entry = NewWeChatEntry();

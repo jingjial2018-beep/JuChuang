@@ -295,6 +295,13 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
     /// </summary>
     public int AccountGeneration { get; set; }
 
+    // A login transition can reuse the same PID while the old account's local
+    // database key remains in memory. Keep that identity out of the first
+    // profile lookup for the new session.
+    public string? PreviousLoginIdentityKey { get; set; }
+
+    public DateTime? LoginTransitionUtc { get; set; }
+
     public bool HasCustomName
     {
         get => _hasCustomName;

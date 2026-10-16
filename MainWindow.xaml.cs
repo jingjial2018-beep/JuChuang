@@ -545,6 +545,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var processId = entry.ProcessId;
         DiagnosticLogService.WriteAccountEvent(entry, "account-generation-reset");
+        // A transient Main/Login role oscillation must not erase the identity
+        // being excluded from this login transition.
+        if (!string.IsNullOrWhiteSpace(entry.IdentityKey))
+            entry.PreviousLoginIdentityKey = entry.IdentityKey;
+        entry.LoginTransitionUtc ??= DateTime.UtcNow;
         entry.AccountGeneration++;
         _resolvedWeChatAccounts.Remove(processId);
         _resolvedAccountProcessStarts.Remove(processId);
@@ -1665,6 +1670,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var identityChanged = !string.Equals(previousIdentity, account.Key, StringComparison.OrdinalIgnoreCase);
         entry.IdentityKey = account.Key;
         entry.AccountId = account.AccountId;
+        entry.PreviousLoginIdentityKey = null;
+        entry.LoginTransitionUtc = null;
 
         // 同一 PID 退出旧账号再登录新账号时，HWND/进程可能复用。
         // 身份已经变化就先清掉旧头像，避免新资料尚未解析完成时显示上一个账号。
@@ -1795,6 +1802,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var accountGeneration = entry.AccountGeneration;
         var windowHandle = entry.Handle;
         var processStartTicks = TryGetProcessStartUtcTicks(processId);
+        var previousLoginIdentityKey = entry.PreviousLoginIdentityKey;
+        var loginTransitionUtc = entry.LoginTransitionUtc;
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
             // The discovery path validates process lifetime before scheduling this read.
@@ -1853,9 +1862,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         .Where(account => !unavailableAccountKeys.Contains(account.Key))
                         .ToArray();
 
+                    var newAccountCandidates = WeChatLoginIdentityPolicy.NewAccountCandidates(
+                        candidates, previousLoginIdentityKey, loginTransitionUtc);
                     var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
                         processId,
-                        candidates.Select(account => account.AccountId));
+                        newAccountCandidates.Select(account => account.AccountId));
+                    if (readResult.Profile is null)
+                    {
+                        var sameAccount = WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+                            candidates, previousLoginIdentityKey, loginTransitionUtc, DateTime.UtcNow);
+                        if (sameAccount is not null)
+                        {
+                            readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
+                                processId, [sameAccount.AccountId]);
+                        }
+                    }
                     var profile = readResult.Profile;
                     var account = profile is null
                         ? null
