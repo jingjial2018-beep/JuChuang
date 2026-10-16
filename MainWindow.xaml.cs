@@ -1786,11 +1786,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var resolutionToken = ++_accountResolutionSequence;
         _accountResolutionLoads[processId] = resolutionToken;
-        if (entry.ProfileState is not AccountProfileState.Ready
-            and not AccountProfileState.ReadyFromCache
-            and not AccountProfileState.ReadyWithoutAvatar)
+        // Preserve a completed failure state during automatic retries; only the
+        // first attempt should show the transient '资料读取中' label.
+        if (entry.ProfileState == AccountProfileState.Pending
+            && _accountResolutionFailures.GetValueOrDefault(processId) == 0)
         {
-            entry.ProfileState = AccountProfileState.Pending;
             entry.ProfileDiagnosticCode = null;
             entry.ProfileDiagnosticDetail = null;
         }
@@ -1902,11 +1902,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             RefreshSelectedProfileStatus(entry);
             DiagnosticLogService.WriteAccountEvent(entry, "profile-live-resolved");
         }
-        catch
+        catch (Exception ex)
         {
             if (IsCurrentAccountResolution(entry, processId, accountGeneration,
                     windowHandle, processStartTicks, resolutionToken))
             {
+                entry.ProfileState = AccountProfileState.Error;
+                entry.ProfileDiagnosticCode = "ProfileReadException";
+                entry.ProfileDiagnosticDetail = ex.GetType().Name + ": " + ex.Message;
+                RefreshSelectedProfileStatus(entry);
+                DiagnosticLogService.WriteAccountEvent(entry, "profile-read-exception");
                 ScheduleAccountResolutionRetry(processId);
             }
         }
