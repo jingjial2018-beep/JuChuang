@@ -533,8 +533,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // 自定义名称和未读状态串到下一账号。
         if (candidate.Kind == ClientKind.WeChat
             && candidate.Role == ClientWindowRole.Login
-            && entry.SessionState != ClientSessionState.Login
-            && !string.IsNullOrWhiteSpace(entry.IdentityKey))
+            && entry.SessionState != ClientSessionState.Login)
         {
             ResetWeChatAccountBinding(entry);
         }
@@ -608,6 +607,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
+        // Login UI can expose stale login directories belonging to older accounts.
+        // Do not bind an account identity from process start time alone; wait for
+        // an exact profile read matching the running process.
+        if (candidate.Role == ClientWindowRole.Login)
+            return;
         accounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
         QueueWeChatAccountResolution(entry, preferredAccount);
     }
@@ -1664,7 +1668,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // 同一 PID 退出旧账号再登录新账号时，HWND/进程可能复用。
         // 身份已经变化就先清掉旧头像，避免新资料尚未解析完成时显示上一个账号。
-        if (identityChanged && previousIdentity is not null)
+        if (identityChanged)
         {
             entry.AvatarPath = null;
             entry.MessageAlertCount = 0;
@@ -1683,19 +1687,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else if (identityChanged)
         {
-            if (entry.HasCustomName && previousIdentity is null)
-            {
-                _settings.AccountNamesByIdentity[account.Key] = entry.DisplayName;
-                _settings.Save();
-            }
-            else
-            {
-            // A recycled window can previously have displayed another account.
-            // Always reset its name when the resolved identity changes so a stale
-            // nickname never leaks into the next login slot.
-                entry.HasCustomName = false;
-                entry.DisplayName = account.DisplayName;
-            }
+            // An unbound login slot is not evidence that its displayed name
+            // belongs to this account. Do not save a stale/custom slot label
+            // under a newly discovered identity.
+            entry.HasCustomName = false;
+            entry.DisplayName = account.DisplayName;
         }
         else if (!entry.HasCustomName)
         {
