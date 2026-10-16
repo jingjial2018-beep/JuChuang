@@ -353,7 +353,7 @@
                             </TextBlock>
                             <Button x:Name="SidebarToggleButton" Width="36" Height="36" HorizontalAlignment="Right"
                                     VerticalAlignment="Center" Margin="0,0,10,0" Background="#E4E7EB"
-                                    BorderThickness="0" ToolTip="隐藏侧边栏" Cursor="Hand" Click="SidebarToggle_Click">
+                                    BorderThickness="0" FocusVisualStyle="{x:Null}" ToolTip="隐藏侧边栏" Cursor="Hand" Click="SidebarToggle_Click">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="ToggleCircle" Background="{TemplateBinding Background}" CornerRadius="18">
@@ -395,7 +395,7 @@
                                             </ContextMenu>
                                         </Grid.ContextMenu>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="60" />
+                                            <ColumnDefinition x:Name="AccountAvatarColumn" Width="60" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="30" />
                                         </Grid.ColumnDefinitions>
@@ -454,6 +454,13 @@
                                                 VerticalAlignment="Center" Opacity="0" />
                                     </Grid>
                                     <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsSidebarCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter TargetName="AccountDetails" Property="Visibility" Value="Collapsed" />
+                                            <Setter TargetName="EntryCloseButton" Property="Visibility" Value="Collapsed" />
+                                            <Setter TargetName="AccountItemGrid" Property="Margin" Value="0" />
+                                            <Setter TargetName="AccountAvatarGrid" Property="Width" Value="48" />
+                                            <Setter TargetName="AccountAvatarColumn" Property="Width" Value="48" />
+                                        </DataTrigger>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
                                                 <Condition Binding="{Binding HasAvatar}" Value="False" />
