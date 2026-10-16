@@ -15,7 +15,7 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>1.0.0-beta.1</Version>
+    <Version>1.0.0-beta.2</Version>
     <!-- Built from v0.3.34 stable baseline; centered WeChat login and menu tooltip cleanup. -->
   </PropertyGroup>
   <ItemGroup>
