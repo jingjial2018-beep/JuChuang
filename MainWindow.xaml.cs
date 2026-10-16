@@ -39,6 +39,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isClosing;
     private bool _isPreviewMode;
     private bool _isTitleBarInteraction;
+    private bool _isSidebarCollapsed;
+    private bool _sidebarCollapsedBeforeMaximize;
+    public bool IsSidebarCollapsed
+    {
+        get => _isSidebarCollapsed;
+        private set
+        {
+            if (_isSidebarCollapsed == value) return;
+            _isSidebarCollapsed = value;
+            OnPropertyChanged();
+        }
+    }
+
     private bool _isClientLaunchInProgress;
     private readonly bool _isClientSelfTestMode;
     private readonly int? _selfTestTargetProcessId;
@@ -191,8 +204,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }));
     }
 
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) return;
+        SetSidebarCollapsed(!IsSidebarCollapsed, resizeNormalWindow: true);
+    }
+
+    private void SetSidebarCollapsed(bool collapsed, bool resizeNormalWindow)
+    {
+        if (IsSidebarCollapsed == collapsed) return;
+        const double difference = 236; // 300 DIP account list to 64 DIP avatar rail.
+        IsSidebarCollapsed = collapsed;
+        SidebarColumn.Width = new GridLength(collapsed ? 64 : 300);
+        SidebarHeading.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        SidebarToggleButton.ToolTip = collapsed ? "显示侧边栏" : "隐藏侧边栏";
+        SidebarToggleButton.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Right;
+        SidebarToggleButton.Margin = collapsed ? new Thickness(0) : new Thickness(0, 0, 10, 0);
+        if (resizeNormalWindow && WindowState == WindowState.Normal)
+        {
+            var delta = collapsed ? -difference : difference;
+            Width += delta;
+            // Preserve the window's right edge and the hosted client's screen coordinates.
+            Left -= delta;
+        }
+        QueueOverlayBoundsUpdate();
+    }
+
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        if (WindowState == WindowState.Maximized)
+        {
+            _sidebarCollapsedBeforeMaximize = IsSidebarCollapsed;
+            SetSidebarCollapsed(false, resizeNormalWindow: false);
+            SidebarToggleButton.IsEnabled = false;
+            SidebarToggleButton.Visibility = Visibility.Collapsed;
+        }
+        else if (WindowState == WindowState.Normal)
+        {
+            SidebarToggleButton.IsEnabled = true;
+            SidebarToggleButton.Visibility = Visibility.Visible;
+            SetSidebarCollapsed(_sidebarCollapsedBeforeMaximize, resizeNormalWindow: false);
+        }
         UpdateMaximizeGlyph();
         var isMinimized = WindowState == WindowState.Minimized;
         WindowHost.HandleOwnerWindowStateChanged(isMinimized);
