@@ -759,8 +759,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 .ToArray();
             var weChatAccounts = scanResult.Accounts;
 
-            foreach (var candidate in candidates)
+            foreach (var discoveredCandidate in candidates)
             {
+                var candidate = discoveredCandidate;
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
                 // Current window size is not a reliable login signal after WPF
                 // hosting resized a previously confirmed chat window.
