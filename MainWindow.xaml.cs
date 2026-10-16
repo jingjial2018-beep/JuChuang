@@ -612,11 +612,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
-        // Login UI can expose stale login directories belonging to older accounts.
-        // Do not bind an account identity from process start time alone; wait for
-        // an exact profile read matching the running process.
-        if (candidate.Role == ClientWindowRole.Login)
-            return;
+        // Match the running process through its live profile rather than binding
+        // a candidate solely by its most recently modified login directory.
         accounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
         QueueWeChatAccountResolution(entry, preferredAccount);
     }
