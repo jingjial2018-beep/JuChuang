@@ -16,19 +16,23 @@ internal static class WeChatDatabaseOwnershipService
             return new(Verdict.Unknown, null, "missing process identity or account candidates");
         var owners = new List<string>();
         var inconclusive = false;
+        var otherOwned = 0;
+        var missing = 0;
+        var probeErrors = 0;
         foreach (var id in accountIds.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var path = WeChatProfileService.FindContactDatabasePath(id);
-            if (path is null) { inconclusive = true; continue; }
+            if (path is null) { inconclusive = true; missing++; continue; }
             var status = QueryOwner(path, pid, startTicks.Value);
             if (status == 1) owners.Add(id);
-            else if (status == 0) inconclusive = true;
+            else if (status == -1) otherOwned++;
+            else { inconclusive = true; probeErrors++; }
         }
         if (owners.Count == 1 && !inconclusive)
-            return new(Verdict.Unique, owners[0], "one account uniquely held by matching PID and start time");
+            return new(Verdict.Unique, owners[0], "UniqueOwner");
         if (owners.Count > 1)
-            return new(Verdict.Conflict, null, "multiple accounts held by same process");
-        return new(Verdict.Unknown, null, "database ownership could not be uniquely established");
+            return new(Verdict.Conflict, null, "MultipleTargetOwners");
+        return new(Verdict.Unknown, null,  $"Owners={owners.Count};OtherOwned={otherOwned};Missing={missing};Uncertain={probeErrors}");
     }
 
     // 1 target PID owns, -1 demonstrably another process owns, 0 inconclusive.
