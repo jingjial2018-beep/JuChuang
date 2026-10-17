@@ -355,6 +355,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        RestoreWeChatLoginPrompts();
         _isClosing = true;
         // A XAML/constructor startup failure can close this window before its
         // hosted controls and timer fields have been initialized.
@@ -398,6 +399,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!_isClosing)
         {
             await TryScanAndAttachAsync();
+            SyncWeChatLoginPrompts();
         }
     }
 
@@ -1426,6 +1428,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
         WindowHost.ShowOnly(entry.Handle);
+        SyncWeChatLoginPrompts();
         QueueHostedWindowRefresh(entry);
     }
 
