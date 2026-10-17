@@ -680,13 +680,19 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.GetClassName(popup, classBuffer, classBuffer.Capacity);
             var cls = classBuffer.ToString();
             var gotRect = NativeMethods.GetWindowRect(popup, out var bounds);
+            // Compare the compact-dialog signature in 96-DPI units. Keep the
+            // original RECT for later physical-coordinate restoration.
+            var dpi = NativeMethods.GetDpiForWindow(popup);
+            var scale = dpi > 0 ? dpi / 96.0 : 1.0;
+            var logicalWidth = bounds.Width / scale;
+            var logicalHeight = bounds.Height / scale;
             var reason = actualOwner != owner ? "owner-mismatch"
                 : !visible ? "not-visible"
                 : len is < 1 or > 16 || title != "Weixin" ? "title-mismatch"
                 : cls != "Qt51514QWindowIcon" ? "class-mismatch"
-                : !gotRect || bounds.Width is < 130 or >= 600
-                    || bounds.Height is < 80 or >= 400 ? "size-mismatch" : "MATCH";
-            PopupTrace($"wechat-popup-candidate hwnd={popup} pid={popupPid} gwOwner={actualOwner} expectedOwner={owner} title={title} class={cls} size={bounds.Width}x{bounds.Height} visible={visible} decision={reason}", (int)popupPid);
+                : !gotRect || logicalWidth < 130 || logicalWidth >= 600
+                    || logicalHeight < 80 || logicalHeight >= 400 ? "size-mismatch" : "MATCH";
+            PopupTrace($"wechat-popup-candidate hwnd={popup} pid={popupPid} gwOwner={actualOwner} expectedOwner={owner} title={title} class={cls} size={bounds.Width}x{bounds.Height} dpi={dpi} logicalSize={logicalWidth:F1}x{logicalHeight:F1} visible={visible} decision={reason}", (int)popupPid);
             if (reason != "MATCH") return true;
             var record = new HiddenDialogRecord(popup, (int)popupPid, owner, bounds);
             _hiddenDialogs[owner] = record;
