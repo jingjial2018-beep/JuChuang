@@ -348,7 +348,26 @@ public sealed class ExternalWindowHost : HwndHost
                 target.Left, target.Top, target.Width, target.Height,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
                 | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
-            NativeMethods.SetWindowRgn(_currentHandle, IntPtr.Zero, true);
+            // Login windows retain their natural size. If WeChat grows/repositions the
+            // HWND during login-to-main, never let its unmanaged surface escape the host.
+            // The clipping region is relative to the actual native window bounds.
+            var visibleLeft = Math.Max(0, origin.X - target.Left);
+            var visibleTop = Math.Max(0, origin.Y - target.Top);
+            var visibleRight = Math.Min(target.Width, origin.X + hostRect.Width - target.Left);
+            var visibleBottom = Math.Min(target.Height, origin.Y + hostRect.Height - target.Top);
+            if (visibleLeft == 0 && visibleTop == 0
+                && visibleRight == target.Width && visibleBottom == target.Height)
+            {
+                NativeMethods.SetWindowRgn(_currentHandle, IntPtr.Zero, true);
+            }
+            else if (visibleRight > visibleLeft && visibleBottom > visibleTop)
+            {
+                var region = NativeMethods.CreateRectRgn(
+                    visibleLeft, visibleTop, visibleRight, visibleBottom);
+                if (region != IntPtr.Zero
+                    && !NativeMethods.SetWindowRgn(_currentHandle, region, true))
+                    NativeMethods.DeleteObject(region);
+            }
             return;
         }
 
