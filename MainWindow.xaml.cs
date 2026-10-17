@@ -1962,8 +1962,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     // If RM cannot establish a unique owner, preserve RC4 safe fallback.
                     var ownership = WeChatDatabaseOwnershipService.Resolve(
                         processId, processStartTicks, candidates.Select(a => a.AccountId).ToArray());
+                    var matched = ownership.AccountId is null ? null
+                        : candidates.FirstOrDefault(a => a.AccountId.Equals(
+                            ownership.AccountId, StringComparison.OrdinalIgnoreCase));
+                    DiagnosticLogService.RecordRmSnapshot(processId, accountGeneration,
+                        ownership.Status.ToString(), ownership.Detail,
+                        matched?.Key, ownership.Detail);
                     DiagnosticLogService.WriteActivityEvent(
-                        $"wechat-rm-ownership:{ownership.Status}", processId);
+                        $"wechat-rm-ownership:{ownership.Status}:{ownership.Detail}", processId);
                     var scopedCandidates = ownership.Status == WeChatDatabaseOwnershipService.Verdict.Unique
                         ? candidates.Where(a => a.AccountId.Equals(ownership.AccountId,
                             StringComparison.OrdinalIgnoreCase)).ToArray()
@@ -2176,6 +2182,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // Generation/token guards prevent an old asynchronous read from writing
         // its result after this manual refresh starts.
         var pid = entry.ProcessId;
+        DiagnosticLogService.ClearRmSnapshot(pid);
         entry.AccountGeneration++;
         _resolvedWeChatAccounts.Remove(pid);
         _resolvedAccountProcessStarts.Remove(pid);
