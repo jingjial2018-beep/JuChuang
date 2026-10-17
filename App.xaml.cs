@@ -29,9 +29,17 @@ public partial class App : Application
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        ReleaseHostedWindows();
+        // Record the original startup failure before attempting best-effort cleanup.
         LogException(e.Exception);
         e.Handled = true;
+        try
+        {
+            ReleaseHostedWindows();
+        }
+        catch (Exception cleanupException)
+        {
+            LogException(cleanupException);
+        }
         MessageBox.Show(
             $"JNest遇到异常，客户端窗口已尝试恢复到桌面。\n\n{e.Exception.Message}",
             "JNest",
