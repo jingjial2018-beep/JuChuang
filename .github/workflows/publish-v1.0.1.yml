@@ -30,7 +30,7 @@ jobs:
           if ($xaml -notmatch 'Source="Assets/app-logo.png" Width="30" Height="30"') { throw 'Incorrect logo' }
           if ($xaml -notmatch 'x:Name="SidebarColumn" Width="280"') { throw 'Incorrect sidebar' }
           if ($code -notmatch 'difference = 216') { throw 'Incorrect sidebar delta' }
-          if ($xaml -notmatch '(?s)<!-- Compact 32-DIP account status header.*?<RowDefinition Height="32"') { throw 'Incorrect account status bar' }
+          if ($xaml -notmatch '(?s)<Grid.RowDefinitions>\s*<RowDefinition Height="32" />\s*<RowDefinition Height="\*" />\s*</Grid.RowDefinitions>\s*<!-- Compact 32-DIP account status header') { throw 'Incorrect account status bar' }
           if ($xaml -notmatch '(?s)<Border Grid.Row="2".*?<TextBlock x:Name="WindowCountText"') { throw 'Missing footer' }
       - name: Build Windows x64
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
