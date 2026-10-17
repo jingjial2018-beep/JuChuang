@@ -522,10 +522,10 @@
                         </LinearGradientBrush>
                     </Grid.Background>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="44" />
+                        <RowDefinition Height="32" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <!-- Subtle layered header (zone B) without changing its 44px height. -->
+                    <!-- Compact 32-DIP account status header (zone B). -->
                     <Border Grid.Row="0" BorderBrush="#CBD3DE" BorderThickness="0,0,0,1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
