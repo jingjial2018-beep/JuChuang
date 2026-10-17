@@ -1509,11 +1509,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            ShowTemporaryStatus("正在扫描并接入本地客户端…");
+            ShowTemporaryStatus("正在扫描客户端并重新验证微信资料…");
             var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
-            ShowTemporaryStatus(attachedCount > 0
-                ? "扫描完成"
-                : "未发现新的客户端窗口");
+            var refreshCount = 0;
+            foreach (var entry in Entries.ToArray())
+            {
+                if (ForceRefreshWeChatProfile(entry))
+                    refreshCount++;
+            }
+            ShowTemporaryStatus($"扫描完成：已接入 {attachedCount} 个窗口，已请求重新同步 {refreshCount} 个微信账号。");
         }
         catch (Exception exception)
         {
@@ -2111,18 +2115,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private void ForceRefreshWeChatProfile_Click(object sender, RoutedEventArgs e)
+    private bool ForceRefreshWeChatProfile(ClientWindowEntry entry)
     {
-        if (sender is not MenuItem { DataContext: ClientWindowEntry entry }
-            || entry.Kind != ClientKind.WeChat || _isPreviewMode)
-            return;
-
-        if (entry.SessionState != ClientSessionState.Main
+        if (entry.Kind != ClientKind.WeChat || _isPreviewMode
+            || entry.SessionState != ClientSessionState.Main
             || !WindowBelongsToProcess(entry.Handle, entry.ProcessId))
-        {
-            ShowTemporaryStatus("当前微信尚未进入有效聊天主窗口，无法同步账号资料。");
-            return;
-        }
+            return false;
 
         // Invalidate only this live account's identity resolution. Do not log out,
         // detach its HWND, clear unread badges, or erase its historical profile cache.
@@ -2154,7 +2152,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DiagnosticLogService.WriteActivityEvent("wechat-profile-manual-resync-requested", pid);
         var preferred = ClientMetadataService.RankWeChatAccountsForProcess(pid).FirstOrDefault();
         QueueWeChatAccountResolution(entry, preferred);
-        ShowTemporaryStatus("正在强制重新识别该微信账号；不会退出微信或清除未读消息。");
+        return true;
     }
 
     private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
