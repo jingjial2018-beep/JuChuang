@@ -212,6 +212,7 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
             NativeMethods.ShowWindow(_currentHandle, NativeMethods.SW_SHOW);
+            RestoreOwnedLoginDialog(_currentHandle);
             ScheduleActivation(_currentHandle);
         }
     }
@@ -253,6 +254,7 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
             | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
         ScheduleActivation(_currentHandle);
+        RestoreOwnedLoginDialog(_currentHandle);
     }
 
     /// <summary>
