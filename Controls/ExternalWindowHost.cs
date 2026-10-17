@@ -625,6 +625,111 @@ public sealed class ExternalWindowHost : HwndHost
         NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOWNOACTIVATE);
     }
 
+    // Only the verified compact Qt duplicate-login prompt owned by this HWND.
+    // The main WeChat HWND remains visible so taskbar flash notifications work.
+    private void HideOwnedLoginDialog(IntPtr owner)
+    {
+        if (_updatingDialogs || !NativeMethods.IsWindow(owner)) return;
+        if (_hiddenDialogs.TryGetValue(owner, out var saved))
+        {
+            if (!IsValidOwnedDialog(saved))
+                _hiddenDialogs.Remove(owner);
+            else
+            {
+                SuppressBackgroundDialogShow(saved.Hwnd);
+                return;
+            }
+        }
+
+        NativeMethods.GetWindowThreadProcessId(owner, out var ownerPid);
+        NativeMethods.EnumWindows((popup, _) =>
+        {
+            if (NativeMethods.GetWindow(popup, NativeMethods.GW_OWNER) != owner
+                || !NativeMethods.IsWindowVisible(popup)) return true;
+            NativeMethods.GetWindowThreadProcessId(popup, out var popupPid);
+            if (popupPid != ownerPid || popup == owner) return true;
+            var titleLength = NativeMethods.GetWindowTextLength(popup);
+            if (titleLength is < 1 or > 16) return true;
+            var title = new System.Text.StringBuilder(titleLength + 2);
+            NativeMethods.GetWindowText(popup, title, title.Capacity);
+            if (title.ToString().Trim() != "Weixin") return true;
+            var cls = new System.Text.StringBuilder(128);
+            NativeMethods.GetClassName(popup, cls, cls.Capacity);
+            if (cls.ToString() != "Qt51514QWindowIcon") return true;
+            if (!NativeMethods.GetWindowRect(popup, out var bounds)
+                || bounds.Width is < 130 or >= 600
+                || bounds.Height is < 80 or >= 400) return true;
+            var record = new HiddenDialogRecord(popup, (int)popupPid, owner, bounds);
+            _hiddenDialogs[owner] = record;
+            _updatingDialogs = true;
+            try { NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE); }
+            finally { _updatingDialogs = false; }
+            return false;
+        }, IntPtr.Zero);
+    }
+
+    private bool IsValidOwnedDialog(HiddenDialogRecord record)
+    {
+        if (!NativeMethods.IsWindow(record.OwnerHwnd) || !NativeMethods.IsWindow(record.Hwnd)
+            || NativeMethods.GetWindow(record.Hwnd, NativeMethods.GW_OWNER) != record.OwnerHwnd)
+            return false;
+        NativeMethods.GetWindowThreadProcessId(record.Hwnd, out var pid);
+        NativeMethods.GetWindowThreadProcessId(record.OwnerHwnd, out var ownerPid);
+        return pid == (uint)record.Pid && ownerPid == pid;
+    }
+
+    private void SuppressBackgroundDialogShow(IntPtr popup)
+    {
+        if (_updatingDialogs) return;
+        foreach (var pair in _hiddenDialogs.ToArray())
+        {
+            var record = pair.Value;
+            if (record.Hwnd != popup) continue;
+            if (!IsValidOwnedDialog(record))
+            {
+                _hiddenDialogs.Remove(pair.Key);
+                return;
+            }
+            // Both conditions required: recorded and still owned, AND owner is background.
+            if (_currentHandle == record.OwnerHwnd && !_ownerMinimized) return;
+            if (!NativeMethods.IsWindowVisible(popup)) return;
+            _updatingDialogs = true;
+            try { NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE); }
+            finally { _updatingDialogs = false; }
+            return;
+        }
+    }
+
+    private void RestoreOwnedLoginDialog(IntPtr owner)
+    {
+        if (!_hiddenDialogs.Remove(owner, out var record) || !IsValidOwnedDialog(record)) return;
+        _updatingDialogs = true;
+        try
+        {
+            NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
+            if (!NativeMethods.GetWindowRect(record.Hwnd, out var now)
+                || !NativeMethods.GetWindowRect(owner, out var hostBounds)) return;
+            // Snapshot remains a reference, not an absolute coordinate to restore.
+            var drifted = now.Left < hostBounds.Left - 30 || now.Top < hostBounds.Top - 30
+                || now.Right > hostBounds.Right + 30 || now.Bottom > hostBounds.Bottom + 30;
+            if (drifted)
+            {
+                var x = hostBounds.Left + (hostBounds.Width - now.Width) / 2;
+                var y = hostBounds.Top + (hostBounds.Height - now.Height) / 2;
+                NativeMethods.SetWindowPos(record.Hwnd, IntPtr.Zero, x, y, 0, 0,
+                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
+                    | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            }
+        }
+        finally { _updatingDialogs = false; }
+    }
+
+    private void ReleaseOwnedLoginDialog(IntPtr owner)
+    {
+        if (!_hiddenDialogs.Remove(owner, out var record) || !IsValidOwnedDialog(record)) return;
+        NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
+    }
+
     private static bool IsParkedOffScreen(IntPtr handle)
     {
         return NativeMethods.GetWindowRect(handle, out var rect) && rect.Left <= -32000 && rect.Top <= -32000;
