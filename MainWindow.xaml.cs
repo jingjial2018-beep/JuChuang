@@ -1933,14 +1933,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 // concurrently resolved processes compete for the same account DB.
                 // The live contact key still verifies which of the remaining
                 // candidates belongs to this process before a binding is committed.
-                var occupiedAccountKeys = _resolvedWeChatAccounts
-                    .Where(pair => pair.Key != processId
-                        && Entries.Any(other => other.Kind == ClientKind.WeChat
-                            && other.ProcessId == pair.Key
-                            && other.SessionState == ClientSessionState.Main
-                            && WindowBelongsToProcess(other.Handle, other.ProcessId)))
-                    .Select(pair => pair.Value.Key)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                // RC3: Never hide a verified candidate because a different process
+                // claimed it first. Competing claims must be diagnosed, not suppressed.
                 resolution = await Task.Run(() =>
                 {
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
@@ -1948,7 +1942,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             && account.Key.Equals(preferredAccount.Key, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                         .ThenByDescending(account => account.LastLoginUtc)
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
-                        .Where(account => !occupiedAccountKeys.Contains(account.Key))
                         .ToArray();
 
                     var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
@@ -2007,12 +2000,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     && WindowBelongsToProcess(other.Handle, other.ProcessId)));
             if (conflictingBinding)
             {
-                DiagnosticLogService.WriteActivityEvent(
-                    "wechat-identity-conflict-isolated", processId);
+                // Both claimants are untrusted until each live process can be
+                // independently checked. Do not let first-writer win the identity.
+                foreach (var other in Entries.Where(other => other.Kind == ClientKind.WeChat
+                    && other.ProcessId != processId
+                    && other.SessionState == ClientSessionState.Main
+                    && string.Equals(other.IdentityKey, account.Key, StringComparison.OrdinalIgnoreCase))
+                    .ToArray())
+                {
+                    _resolvedWeChatAccounts.Remove(other.ProcessId);
+                    _resolvedAccountProcessStarts.Remove(other.ProcessId);
+                    _accountResolutionLoads.Remove(other.ProcessId);
+                    other.AccountGeneration++;
+                    other.IdentityKey = null;
+                    other.AccountId = null;
+                    other.AvatarPath = null;
+                    other.HasCustomName = false;
+                    other.DisplayName = "微信 · 身份待验证";
+                    other.ProfileState = AccountProfileState.WaitingForLocalData;
+                    other.ProfileDiagnosticCode = "IdentityConflict";
+                    other.ProfileDiagnosticDetail = "不同微信进程声明同一个账号，已撤回双方身份绑定。";
+                    RefreshSelectedProfileStatus(other);
+                    ScheduleAccountResolutionRetry(other.ProcessId);
+                }
+                DiagnosticLogService.WriteActivityEvent("wechat-identity-conflict-both-isolated", processId);
+                entry.IdentityKey = null;
+                entry.AccountId = null;
+                entry.AvatarPath = null;
+                entry.HasCustomName = false;
+                entry.DisplayName = "微信 · 身份待验证";
                 entry.ProfileState = AccountProfileState.WaitingForLocalData;
                 entry.ProfileDiagnosticCode = "IdentityConflict";
-                entry.ProfileDiagnosticDetail =
-                    "当前进程解析出的身份已被另一个活动微信占用；保留原有账号，等待独立验证。";
+                entry.ProfileDiagnosticDetail = "两个活动微信进程声明了同一账号，等待独立验证。";
                 RefreshSelectedProfileStatus(entry);
                 ScheduleAccountResolutionRetry(processId);
                 return;
