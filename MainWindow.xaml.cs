@@ -1807,6 +1807,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 => AccountProfileState.WaitingForLocalData,
 
             WeChatProfileFailureStage.KeyExtractionFailed
+                or WeChatProfileFailureStage.AmbiguousAccountKey
                 or WeChatProfileFailureStage.ContactTableMissing
                 => AccountProfileState.CompatibilityIssue,
 
@@ -1826,6 +1827,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             WeChatProfileFailureStage.AccountDirectoryNotFound => "AccountDirectoryNotFound",
             WeChatProfileFailureStage.ContactDatabaseUnreadable => "ContactDatabaseUnreadable",
             WeChatProfileFailureStage.KeyExtractionFailed => "KeyExtractionFailed",
+            WeChatProfileFailureStage.AmbiguousAccountKey => "AmbiguousAccountKey",
             WeChatProfileFailureStage.DatabaseOpenFailed => "DatabaseOpenFailed",
             WeChatProfileFailureStage.ContactTableMissing => "ContactTableMissing",
             WeChatProfileFailureStage.SelfRowMissing => "SelfRowMissing",
@@ -1840,6 +1842,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         string? detail)
     {
         entry.ProfileState = MapProfileFailureState(stage);
+        if (stage == WeChatProfileFailureStage.AmbiguousAccountKey)
+        {
+            // A terminal ambiguity is not an in-progress sync. Never display a
+            // potentially stale nickname while more than one account is verified.
+            entry.IdentityKey = null;
+            entry.AccountId = null;
+            entry.AvatarPath = null;
+            entry.HasCustomName = false;
+            entry.DisplayName = "微信 · 身份待验证";
+            if (ReferenceEquals(entry, SelectedEntry))
+                CurrentTitleText.Text = entry.DisplayName;
+        }
         entry.ProfileDiagnosticCode = stage == WeChatProfileFailureStage.None
             ? null
             : GetProfileDiagnosticLabel(stage);
