@@ -15,6 +15,12 @@ public static class DiagnosticLogService
     private static readonly object SyncRoot = new();
     private const int RetentionDays = 14;
     private const int MaximumDetailLength = 600;
+    private sealed record RmSnapshot(int Generation, string Status, string Code, string Token, string Detail);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, RmSnapshot> RmSnapshots = new();
+    internal static void RecordRmSnapshot(int pid, int generation, string status, string code, string? identityKey, string detail)
+        => RmSnapshots[pid] = new RmSnapshot(generation, status, code, CreateAccountToken(identityKey), detail);
+    internal static void ClearRmSnapshot(int pid) => RmSnapshots.TryRemove(pid, out _);
+
 
     private static string LogRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -132,6 +138,20 @@ public static class DiagnosticLogService
         builder.AppendLine($"ProfileState: {entry.ProfileState}");
         builder.AppendLine($"ProfileDiagnosticCode: {entry.ProfileDiagnosticCode ?? "-"}");
         builder.AppendLine($"ProfileDiagnosticDetail: {Sanitize(RedactDetail(entry.ProfileDiagnosticDetail, entry.AccountId))}");
+        if (RmSnapshots.TryGetValue(entry.ProcessId, out var rm)
+            && rm.Generation == entry.AccountGeneration)
+        {
+            builder.AppendLine($"RmOwnershipStatus: {rm.Status}");
+            builder.AppendLine($"RmMatchedAccountToken: {rm.Token}");
+            builder.AppendLine($"RmDiagnosticCode: {rm.Code}");
+            builder.AppendLine($"RmDiagnosticDetail: {Sanitize(rm.Detail)}");
+        }
+        else
+        {
+            builder.AppendLine("RmOwnershipStatus: NotChecked");
+            builder.AppendLine("RmMatchedAccountToken: -");
+            builder.AppendLine("RmDiagnosticCode: -");
+        }
         builder.AppendLine($"AvatarAvailable: {entry.HasAvatar}");
         builder.AppendLine($"UnreadMode: {entry.AlertDisplayMode}");
         builder.AppendLine($"UnreadCount: {entry.MessageAlertCount}");
