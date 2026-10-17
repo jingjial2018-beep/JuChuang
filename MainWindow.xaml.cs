@@ -356,6 +356,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         _isClosing = true;
+        // A XAML/constructor startup failure can close this window before its
+        // hosted controls and timer fields have been initialized.
+        if (WindowHost is null || _scanTimer is null)
+            return;
         AppSettings.SaveProblem -= OnSettingsSaveProblem;
         StopNativeCaptionGuard();
         // Fixed window sizing: do not remember prior position, size or maximized state.
