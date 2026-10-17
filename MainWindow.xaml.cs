@@ -189,7 +189,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public void ReleaseHostedWindowsForShutdown() => WindowHost.DetachAll();
+    public void ReleaseHostedWindowsForShutdown()
+    {
+        // XAML initialization can fail before WindowHost is assigned.
+        WindowHost?.DetachAll();
+    }
 
     private void QueueOverlayBoundsUpdate()
     {
