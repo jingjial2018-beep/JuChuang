@@ -609,6 +609,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    // A HWND can be recycled or rebound after a WeChat window transition.
+    // Do not attach a saved identity to a window that no longer belongs to that PID.
+    private static bool WindowBelongsToProcess(IntPtr handle, int processId)
+    {
+        if (handle == IntPtr.Zero || processId <= 0 || !NativeMethods.IsWindow(handle))
+            return false;
+        NativeMethods.GetWindowThreadProcessId(handle, out var ownerProcessId);
+        return ownerProcessId == (uint)processId;
+    }
+
     private void QueueOrApplyWeChatIdentity(
         ClientWindowEntry entry,
         WindowCandidate candidate,
@@ -616,6 +626,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (candidate.Kind != ClientKind.WeChat)
         {
+            return;
+        }
+
+        if (entry.ProcessId != candidate.ProcessId
+            || !WindowBelongsToProcess(candidate.Handle, candidate.ProcessId))
+        {
+            DiagnosticLogService.WriteActivityEvent("wechat-identity-window-owner-mismatch", candidate.ProcessId);
             return;
         }
 
@@ -627,8 +644,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_resolvedWeChatAccounts.TryGetValue(candidate.ProcessId, out var resolvedAccount))
         {
             var currentStart = TryGetProcessStartUtcTicks(candidate.ProcessId);
-            if (_resolvedAccountProcessStarts.TryGetValue(candidate.ProcessId, out var knownStart)
-                && currentStart.HasValue && knownStart != currentStart.Value)
+            if (!currentStart.HasValue
+                || !_resolvedAccountProcessStarts.TryGetValue(candidate.ProcessId, out var knownStart)
+                || knownStart != currentStart.Value)
             {
                 ResetWeChatAccountBinding(entry);
             }
@@ -1826,7 +1844,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
            && entry.Handle == windowHandle
            && (!processStartTicks.HasValue
                || TryGetProcessStartUtcTicks(processId) == processStartTicks)
-           && NativeMethods.IsWindow(windowHandle)
+           && WindowBelongsToProcess(windowHandle, processId)
            && _accountResolutionLoads.TryGetValue(processId, out var activeToken)
            && activeToken == requestToken;
 
