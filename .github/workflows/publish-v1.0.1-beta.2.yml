@@ -1,0 +1,66 @@
+name: Build and publish JNest v1.0.1-beta.2
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v1.0.1-beta.2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  beta2:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact Beta2 source
+        uses: actions/checkout@v4
+        with:
+          ref: beta/v1.0.1-beta2
+          fetch-depth: 0
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify version and layout dimensions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proj = Get-Content JuChuang.csproj -Raw
+          $xaml = Get-Content MainWindow.xaml -Raw
+          $code = Get-Content MainWindow.xaml.cs -Raw
+          if ($proj -notmatch '<Version>1\.0\.1-beta\.2</Version>') { throw 'Unexpected source version' }
+          if ($xaml -notmatch 'Width="280"') { throw 'Sidebar width is not 280 DIP' }
+          if ($xaml -notmatch 'Source="Assets/app-logo.png" Width="30" Height="30"') { throw 'Logo size mismatch' }
+          if ($code -notmatch 'difference = 216') { throw 'Sidebar expansion delta mismatch' }
+      - name: Build Windows x64
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Architecture regression checks
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Badge regression checks
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
+      - name: Publish framework-dependent
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/framework
+      - name: Publish self-contained
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o out/selfcontained
+      - name: Create ZIP packages
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/framework/* -DestinationPath JNest-v1.0.1-beta.2-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path out/selfcontained/* -DestinationPath JNest-v1.0.1-beta.2-SelfContained-win-x64.zip
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v1.0.1-beta.2-win-x64
+          path: JNest-v1.0.1-beta.2-*.zip
+      - name: Publish prerelease only after all checks pass
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v1.0.1-beta.2'
+          $existing = [string](git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing tag' }
+          if ($existing) { throw 'Beta2 tag already exists; refusing to overwrite' }
+          gh release create $tag JNest-v1.0.1-beta.2-FrameworkDependent-win-x64.zip JNest-v1.0.1-beta.2-SelfContained-win-x64.zip --repo ${{ github.repository }} --target beta/v1.0.1-beta2 --title 'JNest v1.0.1-beta.2' --notes-file RELEASE-NOTES-v1.0.1-beta.2.md --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
