@@ -56,8 +56,12 @@ public partial class MainWindow
             {
                 // PointToScreen returns device pixels, matching native window rects.
                 var origin = ClientArea.PointToScreen(new Point(0, 0));
-                var x = (int)Math.Round(origin.X + (ClientArea.ActualWidth - rect.Width) / 2);
-                var y = (int)Math.Round(origin.Y + (ClientArea.ActualHeight - rect.Height) / 2);
+                var matrix = System.Windows.PresentationSource.FromVisual(ClientArea)
+                    ?.CompositionTarget?.TransformToDevice;
+                var scaleX = matrix?.M11 ?? 1.0;
+                var scaleY = matrix?.M22 ?? 1.0;
+                var x = (int)Math.Round(origin.X + (ClientArea.ActualWidth * scaleX - rect.Width) / 2);
+                var y = (int)Math.Round(origin.Y + (ClientArea.ActualHeight * scaleY - rect.Height) / 2);
                 NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0,
                     NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
                     | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
