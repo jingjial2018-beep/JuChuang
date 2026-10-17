@@ -1,4 +1,4 @@
-name: Verify v1.0.1 code-level fixes (account lookup and popup ownership)
+name: Verify v1.0.1 logo alignment and startup identity fixes
 on:
   push:
     branches: [main]
