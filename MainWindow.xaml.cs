@@ -324,6 +324,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await Dispatcher.Yield(DispatcherPriority.Loaded);
         await Dispatcher.Yield(DispatcherPriority.Background);
         await TryScanAndAttachAsync();
+        SyncWeChatLoginPrompts();
         // 首次启动时某些 WebView/Store 客户端（尤其 WhatsApp）窗口已经可枚举，
         // 但第一次跨进程托管可能正好撞上客户端自身的布局/恢复过程而失败。
         // 只对“已经发现但尚未接入”的窗口做两次短暂重试，不启动新进程，
