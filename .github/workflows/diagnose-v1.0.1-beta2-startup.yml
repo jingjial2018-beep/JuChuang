@@ -22,6 +22,21 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Build Windows x64
         run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Check regenerated ICO loads in WPF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ico = Join-Path (Get-Location) 'Assets/app.ico'
+          $stream = [System.IO.File]::OpenRead($ico)
+          try {
+            $reader = [System.IO.BinaryReader]::new($stream)
+            $null = $reader.ReadUInt16()
+            $type = $reader.ReadUInt16()
+            $count = $reader.ReadUInt16()
+            if ($type -ne 1 -or $count -lt 7) { throw "ICO not regenerated: type=$type count=$count" }
+            Write-Host "ICO frames: $count; bytes: $($stream.Length)"
+          } finally { $stream.Dispose() }
+          powershell.exe -NoProfile -STA -Command 'Add-Type -AssemblyName PresentationCore; $u = [Uri]::new((Resolve-Path "Assets/app.ico").Path); $f = [System.Windows.Media.Imaging.BitmapFrame]::Create($u); Write-Host "WPF icon decoded:" $f.PixelWidth $f.PixelHeight'
       - name: Architecture regression checks
         run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
       - name: Badge regression checks
