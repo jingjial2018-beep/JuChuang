@@ -566,7 +566,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // 自定义名称和未读状态串到下一账号。
         if (candidate.Kind == ClientKind.WeChat
             && candidate.Role == ClientWindowRole.Login
-            && entry.SessionState != ClientSessionState.Login)
+            && entry.SessionState != ClientSessionState.Login
+            && !string.IsNullOrWhiteSpace(entry.IdentityKey))
         {
             ResetWeChatAccountBinding(entry);
         }
@@ -1979,6 +1980,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // A profile candidate selected for one PID must never be committed to
             // another live PID. Keep the second entry unbound and retry rather
             // than showing somebody else's cached nickname, avatar or Toast label.
+            // Do not invalidate a different confirmed account when this process
+            // reports the same candidate. Keep this entry unverified and retry;
+            // the owner must remain usable while the ambiguous source is inspected.
             var conflictingBinding = _resolvedWeChatAccounts.Any(pair =>
                 pair.Key != processId
                 && pair.Value.Key.Equals(account.Key, StringComparison.OrdinalIgnoreCase)
@@ -1988,24 +1992,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     && WindowBelongsToProcess(other.Handle, other.ProcessId)));
             if (conflictingBinding)
             {
-                // Two distinct live processes cannot own the same confirmed account.
-                // Revoke the stale claim rather than allowing first-to-finish to win:
-                // each process must resolve independently on its next scan.
-                var conflictingPids = _resolvedWeChatAccounts
-                    .Where(pair => pair.Key != processId
-                        && pair.Value.Key.Equals(account.Key, StringComparison.OrdinalIgnoreCase))
-                    .Select(pair => pair.Key).ToArray();
-                foreach (var conflictingPid in conflictingPids)
-                {
-                    var other = Entries.FirstOrDefault(item => item.Kind == ClientKind.WeChat
-                        && item.ProcessId == conflictingPid);
-                    if (other is not null)
-                        ResetWeChatAccountBinding(other);
-                }
                 DiagnosticLogService.WriteActivityEvent(
-                    "wechat-identity-duplicate-claims-invalidated", processId);
-                ApplyProfileDiagnostic(entry, WeChatProfileFailureStage.SelfRowMissing,
-                    "存在重复账号身份声明，已清除冲突绑定并等待重新验证。");
+                    "wechat-identity-conflict-isolated", processId);
+                entry.ProfileState = AccountProfileState.WaitingForLocalData;
+                entry.ProfileDiagnosticCode = "IdentityConflict";
+                entry.ProfileDiagnosticDetail =
+                    "当前进程解析出的身份已被另一个活动微信占用；保留原有账号，等待独立验证。";
+                RefreshSelectedProfileStatus(entry);
                 ScheduleAccountResolutionRetry(processId);
                 return;
             }
