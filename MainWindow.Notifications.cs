@@ -151,7 +151,7 @@ public partial class MainWindow
                 {
                     // 窗口刚创建时标题/尺寸/可见状态可能尚未稳定；先给客户端一点时间，
                     // 再补一次较晚的校准，覆盖 Login -> Main 连续重建的情况。
-                    await Task.Delay(180);
+                    await Task.Delay(70);
                     await ScanAndAttachAsync();
                     if (!_isClosing)
                     {
