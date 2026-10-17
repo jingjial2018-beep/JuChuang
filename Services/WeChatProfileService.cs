@@ -820,6 +820,9 @@ public static partial class WeChatProfileService
     private static string? GetField(IReadOnlyDictionary<string, string?> fields, string name)
         => fields.TryGetValue(name, out var value) ? value : null;
 
+    internal static string? FindContactDatabasePath(string accountId)
+        => FindAccountLocation(accountId)?.ContactDatabase;
+
     private static (string AccountDirectory, string ContactDatabase)? FindAccountLocation(string accountId)
     {
         var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
