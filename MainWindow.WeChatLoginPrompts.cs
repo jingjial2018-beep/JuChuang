@@ -8,6 +8,7 @@ namespace JuChuang;
 public partial class MainWindow
 {
     private readonly Dictionary<IntPtr, int> _managedLoginPromptPids = [];
+    private readonly HashSet<IntPtr> _loggedUnmatchedWeChatPrompts = [];
 
     // WeChat's duplicate-login "提示" is a separate top-level HWND. It is not
     // the centered QR window and must not be cropped as if it were that window.
@@ -34,8 +35,16 @@ public partial class MainWindow
                 return true;
             NativeMethods.GetWindowThreadProcessId(hwnd, out var rawPid);
             var pid = (int)rawPid;
-            if (!loginPids.Contains(pid) && !_managedLoginPromptPids.ContainsKey(hwnd))
-                return true;
+            var owner = NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER);
+            var ownerPid = 0;
+            if (owner != IntPtr.Zero)
+            {
+                NativeMethods.GetWindowThreadProcessId(owner, out var rawOwnerPid);
+                ownerPid = (int)rawOwnerPid;
+            }
+            var associatedPid = loginPids.Contains(pid) ? pid
+                : loginPids.Contains(ownerPid) ? ownerPid
+                : _managedLoginPromptPids.GetValueOrDefault(hwnd);
             var length = NativeMethods.GetWindowTextLength(hwnd);
             if (length is < 1 or > 16)
                 return true;
@@ -48,11 +57,17 @@ public partial class MainWindow
                 return true;
             var windowClass = new StringBuilder(128);
             NativeMethods.GetClassName(hwnd, windowClass, windowClass.Capacity);
-            if (!windowClass.ToString().StartsWith("Qt", StringComparison.OrdinalIgnoreCase))
+            if (associatedPid <= 0 || !loginPids.Contains(associatedPid))
+            {
+                if (_loggedUnmatchedWeChatPrompts.Add(hwnd))
+                    DiagnosticLogService.WriteActivityEvent(
+                        $"wechat-login-prompt-unmatched pid={pid} ownerPid={ownerPid} class={windowClass}",
+                        pid);
                 return true;
+            }
             observed.Add(hwnd);
-            _managedLoginPromptPids[hwnd] = pid;
-            if (pid == selectedLogin)
+            _managedLoginPromptPids[hwnd] = associatedPid;
+            if (associatedPid == selectedLogin)
             {
                 // PointToScreen returns device pixels, matching native window rects.
                 var origin = ClientArea.PointToScreen(new Point(0, 0));
@@ -77,6 +92,7 @@ public partial class MainWindow
             if (!NativeMethods.IsWindow(handle))
                 _managedLoginPromptPids.Remove(handle);
         }
+        _loggedUnmatchedWeChatPrompts.RemoveWhere(handle => !NativeMethods.IsWindow(handle));
     }
 
     private void RestoreWeChatLoginPrompts()
