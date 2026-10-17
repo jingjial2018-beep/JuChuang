@@ -1,4 +1,4 @@
-name: Verify v1.0.1 startup identity and login prompt fixes
+name: Verify v1.0.1 startup identity and login prompt fixes (latest)
 on:
   push:
     branches: [main]
