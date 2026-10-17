@@ -20,7 +20,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private readonly DispatcherTimer _scanTimer;
     private readonly SemaphoreSlim _scanLock = new(1, 1);
-    private readonly SemaphoreSlim _profileReadLock = new(2, 2);
+    // Serialize multi-instance identity reads so occupied account reservations are refreshed
+    // after the previous PID commits its verified identity, avoiding concurrent claims.
+    private readonly SemaphoreSlim _profileReadLock = new(1, 1);
     private readonly AppSettings _settings;
     private readonly WeChatProfileCacheService _profileCache = new();
     private readonly Dictionary<string, WeChatLocalProfile> _profilesByIdentity =
