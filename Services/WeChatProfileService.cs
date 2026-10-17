@@ -254,6 +254,13 @@ public static partial class WeChatProfileService
             return null;
         }
 
+        if (keyMatch.Value.PageIndex < 0)
+        {
+            context.Fail(WeChatProfileFailureStage.AmbiguousAccountKey,
+                "multiple verified keys for profile database; identity cannot be trusted");
+            return null;
+        }
+
         return WithKnownContactKey(processId, contactDatabase, keyMatch.Value.Key, context, action);
     }
 
