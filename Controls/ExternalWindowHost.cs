@@ -23,6 +23,10 @@ public sealed class ExternalWindowHost : HwndHost
     private IntPtr _currentHandle;
     private IntPtr _moveSizeHook;
     private IntPtr _locationHook;
+    private IntPtr _dialogShowHook;
+    private readonly Dictionary<IntPtr, HiddenDialogRecord> _hiddenDialogs = [];
+    private bool _updatingDialogs;
+    private sealed record HiddenDialogRecord(IntPtr Hwnd, int Pid, IntPtr OwnerHwnd, NativeMethods.RECT RectAtHide);
     private bool _ownerMinimized;
     private int _modalDialogSuppressionCount;
     private int _zOrderSuppressionCount;
@@ -153,6 +157,7 @@ public sealed class ExternalWindowHost : HwndHost
                 NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
                 | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
             ScheduleActivation(handle);
+            RestoreOwnedLoginDialog(handle);
         }
         RefreshHostedWindow(handle);
         return true;
@@ -275,6 +280,7 @@ public sealed class ExternalWindowHost : HwndHost
     public bool DetachWindow(IntPtr handle, bool bringToFront = true)
     {
         if (!_hostedWindows.TryRemove(handle, out var state)) return false;
+        ReleaseOwnedLoginDialog(handle);
         if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         if (!NativeMethods.IsWindow(handle)) return true;
 
@@ -300,6 +306,7 @@ public sealed class ExternalWindowHost : HwndHost
     public void DetachAll()
     {
         foreach (var handle in _hostedWindows.Keys.ToArray()) DetachWindow(handle, false);
+        foreach (var owner in _hiddenDialogs.Keys.ToArray()) ReleaseOwnedLoginDialog(owner);
     }
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
@@ -495,12 +502,17 @@ public sealed class ExternalWindowHost : HwndHost
         _locationHook = NativeMethods.SetWinEventHook(NativeMethods.EVENT_OBJECT_LOCATIONCHANGE,
             NativeMethods.EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, _winEventCallback, 0, 0,
             NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
+        _dialogShowHook = NativeMethods.SetWinEventHook(0x8002, 0x8002,
+            IntPtr.Zero, _winEventCallback, 0, 0,
+            NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
         _windowLockTimer.Start();
     }
 
     private void StopWindowLockMonitoring()
     {
         _windowLockTimer.Stop();
+        if (_dialogShowHook != IntPtr.Zero) { NativeMethods.UnhookWinEvent(_dialogShowHook); _dialogShowHook = IntPtr.Zero; }
+        foreach (var owner in _hiddenDialogs.Keys.ToArray()) ReleaseOwnedLoginDialog(owner);
         if (_moveSizeHook != IntPtr.Zero) { NativeMethods.UnhookWinEvent(_moveSizeHook); _moveSizeHook = IntPtr.Zero; }
         if (_locationHook != IntPtr.Zero) { NativeMethods.UnhookWinEvent(_locationHook); _locationHook = IntPtr.Zero; }
     }
@@ -508,7 +520,15 @@ public sealed class ExternalWindowHost : HwndHost
     private void OnHostedWindowEvent(IntPtr hook, uint eventType, IntPtr window, int objectId,
         int childId, uint eventThread, uint eventTime)
     {
-        if (window == IntPtr.Zero || !_hostedWindows.ContainsKey(window)) return;
+        if (window == IntPtr.Zero) return;
+        if (eventType == 0x8002)
+        {
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.Send,
+                    new Action(() => SuppressBackgroundDialogShow(window)));
+            return;
+        }
+        if (!_hostedWindows.ContainsKey(window)) return;
         if (eventType == NativeMethods.EVENT_SYSTEM_MOVESIZESTART)
         {
             NativeMethods.PostMessage(window, NativeMethods.WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero);
@@ -594,9 +614,11 @@ public sealed class ExternalWindowHost : HwndHost
     // 把非选中窗口"停靠"到屏幕外（-32000,-32000）并保持显示，而不是 SW_HIDE。
     // SW_HIDE 会移除窗口的标题栏与任务栏按钮，导致客户端 FlashWindowEx 无法闪烁、
     // HSHELL_FLASH 永远不触发；停靠后窗口对系统仍"可见"，标题栏闪烁能正常产生来消息通知。
-    private static void ParkWindowOffScreen(IntPtr handle)
+    private void ParkWindowOffScreen(IntPtr handle)
     {
-        if (!NativeMethods.IsWindow(handle) || IsParkedOffScreen(handle)) return;
+        if (!NativeMethods.IsWindow(handle)) return;
+        HideOwnedLoginDialog(handle);
+        if (IsParkedOffScreen(handle)) return;
         // 先移动到屏幕外再显示，避免窗口在原始（屏幕内）位置短暂闪现。
         NativeMethods.SetWindowPos(handle, IntPtr.Zero, -32000, -32000, 0, 0,
             NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER);
