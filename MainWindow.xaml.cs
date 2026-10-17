@@ -2084,10 +2084,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             1 => TimeSpan.FromSeconds(5),
             2 => TimeSpan.FromSeconds(15),
-            3 => TimeSpan.FromMinutes(1),
-            4 => TimeSpan.FromMinutes(3),
-            5 => TimeSpan.FromMinutes(10),
-            _ => TimeSpan.FromMinutes(30)
+            3 => TimeSpan.FromSeconds(30),
+            4 => TimeSpan.FromMinutes(1),
+            _ => TimeSpan.FromMinutes(2)
         };
         _accountResolutionRetryAfter[processId] = DateTime.UtcNow.Add(delay);
     }
