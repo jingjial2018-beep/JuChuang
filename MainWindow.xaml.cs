@@ -222,6 +222,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         const double difference = 216; // 280 DIP account list to 64 DIP avatar rail.
         IsSidebarCollapsed = collapsed;
         SidebarColumn.Width = new GridLength(collapsed ? 64 : 280);
+        // Expanded avatar center: 42 DIP. Collapsed rail center: 32 DIP.
+        // Keep the 30-DIP logo centered on the visible avatar column.
+        BrandHeaderPanel.Margin = new Thickness(collapsed ? 17 : 27, 0, 0, 0);
         SidebarHeading.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         // No tooltip: it could overflow the window when the sidebar is collapsed.
         SidebarToggleButton.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Right;
