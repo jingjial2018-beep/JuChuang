@@ -1,4 +1,4 @@
-name: Verify v1.0.1 startup identity and login prompt fixes (latest)
+name: Verify v1.0.1 code-level fixes (account lookup and popup ownership)
 on:
   push:
     branches: [main]
