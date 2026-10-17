@@ -19,60 +19,92 @@ internal static class WeChatDatabaseOwnershipService
         var otherOwned = 0;
         var missing = 0;
         var probeErrors = 0;
+        var samePid = 0;
+        var startMismatch = 0;
+        var otherPid = 0;
+        long maxDeltaMs = 0;
         foreach (var id in accountIds.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var path = WeChatProfileService.FindContactDatabasePath(id);
             if (path is null) { inconclusive = true; missing++; continue; }
-            var status = QueryOwner(path, pid, startTicks.Value);
+            var result = QueryOwner(path, pid, startTicks.Value);
+            var status = result.Status;
+            samePid += result.SamePid;
+            startMismatch += result.StartMismatch;
+            otherPid += result.OtherPid;
+            maxDeltaMs = Math.Max(maxDeltaMs, result.DeltaMs);
             if (status == 1) owners.Add(id);
             else if (status == -1) otherOwned++;
             else { inconclusive = true; probeErrors++; }
         }
         if (owners.Count == 1 && !inconclusive)
-            return new(Verdict.Unique, owners[0], "UniqueOwner");
+            return new(Verdict.Unique, owners[0], $"UniqueOwner;SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
         if (owners.Count > 1)
-            return new(Verdict.Conflict, null, "MultipleTargetOwners");
-        return new(Verdict.Unknown, null,  $"Owners={owners.Count};OtherOwned={otherOwned};Missing={missing};Uncertain={probeErrors}");
+            return new(Verdict.Conflict, null, $"MultipleTargetOwners;SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid}");
+        return new(Verdict.Unknown, null, $"Owners={owners.Count};OtherOwned={otherOwned};Missing={missing};Uncertain={probeErrors};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
     }
 
-    // 1 target PID owns, -1 demonstrably another process owns, 0 inconclusive.
-    private static int QueryOwner(string path, int pid, long startTicks)
+    private sealed record OwnerProbe(int Status, int SamePid, int StartMismatch, int OtherPid, long DeltaMs);
+
+    // 1: same PID and same start time exclusively owns the file.
+    // -1: demonstrably other process owns it; 0: any ambiguity or API error.
+    private static OwnerProbe QueryOwner(string path, int pid, long startTicks)
     {
+        var unknown = new OwnerProbe(0, 0, 0, 0, 0);
         var key = Guid.NewGuid().ToString("N");
-        if (RmStartSession(out var handle, 0, key) != 0) return 0;
+        if (RmStartSession(out var handle, 0, key) != 0) return unknown;
         try
         {
             if (RmRegisterResources(handle, 1, new[] { path }, 0, IntPtr.Zero, 0, IntPtr.Zero) != 0)
-                return 0;
+                return unknown;
             uint needed = 0, count = 0, reasons = 0;
             var rc = RmGetList(handle, out needed, ref count, null, ref reasons);
-            if (rc != 234 && rc != 0) return 0;
-            if (needed == 0) return 0;
+            if (rc != 234 && rc != 0) return unknown;
+            if (needed == 0) return unknown;
             var entries = new RM_PROCESS_INFO[needed];
             count = needed;
             rc = RmGetList(handle, out needed, ref count, entries, ref reasons);
-            if (rc != 0) return 0;
+            if (rc != 0 || count > entries.Length) return unknown;
             var target = false;
-            var other = false;
+            var samePid = 0;
+            var mismatch = 0;
+            var otherPid = 0;
+            long maxDeltaMs = 0;
             for (int i = 0; i < count; i++)
             {
                 var process = entries[i].Process;
-                var ticks = DateTime.FromFileTimeUtc(process.StartTime).Ticks;
-                if (process.ProcessId == pid && ticks == startTicks) target = true;
-                else other = true;
+                if (process.ProcessId != pid) { otherPid++; continue; }
+                samePid++;
+                var ticks = DateTime.FromFileTimeUtc(process.StartTime.ToInt64()).Ticks;
+                var delta = Math.Abs((ticks - startTicks) / TimeSpan.TicksPerMillisecond);
+                maxDeltaMs = Math.Max(maxDeltaMs, delta);
+                if (ticks == startTicks) target = true;
+                else mismatch++;
             }
-            return target && !other ? 1 : other && !target ? -1 : 0;
+            var status = target && otherPid == 0 && mismatch == 0 ? 1
+                : samePid == 0 && otherPid > 0 ? -1 : 0;
+            return new(status, samePid, mismatch, otherPid, maxDeltaMs);
         }
-        catch { return 0; }
+        catch { return unknown; }
         finally { RmEndSession(handle); }
     }
 
-    [StructLayout(LayoutKind.Sequential)] private struct RM_UNIQUE_PROCESS
+    // Native rstrtmgr.h uses DWORD + FILETIME, which is a 12-byte
+    // RM_UNIQUE_PROCESS (not DWORD + 8-byte-aligned Int64).
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct RM_FILETIME
+    {
+        public uint Low;
+        public uint High;
+        public long ToInt64() => (long)(((ulong)High << 32) | Low);
+    }
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct RM_UNIQUE_PROCESS
     {
         public int ProcessId;
-        public long StartTime;
+        public RM_FILETIME StartTime;
     }
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode, Pack = 4)]
     private struct RM_PROCESS_INFO
     {
         public RM_UNIQUE_PROCESS Process;
