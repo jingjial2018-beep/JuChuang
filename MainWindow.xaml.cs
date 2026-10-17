@@ -85,6 +85,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Title = "JNest窗口托管测试";
         }
         _settings = AppSettings.Load();
+        AppSettings.SaveProblem += OnSettingsSaveProblem;
         _scanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _scanTimer.Tick += ScanTimer_Tick;
         _statusResetTimer.Tick += (_, _) => ClearTemporaryStatus();
@@ -214,9 +215,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void SetSidebarCollapsed(bool collapsed, bool resizeNormalWindow)
     {
         if (IsSidebarCollapsed == collapsed) return;
-        const double difference = 236; // 300 DIP account list to 64 DIP avatar rail.
+        const double difference = 216; // 280 DIP account list to 64 DIP avatar rail.
         IsSidebarCollapsed = collapsed;
-        SidebarColumn.Width = new GridLength(collapsed ? 64 : 300);
+        SidebarColumn.Width = new GridLength(collapsed ? 64 : 280);
         SidebarHeading.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         // No tooltip: it could overflow the window when the sidebar is collapsed.
         SidebarToggleButton.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Right;
@@ -254,6 +255,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         UpdateMaximizeGlyph();
         var isMinimized = WindowState == WindowState.Minimized;
+
+        // 最小化时看不到时钟，暂停每秒刷新；恢复时立即补一次。
+        if (isMinimized)
+        {
+            _clockTimer.Stop();
+        }
+        else if (!_isClosing)
+        {
+            UpdateLocalClock();
+            _clockTimer.Start();
+        }
+
         WindowHost.HandleOwnerWindowStateChanged(isMinimized);
         EnsureMainWindowTaskbarButton();
 
@@ -278,56 +291,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             WindowState == WindowState.Maximized
                 ? "M 7,2 H 11 Q 12,2 12,3 V 8 Q 12,9 11,9 H 10 M 4,5 H 9 Q 10,5 10,6 V 11 Q 10,12 9,12 H 4 Q 3,12 3,11 V 6 Q 3,5 4,5 Z"
                 : "M 4,3 H 10 Q 11,3 11,4 V 10 Q 11,11 10,11 H 4 Q 3,11 3,10 V 4 Q 3,3 4,3 Z");
-    }
-
-    private void RestoreWindowPlacement()
-    {
-        if (_settings.WindowWidth is { } windowWidth && windowWidth > 0)
-        {
-            Width = windowWidth;
-        }
-
-        if (_settings.WindowHeight is { } windowHeight && windowHeight > 0)
-        {
-            Height = windowHeight;
-        }
-
-        if (_settings.WindowLeft is { } savedLeft && _settings.WindowTop is { } savedTop)
-        {
-            // Only restore the position when the window would be at least partially
-            // visible on the current virtual screen, so it never opens off-screen
-            // after a monitor has been unplugged.
-            var virtualLeft = SystemParameters.VirtualScreenLeft;
-            var virtualTop = SystemParameters.VirtualScreenTop;
-            var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
-            var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
-
-            if (savedLeft < virtualRight && savedLeft + Width > virtualLeft
-                && savedTop < virtualBottom && savedTop + Height > virtualTop)
-            {
-                Left = savedLeft;
-                Top = savedTop;
-            }
-        }
-
-        if (_settings.WindowMaximized)
-        {
-            WindowState = WindowState.Maximized;
-        }
-
-    }
-
-    private void SaveWindowPlacement()
-    {
-        _settings.WindowMaximized = WindowState == WindowState.Maximized;
-        if (WindowState == WindowState.Normal)
-        {
-            _settings.WindowLeft = Left;
-            _settings.WindowTop = Top;
-            _settings.WindowWidth = Width;
-            _settings.WindowHeight = Height;
-        }
-        _settings.Save();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -356,7 +319,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WindowHost.Visibility = Visibility.Visible;
         await Dispatcher.Yield(DispatcherPriority.Loaded);
         await Dispatcher.Yield(DispatcherPriority.Background);
-        await ScanAndAttachAsync();
+        await TryScanAndAttachAsync();
         // 首次启动时某些 WebView/Store 客户端（尤其 WhatsApp）窗口已经可枚举，
         // 但第一次跨进程托管可能正好撞上客户端自身的布局/恢复过程而失败。
         // 只对“已经发现但尚未接入”的窗口做两次短暂重试，不启动新进程，
@@ -366,7 +329,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
              startupRetry++)
         {
             await Task.Delay(350);
-            await ScanAndAttachAsync();
+            await TryScanAndAttachAsync();
         }
 
         if (Entries.Count > 0 && SelectedEntry is null)
@@ -389,6 +352,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         _isClosing = true;
+        AppSettings.SaveProblem -= OnSettingsSaveProblem;
         StopNativeCaptionGuard();
         // Fixed window sizing: do not remember prior position, size or maximized state.
         _scanTimer.Stop();
@@ -425,8 +389,63 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (!_isClosing)
         {
-            await ScanAndAttachAsync();
+            await TryScanAndAttachAsync();
         }
+    }
+
+    /// <summary>
+    /// 后台扫描的兜底入口。定时器、Shell 事件和启动阶段都是 async void 或匿名回调，
+    /// 异常一旦逃逸会进入 DispatcherUnhandledException 并让整个程序退出，所有被托管的
+    /// 客户端窗口也会被放回桌面。扫描是周期性的，单次失败记录后等下一轮即可。
+    /// </summary>
+    private async Task TryScanAndAttachAsync()
+    {
+        // 失败后不再追加“补扫”：ScanAndAttachAsync 在 finally 中释放扫描锁，5 秒周期的
+        // 扫描定时器会自然重新发现窗口状态；额外补扫在持续失败时只会让失败次数和负载翻倍。
+        await GuardedRunner.RunAsync(
+            () => ScanAndAttachAsync(),
+            exception => ReportBackgroundFailure(nameof(ScanAndAttachAsync), exception));
+    }
+
+    private readonly FailureThrottle _backgroundFailureThrottle = new(TimeSpan.FromSeconds(30));
+
+    private void ReportBackgroundFailure(string source, Exception exception)
+    {
+        try
+        {
+            // 同一来源反复失败（例如每 5 秒一次的扫描）时限流，避免日志和状态栏被刷屏。
+            if (!_backgroundFailureThrottle.ShouldReport(source, DateTime.UtcNow))
+            {
+                return;
+            }
+
+            DiagnosticLogService.WriteErrorEvent(source, exception);
+            if (!_isClosing && !Dispatcher.HasShutdownStarted)
+            {
+                ShowTemporaryStatus("操作出现异常，已记录诊断日志");
+            }
+        }
+        catch
+        {
+            // 兜底路径本身不能再抛出异常。
+        }
+    }
+
+    private void OnSettingsSaveProblem(string message)
+    {
+        // 保存可能发生在任意调用线程；状态栏只能在 UI 线程更新。
+        if (_isClosing || Dispatcher.HasShutdownStarted)
+        {
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_isClosing)
+            {
+                ShowTemporaryStatus(message);
+            }
+        }));
     }
 
     private void RemoveEntry(ClientWindowEntry entry)
@@ -1434,11 +1453,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // “全部接入”是用户显式请求把容器外所有受支持的客户端都接入，
         // 包括之前从列表移除的窗口。
-        ShowTemporaryStatus("正在接入容器外的客户端窗口…");
-        var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
-        ShowTemporaryStatus(attachedCount > 0
-            ? "接入检查完成"
-            : "未发现可接入的客户端窗口");
+        try
+        {
+            ShowTemporaryStatus("正在接入容器外的客户端窗口…");
+            var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
+            ShowTemporaryStatus(attachedCount > 0
+                ? "接入检查完成"
+                : "未发现可接入的客户端窗口");
+        }
+        catch (Exception exception)
+        {
+            ReportBackgroundFailure(nameof(ReconnectAll_Click), exception);
+        }
     }
 
     private async void ScanClients_Click(object sender, RoutedEventArgs e)
@@ -1448,11 +1474,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        ShowTemporaryStatus("正在扫描并接入本地客户端…");
-        var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
-        ShowTemporaryStatus(attachedCount > 0
-            ? "扫描完成"
-            : "未发现新的客户端窗口");
+        try
+        {
+            ShowTemporaryStatus("正在扫描并接入本地客户端…");
+            var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
+            ShowTemporaryStatus(attachedCount > 0
+                ? "扫描完成"
+                : "未发现新的客户端窗口");
+        }
+        catch (Exception exception)
+        {
+            ReportBackgroundFailure(nameof(ScanClients_Click), exception);
+        }
     }
 
     /// <summary>

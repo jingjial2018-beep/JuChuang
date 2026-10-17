@@ -11,6 +11,20 @@ public partial class App : Application
         base.OnStartup(e);
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+
+        // 清理上次崩溃或旧版本遗留的解密临时文件。只删超过 2 分钟的，避免误删
+        // 另一个 JNest 实例正在使用的文件。
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                JuChuang.Services.WeChatProfileService.CleanupTemporaryArtifacts(TimeSpan.FromMinutes(2));
+            }
+            catch
+            {
+                // 清理只是尽力而为。
+            }
+        });
     }
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
@@ -35,7 +49,12 @@ public partial class App : Application
 
         try
         {
-            Dispatcher.Invoke(ReleaseHostedWindows);
+            // 崩溃发生在后台线程时 UI 线程可能已被阻塞；带超时，避免进程卡死而无法退出。
+            Dispatcher.Invoke(
+                ReleaseHostedWindows,
+                DispatcherPriority.Send,
+                CancellationToken.None,
+                TimeSpan.FromSeconds(2));
         }
         catch
         {

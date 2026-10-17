@@ -184,9 +184,9 @@
             CornerRadius="10">
         <Grid ClipToBounds="True">
             <Grid.RowDefinitions>
-                <RowDefinition Height="48" />
+                <RowDefinition Height="44" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="42" />
+                <RowDefinition Height="32" />
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0"
@@ -203,7 +203,7 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
-                        <Image Source="Assets/app-logo.png" Width="24" Height="24" Stretch="Uniform" />
+                        <Image Source="Assets/app-logo.png" Width="30" Height="30" Stretch="Uniform" />
                         <TextBlock Text="JNest" Margin="10,0,0,0" FontSize="17" FontWeight="SemiBold"
                                    Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
                     </StackPanel>
@@ -314,7 +314,7 @@
 
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="SidebarColumn" Width="300" />
+                    <ColumnDefinition x:Name="SidebarColumn" Width="280" />
                     <ColumnDefinition Width="1" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>

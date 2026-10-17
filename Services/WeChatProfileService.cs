@@ -1,8 +1,11 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -254,12 +257,11 @@ public static partial class WeChatProfileService
         Func<string, T?> action)
         where T : class
     {
-        var scratchDirectory = Path.Combine(Path.GetTempPath(), "duokaiqi-profile");
-        Directory.CreateDirectory(scratchDirectory);
-        CleanupTemporaryArtifacts(includeRecent: false);
+        var scratchDirectory = EnsureScratchDirectory();
+        CleanupTemporaryArtifacts(ReadTimeCleanupMinimumAge);
         var decryptedPath = Path.Combine(
             scratchDirectory,
-            $"contact-{processId}-{Guid.NewGuid():N}.db");
+            BuildScratchFileName(processId));
 
         try
         {
@@ -297,44 +299,160 @@ public static partial class WeChatProfileService
         }
     }
 
-    internal static int CleanupTemporaryArtifacts(bool includeRecent)
+    // 解密副本只存在于读取资料的几秒钟内。目录放在 JNest 自己的数据目录下并限制为仅当前用户
+    // 和 SYSTEM 可访问，不再使用共享的 %TEMP%。旧版本遗留在 %TEMP%\duokaiqi-profile 的
+    // 残留文件也由下面的清理一并处理。
+    private static readonly TimeSpan ReadTimeCleanupMinimumAge = TimeSpan.FromMinutes(10);
+
+    // 仅供测试使用：把临时目录指到测试专用位置，避免触碰真实用户数据。
+    internal static string? ScratchDirectoryOverride { get; set; }
+    internal static string? LegacyScratchDirectoryOverride { get; set; }
+
+    private static string ScratchDirectory => ScratchDirectoryOverride ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "JuChuang",
+        "tmp",
+        "profile");
+
+    private static string LegacyScratchDirectory => LegacyScratchDirectoryOverride
+        ?? Path.Combine(Path.GetTempPath(), "duokaiqi-profile");
+
+    private static string EnsureScratchDirectory()
     {
-        var scratchDirectory = Path.Combine(Path.GetTempPath(), "duokaiqi-profile");
-        if (!Directory.Exists(scratchDirectory))
+        var directory = ScratchDirectory;
+        if (Directory.Exists(directory))
         {
-            return 0;
+            return directory;
         }
 
-        var cutoff = DateTime.UtcNow.AddDays(-1);
-        var removed = 0;
-        IEnumerable<string> files;
         try
         {
-            files = Directory.EnumerateFiles(scratchDirectory, "contact-*").ToArray();
+            // 先建好父目录，只让最末一级带显式 ACL，不改动 JuChuang 目录本身的权限。
+            Directory.CreateDirectory(Path.GetDirectoryName(directory)!);
+
+            using var identity = WindowsIdentity.GetCurrent();
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            if (identity.User is { } user)
+            {
+                security.AddAccessRule(new FileSystemAccessRule(
+                    user, FileSystemRights.FullControl, inherit,
+                    PropagationFlags.None, AccessControlType.Allow));
+            }
+
+            // 保留 SYSTEM，避免杀毒/备份服务因无法访问而报错。
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                FileSystemRights.FullControl, inherit,
+                PropagationFlags.None, AccessControlType.Allow));
+
+            new DirectoryInfo(directory).Create(security);
         }
         catch
         {
-            return 0;
+            // 收紧权限失败不应让资料读取整体失败；退回默认权限（继承自当前用户的数据目录）。
+            Directory.CreateDirectory(directory);
         }
 
-        foreach (var file in files)
-        {
-            try
-            {
-                if (!includeRecent && File.GetLastWriteTimeUtc(file) > cutoff)
-                {
-                    continue;
-                }
+        return directory;
+    }
 
-                File.Delete(file);
-                removed++;
-            }
-            catch
+    /// <summary>
+    /// 清理不再由有效 JNest 进程持有的解密副本。新文件名记录创建者 JNest PID；
+    /// 仍运行的创建者保留副本，防止多个 JNest 实例互相删除正在读取的数据库。
+    /// 旧版本没有创建者标记的文件继续按年龄保守清理。
+    /// </summary>
+    internal static int CleanupTemporaryArtifacts(TimeSpan minimumAge)
+    {
+        var removed = 0;
+        var cutoff = DateTime.UtcNow - minimumAge;
+        foreach (var directory in new[] { ScratchDirectory, LegacyScratchDirectory })
+        {
+            if (!Directory.Exists(directory)) continue;
+            string[] files;
+            try { files = Directory.EnumerateFiles(directory, "contact-*").ToArray(); }
+            catch { continue; }
+
+            foreach (var file in files)
             {
-                // A different running instance may still own this exact temporary file.
+                try
+                {
+                    var lastWritten = File.GetLastWriteTimeUtc(file);
+                    var fileName = Path.GetFileName(file);
+                    var match = OwnerPattern.Match(fileName);
+                    if (match.Success
+                        && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var ownerPid)
+                        && long.TryParse(match.Groups[2].Value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var ownerStartTicks))
+                    {
+                        // 创建者仍是同一个进程实例（PID 与启动时间都吻合）时不清理。
+                        // 不依赖进程显示名称，也不会把被系统复用的 PID 当成仍存活的创建者。
+                        if (IsLiveScratchOwner(ownerPid, ownerStartTicks)) continue;
+                        // 容许刚写完的文件完成打开/关闭过程；避免与并发退出争用。
+                        if (lastWritten > DateTime.UtcNow - OrphanGracePeriod) continue;
+                    }
+                    else if (lastWritten > cutoff)
+                    {
+                        continue;
+                    }
+
+                    File.Delete(file);
+                    removed++;
+                }
+                catch
+                {
+                    // 文件仍被其他进程占用或权限不足，留给下一次清理。
+                }
             }
         }
         return removed;
+    }
+
+    private static readonly TimeSpan OrphanGracePeriod = TimeSpan.FromSeconds(5);
+
+    // 文件名：contact-{微信PID}-owner{创建者PID}-{创建者启动时间ticks(十六进制)}-{GUID}.db
+    private static readonly Regex OwnerPattern = new(
+        @"^contact-\d+-owner(\d+)-([0-9a-f]+)-[0-9a-fA-F]{32}\.db(?:-wal|-shm)?$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Lazy<long> OwnerStartTicks = new(() =>
+    {
+        try
+        {
+            using var current = Process.GetCurrentProcess();
+            return current.StartTime.ToUniversalTime().Ticks;
+        }
+        catch
+        {
+            return 0L; // 取不到启动时间时记为 0：清理端只能确认 PID 存活，无法区分 PID 复用。
+        }
+    });
+
+    internal static long CurrentProcessStartTicks => OwnerStartTicks.Value;
+
+    internal static string BuildScratchFileName(int weChatProcessId)
+        => $"contact-{weChatProcessId}-owner{Environment.ProcessId}-{OwnerStartTicks.Value:x}-{Guid.NewGuid():N}.db";
+
+    /// <summary>
+    /// 创建者是否仍是“同一个进程实例”。用 PID + 启动时间核对，而不是进程名：
+    /// 用户改名 exe、从不同目录运行都不影响判断，PID 被复用时启动时间也对不上。
+    /// </summary>
+    private static bool IsLiveScratchOwner(int ownerPid, long recordedStartTicks)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(ownerPid);
+            if (process.HasExited) return false;
+            if (recordedStartTicks == 0) return true;
+            return process.StartTime.ToUniversalTime().Ticks == recordedStartTicks;
+        }
+        catch (ArgumentException) { return false; }
+        catch (InvalidOperationException) { return false; }
+        catch
+        {
+            // 无法确认进程身份时（例如权限不足）宁可保留副本，避免误删活跃读取。
+            return true;
+        }
     }
 
     private static void DeleteTemporaryDatabase(string databasePath)

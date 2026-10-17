@@ -33,13 +33,45 @@ public static class DiagnosticLogService
             lock (SyncRoot)
             {
                 Directory.CreateDirectory(LogRoot);
-                CleanupOldLogs();
+                CleanupOldLogsIfDue();
                 File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
             }
         }
         catch
         {
             // Diagnostics must never interrupt notification delivery.
+        }
+    }
+
+    /// <summary>
+    /// 记录后台任务/异步入口中被兜底捕获的异常。只写异常类型、HRESULT、出错方法和
+    /// 已遮蔽用户目录的消息，不含堆栈全文，也不含任何聊天内容。
+    /// </summary>
+    public static void WriteErrorEvent(string source, Exception exception)
+    {
+        try
+        {
+            var site = exception.TargetSite is { } method
+                ? $"{method.DeclaringType?.Name}.{method.Name}"
+                : null;
+            var line =
+                $"{DateTime.UtcNow:O}\tbackground-error" +
+                $"\tsource={Sanitize(source)}" +
+                $"\ttype={Sanitize(exception.GetType().Name)}" +
+                $"\thresult=0x{exception.HResult:X8}" +
+                $"\tsite={Sanitize(site)}" +
+                $"\tdetail={Sanitize(RedactDetail(exception.Message, null))}" +
+                Environment.NewLine;
+            lock (SyncRoot)
+            {
+                Directory.CreateDirectory(LogRoot);
+                CleanupOldLogsIfDue();
+                File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // 诊断日志永远不能影响窗口管理主流程。
         }
     }
 
@@ -72,7 +104,7 @@ public static class DiagnosticLogService
             lock (SyncRoot)
             {
                 Directory.CreateDirectory(LogRoot);
-                CleanupOldLogs();
+                CleanupOldLogsIfDue();
                 File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
             }
         }
@@ -198,6 +230,21 @@ public static class DiagnosticLogService
         return normalized.Length <= MaximumDetailLength
             ? normalized
             : normalized[..MaximumDetailLength] + "…";
+    }
+
+    private static DateTime _lastLogCleanupDateUtc = DateTime.MinValue;
+
+    // 旧日志每天清理一次即可，不必每写一行就遍历一次目录。仅在 SyncRoot 锁内调用。
+    private static void CleanupOldLogsIfDue()
+    {
+        var today = DateTime.UtcNow.Date;
+        if (_lastLogCleanupDateUtc == today)
+        {
+            return;
+        }
+
+        _lastLogCleanupDateUtc = today;
+        CleanupOldLogs();
     }
 
     private static void CleanupOldLogs()

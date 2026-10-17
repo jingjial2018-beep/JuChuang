@@ -152,11 +152,11 @@ public partial class MainWindow
                     // 窗口刚创建时标题/尺寸/可见状态可能尚未稳定；先给客户端一点时间，
                     // 再补一次较晚的校准，覆盖 Login -> Main 连续重建的情况。
                     await Task.Delay(70);
-                    await ScanAndAttachAsync();
+                    await TryScanAndAttachAsync();
                     if (!_isClosing)
                     {
                         await Task.Delay(500);
-                        await ScanAndAttachAsync();
+                        await TryScanAndAttachAsync();
                     }
                 }
                 finally
@@ -296,14 +296,21 @@ public partial class MainWindow
         var accountGeneration = entry.AccountGeneration;
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () =>
         {
-            await Task.Delay(700);
-            if (_isClosing || !Entries.Contains(entry)
-                || entry.Handle != handle || entry.ProcessId != processId
-                || entry.AccountGeneration != accountGeneration
-                || !_activityRetryGeneration.TryGetValue(entry, out var currentGeneration)
-                || currentGeneration != retryGeneration) return;
-            _activityRetryGeneration.Remove(entry);
-            TriggerImmediateBadgeScan(entry);
+            try
+            {
+                await Task.Delay(700);
+                if (_isClosing || !Entries.Contains(entry)
+                    || entry.Handle != handle || entry.ProcessId != processId
+                    || entry.AccountGeneration != accountGeneration
+                    || !_activityRetryGeneration.TryGetValue(entry, out var currentGeneration)
+                    || currentGeneration != retryGeneration) return;
+                _activityRetryGeneration.Remove(entry);
+                TriggerImmediateBadgeScan(entry);
+            }
+            catch (Exception exception)
+            {
+                ReportBackgroundFailure("ActivityRetryScan", exception);
+            }
         }));
     }
 

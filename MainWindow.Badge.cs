@@ -94,6 +94,10 @@ public partial class MainWindow
                 {
                     await ScanSingleAsync(entry);
                 }
+                catch (Exception exception)
+                {
+                    ReportBackgroundFailure("ImmediateBadgeScan", exception);
+                }
                 finally
                 {
                     Interlocked.Exchange(ref _badgeScanInProgress, 0);
@@ -143,6 +147,10 @@ public partial class MainWindow
                 if (!NativeMethods.IsWindow(entry.Handle)) continue;
                 await ScanSingleAsync(entry);
             }
+        }
+        catch (Exception exception)
+        {
+            ReportBackgroundFailure(nameof(BadgePollTimer_Tick), exception);
         }
         finally
         {
@@ -203,6 +211,10 @@ public partial class MainWindow
                     || entry.Handle != handle || entry.ProcessId != processId
                     || entry.AccountGeneration != generation) return;
                 TriggerImmediateBadgeScan(entry);
+            }
+            catch (Exception exception)
+            {
+                ReportBackgroundFailure("PendingClearConfirmation", exception);
             }
             finally
             {

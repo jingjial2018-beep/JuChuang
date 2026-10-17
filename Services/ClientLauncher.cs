@@ -135,6 +135,14 @@ public static class ClientLauncher
         }
     }
 
+    // 多开策略的每个失败点都会让调用方悄悄回退到普通启动；记录下是哪一步失败，
+    // 否则用户反馈“多开不生效”时无从判断原因。
+    private static WeChatLaunchResult? LogBypassFailure(string stage)
+    {
+        DiagnosticLogService.WriteActivityEvent($"mutex-bypass-failed:{stage}");
+        return null;
+    }
+
     private static WeChatLaunchResult? TryStartWeChatWithMutexBypass(string executablePath)
     {
         IntPtr mutexHandle = IntPtr.Zero;
@@ -151,7 +159,7 @@ public static class ClientLauncher
             mutexHandle = CreateMutexW(IntPtr.Zero, false, WeChatInstanceMutexName);
             if (mutexHandle == IntPtr.Zero)
             {
-                return null;
+                return LogBypassFailure("CreateMutexW");
             }
 
             var getSecurityResult = GetSecurityInfo(
@@ -165,20 +173,20 @@ public static class ClientLauncher
                 out originalSecurityDescriptor);
             if (getSecurityResult != 0 || originalSecurityDescriptor == IntPtr.Zero)
             {
-                return null;
+                return LogBypassFailure("GetSecurityInfo");
             }
 
             everyoneSid = Marshal.AllocHGlobal(SecurityMaxSidSize);
             uint sidSize = SecurityMaxSidSize;
             if (!CreateWellKnownSid(WinWorldSid, IntPtr.Zero, everyoneSid, ref sidSize))
             {
-                return null;
+                return LogBypassFailure("CreateWellKnownSid");
             }
 
             var sidLength = GetLengthSid(everyoneSid);
             if (sidLength <= 0)
             {
-                return null;
+                return LogBypassFailure("GetLengthSid");
             }
 
             // ACL header (8) + ACCESS_DENIED_ACE without SidStart payload (8)
@@ -187,12 +195,12 @@ public static class ClientLauncher
             denyAcl = Marshal.AllocHGlobal((int)aclSize);
             if (!InitializeAcl(denyAcl, aclSize, AclRevision))
             {
-                return null;
+                return LogBypassFailure("InitializeAcl");
             }
 
             if (!AddAccessDeniedAce(denyAcl, AclRevision, MutexAllAccess, everyoneSid))
             {
-                return null;
+                return LogBypassFailure("AddAccessDeniedAce");
             }
 
             var setSecurityResult = SetSecurityInfo(
@@ -205,7 +213,7 @@ public static class ClientLauncher
                 IntPtr.Zero);
             if (setSecurityResult != 0)
             {
-                return null;
+                return LogBypassFailure("SetSecurityInfo");
             }
 
             daclChanged = true;
@@ -223,10 +231,10 @@ public static class ClientLauncher
             Thread.Sleep(1200);
             return result;
         }
-        catch
+        catch (Exception exception)
         {
             // 多开策略失败时由调用方回退到普通 CreateProcessW。
-            return null;
+            return LogBypassFailure($"exception:{exception.GetType().Name}");
         }
         finally
         {
@@ -236,7 +244,7 @@ public static class ClientLauncher
             {
                 try
                 {
-                    _ = SetSecurityInfo(
+                    var restoreResult = SetSecurityInfo(
                         mutexHandle,
                         SeKernelObject,
                         DaclSecurityInformation,
@@ -244,6 +252,10 @@ public static class ClientLauncher
                         IntPtr.Zero,
                         originalDacl,
                         IntPtr.Zero);
+                    if (restoreResult != 0)
+                    {
+                        DiagnosticLogService.WriteActivityEvent($"mutex-bypass-restore-failed:{restoreResult}");
+                    }
                 }
                 catch
                 {
