@@ -1,4 +1,4 @@
-name: Verify v1.0.1 startup identity deduplication
+name: Verify v1.0.1 startup identity and login prompt fixes
 on:
   push:
     branches: [main]
