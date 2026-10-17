@@ -1,4 +1,4 @@
-name: Diagnose JNest beta.2 startup failure
+name: Diagnose JNest beta.2 startup failure (ICO hotfix)
 on:
   push:
     branches: [main]
