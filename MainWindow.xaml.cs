@@ -1904,10 +1904,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     return;
                 }
 
-                var unavailableAccountKeys = _resolvedWeChatAccounts
-                    .Where(pair => pair.Key != processId)
-                    .Select(pair => pair.Value.Key)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                // Do not exclude accounts claimed by another PID *before* verifying
+                // the live process. On JNest restart stale or misattributed claims
+                // otherwise force this process to read a different account's profile.
+                // Duplicate live claims are rejected immediately before commit.
                 resolution = await Task.Run(() =>
                 {
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
@@ -1915,7 +1915,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             && account.Key.Equals(preferredAccount.Key, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                         .ThenByDescending(account => account.LastLoginUtc)
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
-                        .Where(account => !unavailableAccountKeys.Contains(account.Key))
                         .ToArray();
 
                     var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
