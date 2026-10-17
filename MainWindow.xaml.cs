@@ -1927,6 +1927,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 // the live process. On JNest restart stale or misattributed claims
                 // otherwise force this process to read a different account's profile.
                 // Duplicate live claims are rejected immediately before commit.
+                // Prefer the v0.99 proven multi-instance strategy: do not let two
+                // concurrently resolved processes compete for the same account DB.
+                // The live contact key still verifies which of the remaining
+                // candidates belongs to this process before a binding is committed.
+                var occupiedAccountKeys = _resolvedWeChatAccounts
+                    .Where(pair => pair.Key != processId
+                        && Entries.Any(other => other.Kind == ClientKind.WeChat
+                            && other.ProcessId == pair.Key
+                            && other.SessionState == ClientSessionState.Main
+                            && WindowBelongsToProcess(other.Handle, other.ProcessId)))
+                    .Select(pair => pair.Value.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 resolution = await Task.Run(() =>
                 {
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
@@ -1934,6 +1946,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             && account.Key.Equals(preferredAccount.Key, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                         .ThenByDescending(account => account.LastLoginUtc)
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
+                        .Where(account => !occupiedAccountKeys.Contains(account.Key))
                         .ToArray();
 
                     var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
