@@ -212,7 +212,7 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
             NativeMethods.ShowWindow(_currentHandle, NativeMethods.SW_SHOW);
-            RestoreOwnedLoginDialog(_currentHandle);
+            RestoreOwnedLoginDialog(_currentHandle, "minimize-restore");
             ScheduleActivation(_currentHandle);
         }
     }
@@ -254,7 +254,7 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
             | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
         ScheduleActivation(_currentHandle);
-        RestoreOwnedLoginDialog(_currentHandle);
+        RestoreOwnedLoginDialog(_currentHandle, "modal-resume");
     }
 
     /// <summary>
@@ -507,6 +507,7 @@ public sealed class ExternalWindowHost : HwndHost
         _dialogShowHook = NativeMethods.SetWinEventHook(0x8002, 0x8002,
             IntPtr.Zero, _winEventCallback, 0, 0,
             NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
+        PopupTrace($"wechat-popup-hook-installed handle={_dialogShowHook} valid={_dialogShowHook != IntPtr.Zero} lastError={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
         _windowLockTimer.Start();
     }
 
@@ -525,6 +526,7 @@ public sealed class ExternalWindowHost : HwndHost
         if (window == IntPtr.Zero) return;
         if (eventType == 0x8002)
         {
+            if (objectId != 0) return;
             if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
                 _ = Dispatcher.BeginInvoke(DispatcherPriority.Send,
                     new Action(() => SuppressBackgroundDialogShow(window)));
@@ -619,6 +621,8 @@ public sealed class ExternalWindowHost : HwndHost
     private void ParkWindowOffScreen(IntPtr handle)
     {
         if (!NativeMethods.IsWindow(handle)) return;
+        NativeMethods.GetWindowThreadProcessId(handle, out var parkPid);
+        PopupTrace($"wechat-popup-park-enter hwnd={handle} pid={parkPid} current={_currentHandle} minimized={_ownerMinimized}", (int)parkPid);
         HideOwnedLoginDialog(handle);
         if (IsParkedOffScreen(handle)) return;
         // 先移动到屏幕外再显示，避免窗口在原始（屏幕内）位置短暂闪现。
@@ -631,7 +635,11 @@ public sealed class ExternalWindowHost : HwndHost
     // The main WeChat HWND remains visible so taskbar flash notifications work.
     private void HideOwnedLoginDialog(IntPtr owner)
     {
-        if (_updatingDialogs || !NativeMethods.IsWindow(owner)) return;
+        if (_updatingDialogs || !NativeMethods.IsWindow(owner))
+        {
+            PopupTrace($"wechat-popup-scan-skipped owner={owner} updating={_updatingDialogs} valid={NativeMethods.IsWindow(owner)}");
+            return;
+        }
         if (_hiddenDialogs.TryGetValue(owner, out var saved))
         {
             if (!IsValidOwnedDialog(saved))
@@ -645,7 +653,7 @@ public sealed class ExternalWindowHost : HwndHost
                     _updatingDialogs = true;
                     try
                     {
-                        NativeMethods.ShowWindow(saved.Hwnd, NativeMethods.SW_HIDE);
+                        HideWithTrace(saved.Hwnd, "park-existing", saved.Pid);
                         LogLoginDialog("hide-park-existing", saved);
                     }
                     finally { _updatingDialogs = false; }
@@ -655,34 +663,43 @@ public sealed class ExternalWindowHost : HwndHost
         }
 
         NativeMethods.GetWindowThreadProcessId(owner, out var ownerPid);
+        int candidates = 0;
         NativeMethods.EnumWindows((popup, _) =>
         {
-            if (NativeMethods.GetWindow(popup, NativeMethods.GW_OWNER) != owner
-                || !NativeMethods.IsWindowVisible(popup)) return true;
+            if (popup == owner) return true;
             NativeMethods.GetWindowThreadProcessId(popup, out var popupPid);
-            if (popupPid != ownerPid || popup == owner) return true;
-            var titleLength = NativeMethods.GetWindowTextLength(popup);
-            if (titleLength is < 1 or > 16) return true;
-            var title = new System.Text.StringBuilder(titleLength + 2);
-            NativeMethods.GetWindowText(popup, title, title.Capacity);
-            if (title.ToString().Trim() != "Weixin") return true;
-            var cls = new System.Text.StringBuilder(128);
-            NativeMethods.GetClassName(popup, cls, cls.Capacity);
-            if (cls.ToString() != "Qt51514QWindowIcon") return true;
-            if (!NativeMethods.GetWindowRect(popup, out var bounds)
-                || bounds.Width is < 130 or >= 600
-                || bounds.Height is < 80 or >= 400) return true;
+            if (popupPid != ownerPid) return true;
+            candidates++;
+            var actualOwner = NativeMethods.GetWindow(popup, NativeMethods.GW_OWNER);
+            var visible = NativeMethods.IsWindowVisible(popup);
+            var len = NativeMethods.GetWindowTextLength(popup);
+            var titleBuffer = new System.Text.StringBuilder(Math.Clamp(len + 2, 2, 256));
+            NativeMethods.GetWindowText(popup, titleBuffer, titleBuffer.Capacity);
+            var title = titleBuffer.ToString().Trim();
+            var classBuffer = new System.Text.StringBuilder(128);
+            NativeMethods.GetClassName(popup, classBuffer, classBuffer.Capacity);
+            var cls = classBuffer.ToString();
+            var gotRect = NativeMethods.GetWindowRect(popup, out var bounds);
+            var reason = actualOwner != owner ? "owner-mismatch"
+                : !visible ? "not-visible"
+                : len is < 1 or > 16 || title != "Weixin" ? "title-mismatch"
+                : cls != "Qt51514QWindowIcon" ? "class-mismatch"
+                : !gotRect || bounds.Width is < 130 or >= 600
+                    || bounds.Height is < 80 or >= 400 ? "size-mismatch" : "MATCH";
+            PopupTrace($"wechat-popup-candidate hwnd={popup} pid={popupPid} gwOwner={actualOwner} expectedOwner={owner} title={title} class={cls} size={bounds.Width}x{bounds.Height} visible={visible} decision={reason}", (int)popupPid);
+            if (reason != "MATCH") return true;
             var record = new HiddenDialogRecord(popup, (int)popupPid, owner, bounds);
             _hiddenDialogs[owner] = record;
             _updatingDialogs = true;
             try
             {
-                NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE);
+                HideWithTrace(popup, "park-new", record.Pid);
                 LogLoginDialog("hide-park-new", record);
             }
             finally { _updatingDialogs = false; }
             return false;
         }, IntPtr.Zero);
+        PopupTrace($"wechat-popup-scan-done owner={owner} pid={ownerPid} samePidCandidates={candidates}", (int)ownerPid);
     }
 
     private bool IsValidOwnedDialog(HiddenDialogRecord record)
@@ -697,7 +714,14 @@ public sealed class ExternalWindowHost : HwndHost
 
     private void SuppressBackgroundDialogShow(IntPtr popup)
     {
-        if (_updatingDialogs) return;
+        NativeMethods.GetWindowThreadProcessId(popup, out var hookPid);
+        var inRecords = _hiddenDialogs.Values.Any(v => v.Hwnd == popup);
+        PopupTrace($"wechat-popup-hook-show hwnd={popup} pid={hookPid} recorded={inRecords} updating={_updatingDialogs}", (int)hookPid);
+        if (_updatingDialogs)
+        {
+            PopupTrace($"wechat-popup-hook-result hwnd={popup} action=ignored-updating", (int)hookPid);
+            return;
+        }
         foreach (var pair in _hiddenDialogs.ToArray())
         {
             var record = pair.Value;
@@ -708,26 +732,30 @@ public sealed class ExternalWindowHost : HwndHost
                 return;
             }
             // Both conditions required: recorded and still owned, AND owner is background.
-            if (_currentHandle == record.OwnerHwnd && !_ownerMinimized) return;
-            if (!NativeMethods.IsWindowVisible(popup)) return;
+            if (_currentHandle == record.OwnerHwnd && !_ownerMinimized) { PopupTrace($"wechat-popup-hook-result hwnd={popup} action=ignored-foreground", record.Pid); return; }
+            if (!NativeMethods.IsWindowVisible(popup)) { PopupTrace($"wechat-popup-hook-result hwnd={popup} action=ignored-invisible", record.Pid); return; }
             _updatingDialogs = true;
             try
             {
-                NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE);
+                HideWithTrace(popup, "hook", record.Pid);
                 LogLoginDialog("hide-hook", record);
             }
             finally { _updatingDialogs = false; }
+            PopupTrace($"wechat-popup-hook-result hwnd={popup} action=rehidden", record.Pid);
             return;
         }
+        PopupTrace($"wechat-popup-hook-result hwnd={popup} action=ignored-unrecorded", (int)hookPid);
     }
 
-    private void RestoreOwnedLoginDialog(IntPtr owner)
+    private void RestoreOwnedLoginDialog(IntPtr owner, string reason = "switch-back")
     {
+        PopupTrace($"wechat-popup-restore-enter owner={owner} reason={reason} recorded={_hiddenDialogs.ContainsKey(owner)}");
         if (!_hiddenDialogs.Remove(owner, out var record) || !IsValidOwnedDialog(record)) return;
         _updatingDialogs = true;
         try
         {
-            NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
+            var wasVisible = NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
+            PopupTrace($"wechat-popup-show-result hwnd={record.Hwnd} owner={owner} reason={reason} previousVisible={wasVisible} nowVisible={NativeMethods.IsWindowVisible(record.Hwnd)}", record.Pid);
             LogLoginDialog("show-restore", record);
             if (!NativeMethods.GetWindowRect(record.Hwnd, out var now)
                 || !NativeMethods.GetWindowRect(owner, out var hostBounds)) return;
@@ -751,6 +779,15 @@ public sealed class ExternalWindowHost : HwndHost
         if (!_hiddenDialogs.Remove(owner, out var record) || !IsValidOwnedDialog(record)) return;
         NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
         LogLoginDialog("show-release", record);
+    }
+
+    private static void PopupTrace(string message, int pid = 0)
+        => DiagnosticLogService.WriteActivityEvent(message, pid);
+
+    private static void HideWithTrace(IntPtr hwnd, string cause, int pid)
+    {
+        var previousVisible = NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+        PopupTrace($"wechat-popup-hide-result hwnd={hwnd} reason={cause} previousVisible={previousVisible} nowVisible={NativeMethods.IsWindowVisible(hwnd)}", pid);
     }
 
     private static void LogLoginDialog(string action, HiddenDialogRecord record)
