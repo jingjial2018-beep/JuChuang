@@ -42,9 +42,9 @@ public partial class MainWindow
                 NativeMethods.GetWindowThreadProcessId(owner, out var rawOwnerPid);
                 ownerPid = (int)rawOwnerPid;
             }
+            // Do not reuse an old PID when Windows recycles a popup HWND.
             var associatedPid = loginPids.Contains(pid) ? pid
-                : loginPids.Contains(ownerPid) ? ownerPid
-                : _managedLoginPromptPids.GetValueOrDefault(hwnd);
+                : loginPids.Contains(ownerPid) ? ownerPid : 0;
             var length = NativeMethods.GetWindowTextLength(hwnd);
             if (length is < 1 or > 16)
                 return true;
@@ -77,6 +77,21 @@ public partial class MainWindow
                 var scaleY = matrix?.M22 ?? 1.0;
                 var x = (int)Math.Round(origin.X + (ClientArea.ActualWidth * scaleX - rect.Width) / 2);
                 var y = (int)Math.Round(origin.Y + (ClientArea.ActualHeight * scaleY - rect.Height) / 2);
+                // Popup is a native top-level window; keep it fully onscreen.
+                var monitor = NativeMethods.MonitorFromWindow(
+                    new System.Windows.Interop.WindowInteropHelper(this).Handle,
+                    NativeMethods.MONITOR_DEFAULTTONEAREST);
+                var monitorInfo = new NativeMethods.MONITORINFO
+                {
+                    cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>()
+                };
+                if (monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref monitorInfo))
+                {
+                    x = Math.Clamp(x, monitorInfo.rcWork.Left,
+                        Math.Max(monitorInfo.rcWork.Left, monitorInfo.rcWork.Right - rect.Width));
+                    y = Math.Clamp(y, monitorInfo.rcWork.Top,
+                        Math.Max(monitorInfo.rcWork.Top, monitorInfo.rcWork.Bottom - rect.Height));
+                }
                 NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0,
                     NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
                     | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
@@ -90,7 +105,16 @@ public partial class MainWindow
         foreach (var handle in _managedLoginPromptPids.Keys.ToArray())
         {
             if (!NativeMethods.IsWindow(handle))
+            {
                 _managedLoginPromptPids.Remove(handle);
+                continue;
+            }
+            NativeMethods.GetWindowThreadProcessId(handle, out var livePid);
+            if (!loginPids.Contains((int)livePid))
+            {
+                NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
+                _managedLoginPromptPids.Remove(handle);
+            }
         }
         _loggedUnmatchedWeChatPrompts.RemoveWhere(handle => !NativeMethods.IsWindow(handle));
     }
