@@ -29,6 +29,7 @@ public enum WeChatProfileFailureStage
     AccountDirectoryNotFound,
     ContactDatabaseUnreadable,
     KeyExtractionFailed,
+    AmbiguousAccountKey,
     DatabaseOpenFailed,
     ContactTableMissing,
     SelfRowMissing,
@@ -144,6 +145,13 @@ public static partial class WeChatProfileService
                 context.Fail(
                     WeChatProfileFailureStage.KeyExtractionFailed,
                     $"no verified contact.db key found in WeChat process {processId}");
+                return context.ToResult(null);
+            }
+
+            if (keyMatch.Value.PageIndex < 0)
+            {
+                context.Fail(WeChatProfileFailureStage.AmbiguousAccountKey,
+                    "multiple account databases matched this process; refusing uncertain identity binding");
                 return context.ToResult(null);
             }
 
@@ -882,6 +890,7 @@ public static partial class WeChatProfileService
             return null;
         }
 
+        var verifiedMatches = new Dictionary<int, byte[]>();
         var processHandle = OpenProcess(ProcessVmRead | ProcessQueryInformation, false, processId);
         if (processHandle == IntPtr.Zero)
         {
@@ -963,7 +972,8 @@ public static partial class WeChatProfileService
                             {
                                 if (VerifyKey(candidate, firstPages[pageIndex], explicitSalt: null))
                                 {
-                                    return (pageIndex, candidate);
+                                    if (!verifiedMatches.ContainsKey(pageIndex))
+                                        verifiedMatches[pageIndex] = candidate.ToArray();
                                 }
                             }
 
@@ -979,7 +989,9 @@ public static partial class WeChatProfileService
                                         explicitSalt.CopyTo(keyWithSalt, 32);
                                         CryptographicOperations.ZeroMemory(candidate);
                                         CryptographicOperations.ZeroMemory(explicitSalt);
-                                        return (pageIndex, keyWithSalt);
+                                        if (!verifiedMatches.ContainsKey(pageIndex))
+                                            verifiedMatches[pageIndex] = keyWithSalt.ToArray();
+                                        CryptographicOperations.ZeroMemory(keyWithSalt);
                                     }
                                 }
 
@@ -997,7 +1009,16 @@ public static partial class WeChatProfileService
             CloseHandle(processHandle);
         }
 
-        return null;
+        if (verifiedMatches.Count == 1)
+        {
+            var match = verifiedMatches.Single();
+            return (match.Key, match.Value);
+        }
+
+        foreach (var key in verifiedMatches.Values)
+            CryptographicOperations.ZeroMemory(key);
+        // -1 is an explicit ambiguous verdict, not a successful account match.
+        return verifiedMatches.Count > 1 ? (-1, Array.Empty<byte>()) : null;
     }
 
     private sealed record AccountDatabaseCandidate(
