@@ -638,7 +638,18 @@ public sealed class ExternalWindowHost : HwndHost
                 _hiddenDialogs.Remove(owner);
             else
             {
-                SuppressBackgroundDialogShow(saved.Hwnd);
+                // ParkWindowOffScreen explicitly means this owner is entering
+                // background; do not consult the stale _currentHandle.
+                if (NativeMethods.IsWindowVisible(saved.Hwnd))
+                {
+                    _updatingDialogs = true;
+                    try
+                    {
+                        NativeMethods.ShowWindow(saved.Hwnd, NativeMethods.SW_HIDE);
+                        LogLoginDialog("hide-park-existing", saved);
+                    }
+                    finally { _updatingDialogs = false; }
+                }
                 return;
             }
         }
@@ -664,7 +675,11 @@ public sealed class ExternalWindowHost : HwndHost
             var record = new HiddenDialogRecord(popup, (int)popupPid, owner, bounds);
             _hiddenDialogs[owner] = record;
             _updatingDialogs = true;
-            try { NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE); }
+            try
+            {
+                NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE);
+                LogLoginDialog("hide-park-new", record);
+            }
             finally { _updatingDialogs = false; }
             return false;
         }, IntPtr.Zero);
@@ -696,7 +711,11 @@ public sealed class ExternalWindowHost : HwndHost
             if (_currentHandle == record.OwnerHwnd && !_ownerMinimized) return;
             if (!NativeMethods.IsWindowVisible(popup)) return;
             _updatingDialogs = true;
-            try { NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE); }
+            try
+            {
+                NativeMethods.ShowWindow(popup, NativeMethods.SW_HIDE);
+                LogLoginDialog("hide-hook", record);
+            }
             finally { _updatingDialogs = false; }
             return;
         }
@@ -709,6 +728,7 @@ public sealed class ExternalWindowHost : HwndHost
         try
         {
             NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
+            LogLoginDialog("show-restore", record);
             if (!NativeMethods.GetWindowRect(record.Hwnd, out var now)
                 || !NativeMethods.GetWindowRect(owner, out var hostBounds)) return;
             // Snapshot remains a reference, not an absolute coordinate to restore.
@@ -730,6 +750,14 @@ public sealed class ExternalWindowHost : HwndHost
     {
         if (!_hiddenDialogs.Remove(owner, out var record) || !IsValidOwnedDialog(record)) return;
         NativeMethods.ShowWindow(record.Hwnd, NativeMethods.SW_SHOW);
+        LogLoginDialog("show-release", record);
+    }
+
+    private static void LogLoginDialog(string action, HiddenDialogRecord record)
+    {
+        DiagnosticLogService.WriteActivityEvent(
+            $"wechat-popup-{action} hwnd={record.Hwnd} owner={record.OwnerHwnd} pid={record.Pid}",
+            record.Pid);
     }
 
     private static bool IsParkedOffScreen(IntPtr handle)
