@@ -20,12 +20,12 @@ public partial class MainWindow
             return;
 
         var loginPids = Entries
-            .Where(e => e.Kind == ClientKind.WeChat && e.SessionState == ClientSessionState.Login
-                && e.IsAttached && e.ProcessId > 0)
+            .Where(e => e.Kind == ClientKind.WeChat
+                && e.IsAttached && e.ProcessId > 0 && NativeMethods.IsWindow(e.Handle))
             .Select(e => e.ProcessId)
             .ToHashSet();
         var selectedLogin = SelectedEntry is { Kind: ClientKind.WeChat,
-            SessionState: ClientSessionState.Login, IsAttached: true } selected
+            IsAttached: true } selected
             ? selected.ProcessId : -1;
 
         var observed = new HashSet<IntPtr>();
