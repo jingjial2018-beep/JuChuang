@@ -1,0 +1,38 @@
+name: Diagnose JNest beta.2 startup failure
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-v1.0.1-beta2-startup.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout isolated startup diagnostics fix
+        uses: actions/checkout@v4
+        with:
+          ref: fix/v1.0.1-beta2-startup-diagnostics
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows x64
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: Architecture regression checks
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Badge regression checks
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
+      - name: Publish diagnostic framework-dependent
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/diagnostic
+      - name: Create diagnostic package
+        shell: pwsh
+        run: Compress-Archive -Path out/diagnostic/* -DestinationPath JNest-v1.0.1-beta.2-startup-diagnostic-win-x64.zip
+      - name: Upload diagnostic ZIP only (not a Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: JNest-v1.0.1-beta.2-startup-diagnostic-win-x64
+          path: JNest-v1.0.1-beta.2-startup-diagnostic-win-x64.zip
