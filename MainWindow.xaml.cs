@@ -1958,6 +1958,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             var account = resolution.Account;
             var profile = resolution.Result.Profile;
+            // Startup can discover several already logged-in WeChat windows at once.
+            // A profile candidate selected for one PID must never be committed to
+            // another live PID. Keep the second entry unbound and retry rather
+            // than showing somebody else's cached nickname, avatar or Toast label.
+            var conflictingBinding = _resolvedWeChatAccounts.Any(pair =>
+                pair.Key != processId
+                && pair.Value.Key.Equals(account.Key, StringComparison.OrdinalIgnoreCase)
+                && Entries.Any(other => other.Kind == ClientKind.WeChat
+                    && other.ProcessId == pair.Key
+                    && other.SessionState == ClientSessionState.Main
+                    && WindowBelongsToProcess(other.Handle, other.ProcessId)));
+            if (conflictingBinding)
+            {
+                DiagnosticLogService.WriteActivityEvent(
+                    "wechat-identity-duplicate-active-binding-rejected", processId);
+                ApplyProfileDiagnostic(entry, WeChatProfileFailureStage.SelfRowMissing,
+                    "账号资料与另一个已接入微信实例冲突，正在重新确认身份。");
+                ScheduleAccountResolutionRetry(processId);
+                return;
+            }
             _resolvedWeChatAccounts[processId] = account;
             if (processStartTicks.HasValue)
                 _resolvedAccountProcessStarts[processId] = processStartTicks.Value;
