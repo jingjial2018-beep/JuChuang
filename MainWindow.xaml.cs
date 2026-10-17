@@ -1958,13 +1958,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         .ThenBy(account => account.Key, StringComparer.OrdinalIgnoreCase)
                         .ToArray();
 
+                    // RC5: use file ownership independent of leftover memory keys.
+                    // If RM cannot establish a unique owner, preserve RC4 safe fallback.
+                    var ownership = WeChatDatabaseOwnershipService.Resolve(
+                        processId, processStartTicks, candidates.Select(a => a.AccountId).ToArray());
+                    DiagnosticLogService.WriteActivityEvent(
+                        $"wechat-rm-ownership:{ownership.Status}", processId);
+                    var scopedCandidates = ownership.Status == WeChatDatabaseOwnershipService.Verdict.Unique
+                        ? candidates.Where(a => a.AccountId.Equals(ownership.AccountId,
+                            StringComparison.OrdinalIgnoreCase)).ToArray()
+                        : candidates;
                     var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
-                        processId,
-                        candidates.Select(account => account.AccountId));
+                        processId, scopedCandidates.Select(account => account.AccountId));
                     var profile = readResult.Profile;
                     var account = profile is null
                         ? null
-                        : candidates.FirstOrDefault(candidate =>
+                        : scopedCandidates.FirstOrDefault(candidate =>
                             candidate.AccountId.Equals(
                                 profile.AccountId,
                                 StringComparison.OrdinalIgnoreCase));
