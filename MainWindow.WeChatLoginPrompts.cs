@@ -19,11 +19,11 @@ public partial class MainWindow
             || !IsLoaded || ClientArea.ActualWidth < 100 || ClientArea.ActualHeight < 100)
             return;
 
-        var loginPids = Entries
+        var attachedWeChat = Entries
             .Where(e => e.Kind == ClientKind.WeChat
                 && e.IsAttached && e.ProcessId > 0 && NativeMethods.IsWindow(e.Handle))
-            .Select(e => e.ProcessId)
-            .ToHashSet();
+            .ToArray();
+        var loginPids = attachedWeChat.Select(e => e.ProcessId).ToHashSet();
         var selectedLogin = SelectedEntry is { Kind: ClientKind.WeChat,
             IsAttached: true } selected
             ? selected.ProcessId : -1;
@@ -42,22 +42,28 @@ public partial class MainWindow
                 NativeMethods.GetWindowThreadProcessId(owner, out var rawOwnerPid);
                 ownerPid = (int)rawOwnerPid;
             }
-            // Do not reuse an old PID when Windows recycles a popup HWND.
-            var associatedPid = loginPids.Contains(pid) ? pid
-                : loginPids.Contains(ownerPid) ? ownerPid : 0;
+            // A popup must be owned by the exact hosted WeChat HWND, not
+            // merely share a PID with a candidate process.
+            var hostEntry = attachedWeChat.FirstOrDefault(e =>
+                e.Handle == owner && e.ProcessId == pid && ownerPid == pid);
+            var associatedPid = hostEntry?.ProcessId ?? 0;
             var length = NativeMethods.GetWindowTextLength(hwnd);
             if (length is < 1 or > 16)
                 return true;
             var title = new StringBuilder(length + 2);
             NativeMethods.GetWindowText(hwnd, title, title.Capacity);
-            if (!string.Equals(title.ToString().Trim(), "提示", StringComparison.Ordinal))
+            var nativeTitle = title.ToString().Trim();
+            if (nativeTitle != "提示" && nativeTitle != "Weixin")
                 return true;
             if (!NativeMethods.GetWindowRect(hwnd, out var rect)
                 || rect.Width is < 130 or > 640 || rect.Height is < 80 or > 440)
                 return true;
             var windowClass = new StringBuilder(128);
             NativeMethods.GetClassName(hwnd, windowClass, windowClass.Capacity);
-            if (associatedPid <= 0 || !loginPids.Contains(associatedPid))
+            var recognized = (nativeTitle == "提示"
+                || (nativeTitle == "Weixin"
+                    && windowClass.ToString() == "Qt51514QWindowIcon"));
+            if (!recognized || associatedPid <= 0 || !loginPids.Contains(associatedPid))
             {
                 if (_loggedUnmatchedWeChatPrompts.Add(hwnd))
                     DiagnosticLogService.WriteActivityEvent(
@@ -110,7 +116,9 @@ public partial class MainWindow
                 continue;
             }
             NativeMethods.GetWindowThreadProcessId(handle, out var livePid);
-            if (!loginPids.Contains((int)livePid))
+            var currentOwner = NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER);
+            if (!attachedWeChat.Any(e => e.Handle == currentOwner
+                    && e.ProcessId == (int)livePid))
             {
                 NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
                 _managedLoginPromptPids.Remove(handle);
