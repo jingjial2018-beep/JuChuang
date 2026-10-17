@@ -270,7 +270,7 @@
                                         </MenuItem.Header>
                                     </MenuItem>
                                     <MenuItem Header="全部接入" Click="ReconnectAll_Click"/>
-                                    <MenuItem Header="扫描客户端" Click="ScanClients_Click"/>
+                                    <MenuItem Header="扫描客户端并同步资料" Click="ScanClients_Click"/>
                                     <Separator/>
                                     <MenuItem Header="设置" Click="Settings_Click"/>
                                     <MenuItem Header="关于 JNest" Click="About_Click"/>
@@ -378,7 +378,6 @@
                                         <Grid.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                 <MenuItem Header="重命名账号" Click="RenameEntry_Click" />
-                                                <MenuItem Header="强制重新同步资料" Click="ForceRefreshWeChatProfile_Click" />
                                                 <MenuItem Header="复制诊断信息" Click="CopyDiagnostics_Click" />
                                                 <Separator />
                                                 <MenuItem Header="关闭客户端" CommandParameter="{Binding}" Click="CloseEntry_Click" />
