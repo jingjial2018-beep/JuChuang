@@ -1868,6 +1868,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
+            var knownStart = _resolvedAccountProcessStarts.GetValueOrDefault(processId);
+            if (!processStartTicks.HasValue || knownStart != processStartTicks.Value
+                || !WindowBelongsToProcess(windowHandle, processId))
+            {
+                ResetWeChatAccountBinding(entry);
+                return;
+            }
             // Cached active identity is safe only within the current account
             // generation. Login resets remove this PID association.
             ApplyWeChatAccountIdentity(entry, resolvedAccount);
@@ -1977,10 +1984,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     && WindowBelongsToProcess(other.Handle, other.ProcessId)));
             if (conflictingBinding)
             {
+                // Two distinct live processes cannot own the same confirmed account.
+                // Revoke the stale claim rather than allowing first-to-finish to win:
+                // each process must resolve independently on its next scan.
+                var conflictingPids = _resolvedWeChatAccounts
+                    .Where(pair => pair.Key != processId
+                        && pair.Value.Key.Equals(account.Key, StringComparison.OrdinalIgnoreCase))
+                    .Select(pair => pair.Key).ToArray();
+                foreach (var conflictingPid in conflictingPids)
+                {
+                    var other = Entries.FirstOrDefault(item => item.Kind == ClientKind.WeChat
+                        && item.ProcessId == conflictingPid);
+                    if (other is not null)
+                        ResetWeChatAccountBinding(other);
+                }
                 DiagnosticLogService.WriteActivityEvent(
-                    "wechat-identity-duplicate-active-binding-rejected", processId);
+                    "wechat-identity-duplicate-claims-invalidated", processId);
                 ApplyProfileDiagnostic(entry, WeChatProfileFailureStage.SelfRowMissing,
-                    "账号资料与另一个已接入微信实例冲突，正在重新确认身份。");
+                    "存在重复账号身份声明，已清除冲突绑定并等待重新验证。");
                 ScheduleAccountResolutionRetry(processId);
                 return;
             }
