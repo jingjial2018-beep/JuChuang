@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using JuChuang.Services;
@@ -10,12 +12,29 @@ namespace JuChuang;
 // Both dialogs share identical positioning and input restrictions.
 public partial class MainWindow
 {
+    private static readonly object ModalLogLock = new();
+
+    private static void LogModalZOrder(string text)
+    {
+        try
+        {
+            lock (ModalLogLock)
+            {
+                File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "JNest-modal-zorder.log"),
+                    $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {text}{Environment.NewLine}");
+            }
+        }
+        catch (IOException) { } // Logging must never block or crash modal dialogs.
+        catch (UnauthorizedAccessException) { }
+    }
+
     private void ShowHostedModalDialog(Window dialog)
     {
         WindowHost.SuspendOverlayZOrder();
         try
         {
             dialog.Owner = this;
+            LogModalZOrder($"open dialog={dialog.GetType().Name} owner=0x{new WindowInteropHelper(this).Handle.ToInt64():X}");
             dialog.WindowStartupLocation = WindowStartupLocation.Manual;
             dialog.SourceInitialized += (_, _) =>
             {
@@ -36,6 +55,18 @@ public partial class MainWindow
                 if (PresentationSource.FromVisual(dialog) is HwndSource hwnd)
                     hwnd.AddHook((IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled) =>
                     {
+                        const int wmWindowPosChanging = 0x0046;
+                        if (message == wmWindowPosChanging && lParam != IntPtr.Zero)
+                        {
+                            var pos = Marshal.PtrToStructure<NativeMethods.WINDOWPOS>(lParam);
+                            if ((pos.flags & NativeMethods.SWP_NOZORDER) == 0 &&
+                                pos.hwndInsertAfter == NativeMethods.HWND_TOPMOST)
+                            {
+                                LogModalZOrder($"intercept hwnd=0x{window.ToInt64():X} insert=TOPMOST flags=0x{pos.flags:X}");
+                                pos.hwndInsertAfter = NativeMethods.HWND_TOP;
+                                Marshal.StructureToPtr(pos, lParam, false);
+                            }
+                        }
                         const int wmNcLButtonDown = 0x00A1;
                         const int wmNcLButtonDblClk = 0x00A3;
                         const int wmSysCommand = 0x0112;
@@ -54,9 +85,25 @@ public partial class MainWindow
                         }
                         return IntPtr.Zero;
                     });
+                if (PresentationSource.FromVisual(dialog) is HwndSource modalSource)
+                {
+                    var dialogHwnd = modalSource.Handle;
+                    var exStyle = NativeMethods.GetWindowLongPtr(dialogHwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
+                    LogModalZOrder($"created dialog={dialog.GetType().Name} hwnd=0x{dialogHwnd.ToInt64():X} exstyle=0x{exStyle:X} topmost={(exStyle & NativeMethods.WS_EX_TOPMOST) != 0}");
+                    if ((exStyle & NativeMethods.WS_EX_TOPMOST) != 0)
+                    {
+                        var ok = NativeMethods.SetWindowPos(dialogHwnd, NativeMethods.HWND_NOTOPMOST,
+                            0, 0, 0, 0, NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+                        LogModalZOrder($"initial-notopmost hwnd=0x{dialogHwnd.ToInt64():X} success={ok}");
+                    }
+                }
                 BeginModalInputGuard(dialog);
             };
-            dialog.Closed += (_, _) => EndModalInputGuard();
+            dialog.Closed += (_, _) =>
+            {
+                LogModalZOrder($"closed dialog={dialog.GetType().Name}");
+                EndModalInputGuard();
+            };
             dialog.ShowDialog();
         }
         finally
