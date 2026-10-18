@@ -1550,7 +1550,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 if (ForceRefreshWeChatProfile(entry))
                     refreshCount++;
             }
-            ShowTemporaryStatus($"扫描完成：已接入 {attachedCount} 个窗口，已请求重新同步 {refreshCount} 个微信账号。");
+            var hiddenClients = FindHiddenClosedClients();
+            ShowTemporaryStatus(hiddenClients.Count > 0
+                    ? $"扫描到隐藏主窗口：微信 {hiddenClients.Count(kind => kind == ClientKind.WeChat)} 个、WhatsApp {hiddenClients.Count(kind => kind == ClientKind.WhatsApp)} 个；点击“全部接入”恢复。"
+                    : $"扫描完成：已接入 {attachedCount} 个窗口，已请求重新同步 {refreshCount} 个微信账号。",
+                hiddenClients.Count > 0 ? TimeSpan.FromSeconds(8) : TimeSpan.FromSeconds(3));
         }
         catch (Exception exception)
         {

@@ -29,8 +29,8 @@ public static class ClientWindowDiscovery
     public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null)
         => FindClientWindowsCore(selfTestTargetProcessId, includeHiddenProcessId: null);
 
-    // Only an explicit recovery request may inspect invisible windows. All normal scans
-    // continue through FindClientWindows and retain their visible-only behavior.
+    // Explicit recovery and the manual hidden-window check may inspect invisible
+    // windows for one known PID. Background discovery remains visible-only.
     public static IReadOnlyList<WindowCandidate> FindRecoverableMainWindows(int processId)
         => FindClientWindowsCore(null, processId)
             .Where(candidate => candidate.ProcessId == processId && candidate.Role == ClientWindowRole.Main)
@@ -122,15 +122,18 @@ public static class ClientWindowDiscovery
             return true;
         }, IntPtr.Zero);
 
-        return candidates
+        var uniqueCandidates = candidates
             .GroupBy(candidate => candidate.Handle)
-            .Select(group => group.First())
-            .GroupBy(candidate => (candidate.Kind, candidate.ProcessId))
-            .Select(group => group
-                .OrderByDescending(candidate => candidate.Role == ClientWindowRole.Main)
-                .ThenByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
-                .ThenByDescending(candidate => candidate.PixelArea)
-                .First())
+            .Select(group => group.First());
+        var selectedCandidates = includeHiddenProcessId.HasValue
+            ? uniqueCandidates
+            : uniqueCandidates.GroupBy(candidate => (candidate.Kind, candidate.ProcessId))
+                .Select(group => group
+                    .OrderByDescending(candidate => candidate.Role == ClientWindowRole.Main)
+                    .ThenByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
+                    .ThenByDescending(candidate => candidate.PixelArea)
+                    .First());
+        return selectedCandidates
             .OrderBy(candidate => candidate.Kind)
             .ThenBy(candidate => candidate.ProcessId)
             .ToArray();

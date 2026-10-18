@@ -33,6 +33,31 @@ public partial class MainWindow
             _closedClientRecovery.RemoveAt(0);
     }
 
+    private static WindowCandidate? FindRecoveryCandidate(ClosedClientRecoveryRecord record)
+        => ClientWindowDiscovery.FindRecoverableMainWindows(record.Pid)
+            .Where(window => window.Kind == record.Kind)
+            .OrderByDescending(window => window.Handle == record.MainHwnd)
+            .ThenByDescending(window => window.PixelArea)
+            .FirstOrDefault();
+
+    // Manual Scan Clients reports previously managed hidden main windows without
+    // showing them or clearing the dismissal protection. Attach All alone restores.
+    private IReadOnlyList<ClientKind> FindHiddenClosedClients()
+    {
+        PruneClosedClientRecovery();
+        var hidden = new List<ClientKind>();
+        foreach (var record in _closedClientRecovery)
+        {
+            var candidate = FindRecoveryCandidate(record);
+            if (candidate is not null
+                && !NativeMethods.IsWindowVisible(candidate.Handle)
+                && TryGetProcessStartUtcTicks(record.Pid) == record.ProcessStartUtcTicks
+                && WindowBelongsToProcess(candidate.Handle, record.Pid))
+                hidden.Add(record.Kind);
+        }
+        return hidden;
+    }
+
     // Called only while the scan semaphore is held by the explicit Attach All action.
     private void RecoverClosedClientWindows()
     {
@@ -47,10 +72,7 @@ public partial class MainWindow
 
             // The discovery filter checks title, class, owner, dimensions and main-window
             // role before an invisible HWND is ever shown. This also rejects a reused HWND.
-            var candidate = ClientWindowDiscovery.FindRecoverableMainWindows(record.Pid)
-                .Where(window => window.Kind == record.Kind)
-                .OrderByDescending(window => window.Handle == record.MainHwnd)
-                .FirstOrDefault();
+            var candidate = FindRecoveryCandidate(record);
             if (candidate is null) continue;
             if (TryGetProcessStartUtcTicks(record.Pid) != record.ProcessStartUtcTicks
                 || !WindowBelongsToProcess(candidate.Handle, record.Pid)) continue;
