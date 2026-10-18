@@ -122,6 +122,14 @@ public partial class MainWindow
         if (code >= 0 && !_isClosing)
         {
             var command = unchecked((int)msg.ToInt64());
+            if (ReconnectDiagnostics.Active && command is (WmLButtonDown or WmLButtonUp or WmLButtonDblClk))
+            {
+                var pt = Marshal.PtrToStructure<MouseHookData>(data).Point;
+                var target = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = pt.X, Y = pt.Y });
+                var root = target == IntPtr.Zero ? IntPtr.Zero : NativeMethods.GetAncestor(target, NativeMethods.GA_ROOT);
+                if (WindowHost.IsHostedWindow(root))
+                    ReconnectDiagnostics.Mouse($"msg=0x{command:X} point={pt.X},{pt.Y} target=0x{target.ToInt64():X} root=0x{root.ToInt64():X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X} modal=0x{_modalGuardDialogHwnd.ToInt64():X}");
+            }
             if (_modalGuardDialogHwnd != IntPtr.Zero && IsModalGuardMessage(command))
             {
                 var point = Marshal.PtrToStructure<MouseHookData>(data).Point;
@@ -129,7 +137,10 @@ public partial class MainWindow
                 var root = target == IntPtr.Zero ? IntPtr.Zero
                     : NativeMethods.GetAncestor(target, NativeMethods.GA_ROOT);
                 if (root != _modalGuardDialogHwnd && WindowHost.IsHostedWindow(root))
+                {
+                    if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"BLOCK modal mouse=0x{command:X} root=0x{root.ToInt64():X}");
                     return new IntPtr(1);
+                }
             }
 
             if (_guardedClient != IntPtr.Zero
@@ -143,7 +154,10 @@ public partial class MainWindow
                 {
                     var foreground = NativeMethods.GetForegroundWindow();
                     if (foreground == _guardedClient || foreground == _guardedOwner)
+                    {
+                        if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"BLOCK caption mouse=0x{command:X} foreground=0x{foreground.ToInt64():X}");
                         return new IntPtr(1);
+                    }
                 }
             }
         }
