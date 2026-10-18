@@ -29,7 +29,7 @@ public partial class MainWindow
         {
             Text = message, TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
-            FontSize = 13, LineHeight = 20,
+            FontSize = 15, LineHeight = 23,
             Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
             VerticalAlignment = VerticalAlignment.Center
         };
