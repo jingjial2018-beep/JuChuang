@@ -39,6 +39,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ClientLaunchContext? _pendingLaunchContext;
     private int _wechatNumber;
     private bool _isClosing;
+    private bool _exitChoiceApproved;
+    private bool _exitAllClients;
     private bool _isPreviewMode;
     private bool _isTitleBarInteraction;
     private bool _isSidebarCollapsed;
@@ -361,6 +363,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (!_exitChoiceApproved && WindowHost is not null && _scanTimer is not null)
+        {
+            var choice = ShowExitChoice();
+            if (choice == ExitChoice.Cancel) { e.Cancel = true; return; }
+            _exitAllClients = choice == ExitChoice.All;
+            _exitChoiceApproved = true;
+        }
+
+        if (_exitAllClients && !TryExitAllHostedClients())
+        {
+            e.Cancel = true;
+            _exitChoiceApproved = false;
+            _exitAllClients = false;
+            return;
+        }
+
         RestoreWeChatLoginPrompts();
         _isClosing = true;
         // A XAML/constructor startup failure can close this window before its
@@ -2283,15 +2301,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // WM_CLOSE may hide the application to tray; exit only the validated process.
         var affected = Entries.Count(other => other.ProcessId == entry.ProcessId);
-        var answer = ShowOwnedMessageBox(
-            $"确定彻底退出“{entry.DisplayName}”吗？\n\n将结束对应客户端进程（PID {entry.ProcessId}），而不是最小化到托盘。"
-            + (affected > 1 ? $"\n该进程关联 {affected} 个列表项，都会受影响。" : "")
-            + "\n未保存的客户端数据可能丢失；其他独立进程不受影响。",
-            "退出客户端进程",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning,
-            MessageBoxResult.No);
-        if (answer != MessageBoxResult.Yes) return;
+        var answer = ShowExitConfirmation(entry.DisplayName, entry.ProcessId, affected);
+        if (!answer) return;
 
         var handle = entry.Handle;
         var pid = entry.ProcessId;
