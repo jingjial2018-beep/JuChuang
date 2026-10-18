@@ -2281,37 +2281,54 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        // WM_CLOSE may hide the application to tray; exit only the validated process.
+        var affected = Entries.Count(other => other.ProcessId == entry.ProcessId);
         var answer = ShowOwnedMessageBox(
-            $"确定关闭“{entry.DisplayName}”的客户端窗口吗？\n\n这不会关闭JNest，也不会影响其他账号。",
-            "关闭客户端",
+            $"确定彻底退出“{entry.DisplayName}”吗？\n\n将结束对应客户端进程（PID {entry.ProcessId}），而不是最小化到托盘。"
+            + (affected > 1 ? $"\n该进程关联 {affected} 个列表项，都会受影响。" : "")
+            + "\n未保存的客户端数据可能丢失；其他独立进程不受影响。",
+            "退出客户端进程",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Question,
+            MessageBoxImage.Warning,
             MessageBoxResult.No);
-        if (answer != MessageBoxResult.Yes)
+        if (answer != MessageBoxResult.Yes) return;
+
+        var handle = entry.Handle;
+        var pid = entry.ProcessId;
+        var expectedStart = entry.ProcessStartUtcTicks;
+        if (!expectedStart.HasValue || !WindowBelongsToProcess(handle, pid)
+            || TryGetProcessStartUtcTicks(pid) != expectedStart)
         {
+            ShowTemporaryStatus("进程身份已变化或无法验证，取消退出以避免误关其他客户端。",
+                TimeSpan.FromSeconds(8));
             return;
         }
 
-        var handle = entry.Handle;
-        RememberClosedClient(entry);
-        _dismissedWindowHandles.Add(handle);
-        if (entry.IsAttached)
+        try
         {
-            WindowHost.DetachWindow(handle, bringToFront: false);
-            entry.IsAttached = false;
-        }
+            using var process = Process.GetProcessById(pid);
+            if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != expectedStart.Value
+                || !WindowBelongsToProcess(handle, pid))
+            {
+                ShowTemporaryStatus("客户端进程已变化，取消退出。", TimeSpan.FromSeconds(8));
+                return;
+            }
 
-        var closeRequested = NativeMethods.PostMessage(
-            handle,
-            NativeMethods.WM_CLOSE,
-            IntPtr.Zero,
-            IntPtr.Zero);
-        var displayName = entry.DisplayName;
-        RemoveEntry(entry);
-        ShowTemporaryStatus(closeRequested
-            ? $"已关闭并移除 {displayName}。"
-            : $"已从列表移除 {displayName}；客户端未响应关闭请求。",
-            closeRequested ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
+            // Only terminate this PID; do not kill other independent client processes.
+            process.Kill(entireProcessTree: false);
+            ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
+            _closedClientRecovery.RemoveAll(record => record.Pid == pid);
+            foreach (var associated in Entries.Where(other => other.ProcessId == pid).ToArray())
+                RemoveEntry(associated);
+            ShowTemporaryStatus($"已请求退出 {entry.DisplayName}（PID {pid}）。");
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or System.ComponentModel.Win32Exception or System.UnauthorizedAccessException)
+        {
+            ReconnectDiagnostics.Write($"sidebar exit failed pid={pid} error={exception.GetType().Name}");
+            ShowTemporaryStatus("无法结束该客户端进程，已保留列表项；请检查权限。",
+                TimeSpan.FromSeconds(10));
+        }
     }
 
     private void ShowClientSelfTestPopup()
