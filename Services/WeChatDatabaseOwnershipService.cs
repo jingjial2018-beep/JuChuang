@@ -40,11 +40,22 @@ internal static class WeChatDatabaseOwnershipService
             else if (status == OwnerEvidence.Unowned) unowned++;
             else { indeterminate++; probeErrors++; }
         }
-        if (owners.Count == 1 && indeterminate == 0)
-            return new(Verdict.Unique, owners[0], $"UniqueOwner;Owners={owners.Count};OtherOwned={otherOwned};Unowned={unowned};Indeterminate={indeterminate};Missing={missing};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
+        return Decide(owners, otherOwned, unowned, indeterminate, missing,
+            samePid, startMismatch, otherPid, maxDeltaMs);
+    }
+
+    // Pure decision: no RM or filesystem calls. A confirmed Unowned database does
+    // not block a uniquely owned active database, but missing/failed probes do.
+    internal static Result Decide(IReadOnlyList<string> owners, int otherOwned,
+        int unowned, int indeterminate, int missing = 0,
+        int samePid = 0, int startMismatch = 0, int otherPid = 0, long maxDeltaMs = 0)
+    {
+        var detail = $"Owners={owners.Count};OtherOwned={otherOwned};Unowned={unowned};Indeterminate={indeterminate};Missing={missing};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}";
         if (owners.Count > 1)
-            return new(Verdict.Conflict, null, $"MultipleTargetOwners;SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid}");
-        return new(Verdict.Unknown, null, $"Owners={owners.Count};OtherOwned={otherOwned};Unowned={unowned};Indeterminate={indeterminate};Missing={missing};Uncertain={probeErrors};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
+            return new(Verdict.Conflict, null, "MultipleTargetOwners;" + detail);
+        if (owners.Count == 1 && indeterminate == 0)
+            return new(Verdict.Unique, owners[0], "UniqueOwner;" + detail);
+        return new(Verdict.Unknown, null, detail);
     }
 
     private sealed record OwnerProbe(OwnerEvidence Status, int SamePid, int StartMismatch, int OtherPid, long DeltaMs);
