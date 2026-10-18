@@ -25,41 +25,31 @@ public partial class MainWindow
         };
         var root = new DockPanel { Margin = new Thickness(18, 15, 18, 14), LastChildFill = true };
         dialog.Content = root;
-        var messageText = new TextBlock
+        // Title centered; description lines share one left edge and the group is centered.
+        var lines = message.Split('\n', 2);
+        var textGroup = new StackPanel
         {
-            Text = message, TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 8, 0, 7)
+        };
+        DockPanel.SetDock(textGroup, Dock.Top);
+        root.Children.Add(textGroup);
+        textGroup.Children.Add(new TextBlock
+        {
+            Text = lines[0], TextAlignment = TextAlignment.Center,
             FontSize = 15, LineHeight = 23,
             Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        if (!showWarning)
+            Margin = new Thickness(0, 0, 0, 7)
+        });
+        if (lines.Length > 1)
         {
-            // Remove only the warning icon and its reserved column.
-            // Keep the TextBlock's original/default text alignment unchanged.
-            messageText.Margin = new Thickness(0, 8, 0, 7);
-            DockPanel.SetDock(messageText, Dock.Top);
-            root.Children.Add(messageText);
-        }
-        else
-        {
-            var body = new Grid { Margin = new Thickness(0, 8, 0, 7) };
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(55) });
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            DockPanel.SetDock(body, Dock.Top);
-            root.Children.Add(body);
-            var warning = new TextBlock
+            textGroup.Children.Add(new TextBlock
             {
-                Text = "⚠", FontSize = 32,
-                Foreground = new SolidColorBrush(Color.FromRgb(212, 154, 54)),
-                Width = 48, TextAlignment = TextAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(warning, 0);
-            body.Children.Add(warning);
-            Grid.SetColumn(messageText, 1);
-            body.Children.Add(messageText);
+                Text = lines[1], TextAlignment = TextAlignment.Left,
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 365,
+                FontSize = 13.5, LineHeight = 22,
+                Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56))
+            });
         }
         return dialog;
     }
@@ -110,7 +100,7 @@ public partial class MainWindow
     private bool ShowExitConfirmation(string name, int pid, int affected)
     {
         var dialog = CreateExitDialog("退出客户端",
-            $"确定退出“{name}”吗？\n将结束 {name} 进程并退出登录，未保存的内容可能丢失。"
+            $"确定退出“{name}”吗？\n将结束 {name} 进程并退出登录，\n未保存的内容可能丢失。"
             + (affected > 1 ? $"\n该进程关联的 {affected} 个账号项都会退出。" : ""), showWarning: false);
         var result = false;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
