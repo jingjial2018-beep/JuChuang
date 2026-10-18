@@ -211,6 +211,9 @@ internal static class NativeMethods
     internal static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
     [DllImport("user32.dll")]
+    internal static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll")]
     internal static extern IntPtr SetActiveWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
