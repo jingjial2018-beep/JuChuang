@@ -37,6 +37,7 @@ internal static class NativeMethods
     internal const long WS_CLIPSIBLINGS = 0x04000000L;
     internal const long WS_EX_APPWINDOW = 0x00040000L;
     internal const long WS_EX_TOOLWINDOW = 0x00000080L;
+    internal const long WS_EX_TOPMOST = 0x00000008L;
 
     internal const int SW_HIDE = 0;
     internal const int SW_SHOWNORMAL = 1;
@@ -54,6 +55,8 @@ internal static class NativeMethods
     internal const uint GW_OWNER = 4;
     internal const uint GA_ROOT = 2;
     internal static readonly IntPtr HWND_TOP = IntPtr.Zero;
+    internal static readonly IntPtr HWND_TOPMOST = new(-1);
+    internal static readonly IntPtr HWND_NOTOPMOST = new(-2);
     internal const int DWMWA_NCRENDERING_POLICY = 2;
     internal const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
     internal const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
@@ -123,6 +126,18 @@ internal static class NativeMethods
     {
         internal int X;
         internal int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct WINDOWPOS
+    {
+        internal IntPtr hwnd;
+        internal IntPtr hwndInsertAfter;
+        internal int x;
+        internal int y;
+        internal int cx;
+        internal int cy;
+        internal uint flags;
     }
 
     internal const int WM_GETMINMAXINFO = 0x0024;
