@@ -23,34 +23,57 @@ public partial class MainWindow
         };
         var root = new DockPanel { Margin = new Thickness(18, 15, 18, 14), LastChildFill = true };
         dialog.Content = root;
-        var body = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 5) };
+        var body = new Grid { Margin = new Thickness(0, 8, 0, 7) };
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(55) });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         DockPanel.SetDock(body, Dock.Top);
         root.Children.Add(body);
-        // Same visual footprint as the previous Windows message-box warning icon.
-        body.Children.Add(new TextBlock
+        var warning = new TextBlock
         {
             Text = "⚠", FontSize = 32, Foreground = new SolidColorBrush(Color.FromRgb(212, 154, 54)),
-            Width = 48, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 0, 12, 0)
-        });
-        body.Children.Add(new TextBlock
+            Width = 48, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Top
+        };
+        Grid.SetColumn(warning, 0);
+        body.Children.Add(warning);
+        var messageText = new TextBlock
         {
-            Text = message, TextWrapping = TextWrapping.Wrap, Width = 320,
-            FontSize = 13, Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
+            Text = message, TextWrapping = TextWrapping.Wrap,
+            FontSize = 13, LineHeight = 20,
+            Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
             VerticalAlignment = VerticalAlignment.Center
-        });
+        };
+        Grid.SetColumn(messageText, 1);
+        body.Children.Add(messageText);
         return dialog;
     }
 
     private static Button CreateExitButton(string label, bool primary = false)
-        => new()
+    {
+        var button = new Button
         {
-            Content = label, MinWidth = 96, Height = 32, Margin = new Thickness(5, 0, 0, 0),
+            Content = label, MinWidth = label == "仅退出 JNest" ? 118 : 96,
+            Height = 34, Margin = new Thickness(7, 0, 0, 0),
             Padding = new Thickness(12, 0, 12, 0),
-            Background = new SolidColorBrush(primary ? Color.FromRgb(48, 52, 59) : Color.FromRgb(241, 243, 246)),
             Foreground = primary ? Brushes.White : new SolidColorBrush(Color.FromRgb(48, 52, 59)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(210, 214, 221))
+            Background = primary ? new SolidColorBrush(Color.FromRgb(48, 52, 59)) : Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(208, 214, 222)),
+            BorderThickness = new Thickness(1),
+            FontSize = 13
         };
+        var template = new ControlTemplate(typeof(Button));
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
+        border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Button.BorderBrushProperty));
+        border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Button.BorderThicknessProperty));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+        template.VisualTree = border;
+        button.Template = template;
+        return button;
+    }
 
     private bool ShowExitConfirmation(string name, int pid, int affected)
     {
@@ -83,14 +106,8 @@ public partial class MainWindow
         var all = CreateExitButton("全部退出", true);
         cancel.Click += (_, _) => dialog.Close();
         jnest.Click += (_, _) => { result = ExitChoice.JNestOnly; dialog.Close(); };
-        all.Click += (_, _) =>
-        {
-            var confirm = ShowOwnedMessageBox(
-                "将结束 JNest 当前管理的所有微信和 WhatsApp 客户端进程。未保存的内容可能丢失。确定全部退出吗？",
-                "确认全部退出", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            if (confirm != MessageBoxResult.Yes) return;
-            result = ExitChoice.All; dialog.Close();
-        };
+        // The exit-choice dialog itself is the confirmation; do not open another prompt.
+        all.Click += (_, _) => { result = ExitChoice.All; dialog.Close(); };
         buttons.Children.Add(cancel); buttons.Children.Add(jnest); buttons.Children.Add(all);
         dialog.ShowDialog();
         return result;
