@@ -1,0 +1,30 @@
+name: JNest modal-dialog fix validation
+on:
+  push:
+    branches: [fix/rc2-modal-about-settings]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows x64 Release
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: ArchitectureProbe
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: BadgeProbe
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
+      - name: Publish portable testing build
+        run: dotnet publish JuChuang.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o out/framework
+      - name: Package test artifact
+        shell: pwsh
+        run: Compress-Archive -Path out/framework/* -DestinationPath JNest-rc2-modal-fix-test-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JNest-rc2-modal-fix-test-win-x64
+          path: JNest-rc2-modal-fix-test-win-x64.zip
