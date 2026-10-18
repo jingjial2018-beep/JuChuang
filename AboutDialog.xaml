@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="关于 JNest" Icon="Assets/app.ico"
         Width="540" Height="378" ResizeMode="NoResize"
-        WindowStartupLocation="CenterOwner" Background="#FFFFFF" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" Topmost="True" Background="#FFFFFF" ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI, Segoe UI">
     <Grid Margin="28,24,28,20">
         <Grid.RowDefinitions>
