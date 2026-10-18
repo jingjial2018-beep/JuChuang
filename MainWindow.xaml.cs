@@ -1624,32 +1624,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        WindowHost.SuspendOverlayZOrder();
-        try
-        {
-            var dialog = new SettingsDialog(_settings, ApplyNotificationPreferences, RefreshStartupMenuState)
-            {
-                Owner = this
-            };
-            dialog.ShowDialog();
-        }
-        finally
-        {
-            WindowHost.ResumeOverlayZOrder();
-        }
+        ShowHostedModalDialog(new SettingsDialog(
+            _settings, ApplyNotificationPreferences, RefreshStartupMenuState));
     }
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
-        WindowHost.SuspendOverlayZOrder();
-        try
-        {
-            new AboutDialog { Owner = this }.ShowDialog();
-        }
-        finally
-        {
-            WindowHost.ResumeOverlayZOrder();
-        }
+        ShowHostedModalDialog(new AboutDialog());
     }
 
     private MessageBoxResult ShowOwnedMessageBox(
