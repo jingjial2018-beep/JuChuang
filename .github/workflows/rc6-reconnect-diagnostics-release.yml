@@ -3,7 +3,7 @@ name: JNest rc.6 test release
 on:
   push:
     branches:
-      - release/v1.0.3-rc6-modal-zorder
+      - release/v1.0.3-rc6-reconnect-diagnostics
   workflow_dispatch:
 
 permissions:
