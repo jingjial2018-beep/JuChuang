@@ -70,7 +70,7 @@ public partial class MainWindow
         {
             Content = label, Width = 112,
             Height = 40, Margin = new Thickness(0),
-            Background = filled ? new SolidColorBrush(Color.FromRgb(255, 77, 79)) : new SolidColorBrush(Color.FromRgb(destructive ? 255 : 248, destructive ? 255 : 249, destructive ? 255 : 251)),
+            Background = filled ? new SolidColorBrush(Color.FromRgb(255, 77, 79)) : new SolidColorBrush(destructive ? Colors.White : Color.FromRgb(248, 249, 251)),
             Foreground = filled ? Brushes.White : new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(38, 48, 65)),
             BorderBrush = new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(217, 222, 229)),
             BorderThickness = new Thickness(1),
