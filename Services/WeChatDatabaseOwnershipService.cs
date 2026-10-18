@@ -8,6 +8,7 @@ namespace JuChuang.Services;
 internal static class WeChatDatabaseOwnershipService
 {
     internal enum Verdict { Unknown, Unique, Conflict }
+    internal enum OwnerEvidence { OwnedByTarget, OwnedByOther, Unowned, Indeterminate }
     internal sealed record Result(Verdict Status, string? AccountId, string Detail);
 
     internal static Result Resolve(int pid, long? startTicks, IReadOnlyList<string> accountIds)
@@ -15,7 +16,8 @@ internal static class WeChatDatabaseOwnershipService
         if (pid <= 0 || !startTicks.HasValue || accountIds.Count == 0)
             return new(Verdict.Unknown, null, "missing process identity or account candidates");
         var owners = new List<string>();
-        var inconclusive = false;
+        var indeterminate = 0;
+        var unowned = 0;
         var otherOwned = 0;
         var missing = 0;
         var probeErrors = 0;
@@ -26,31 +28,31 @@ internal static class WeChatDatabaseOwnershipService
         foreach (var id in accountIds.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var path = WeChatProfileService.FindContactDatabasePath(id);
-            if (path is null) { inconclusive = true; missing++; continue; }
+            if (path is null) { indeterminate++; missing++; continue; }
             var result = QueryOwner(path, pid, startTicks.Value);
             var status = result.Status;
             samePid += result.SamePid;
             startMismatch += result.StartMismatch;
             otherPid += result.OtherPid;
             maxDeltaMs = Math.Max(maxDeltaMs, result.DeltaMs);
-            if (status == 1) owners.Add(id);
-            else if (status == -1) otherOwned++;
-            else { inconclusive = true; probeErrors++; }
+            if (status == OwnerEvidence.OwnedByTarget) owners.Add(id);
+            else if (status == OwnerEvidence.OwnedByOther) otherOwned++;
+            else if (status == OwnerEvidence.Unowned) unowned++;
+            else { indeterminate++; probeErrors++; }
         }
-        if (owners.Count == 1 && !inconclusive)
-            return new(Verdict.Unique, owners[0], $"UniqueOwner;SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
+        if (owners.Count == 1 && indeterminate == 0)
+            return new(Verdict.Unique, owners[0], $"UniqueOwner;Owners={owners.Count};OtherOwned={otherOwned};Unowned={unowned};Indeterminate={indeterminate};Missing={missing};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
         if (owners.Count > 1)
             return new(Verdict.Conflict, null, $"MultipleTargetOwners;SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid}");
-        return new(Verdict.Unknown, null, $"Owners={owners.Count};OtherOwned={otherOwned};Missing={missing};Uncertain={probeErrors};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
+        return new(Verdict.Unknown, null, $"Owners={owners.Count};OtherOwned={otherOwned};Unowned={unowned};Indeterminate={indeterminate};Missing={missing};Uncertain={probeErrors};SamePid={samePid};TimeMismatch={startMismatch};OtherPid={otherPid};MaxDeltaMs={maxDeltaMs}");
     }
 
-    private sealed record OwnerProbe(int Status, int SamePid, int StartMismatch, int OtherPid, long DeltaMs);
+    private sealed record OwnerProbe(OwnerEvidence Status, int SamePid, int StartMismatch, int OtherPid, long DeltaMs);
 
-    // 1: same PID and same start time exclusively owns the file.
-    // -1: demonstrably other process owns it; 0: any ambiguity or API error.
+    // Preserve distinct evidence for confirmed unowned files versus API failures.
     private static OwnerProbe QueryOwner(string path, int pid, long startTicks)
     {
-        var unknown = new OwnerProbe(0, 0, 0, 0, 0);
+        var unknown = new OwnerProbe(OwnerEvidence.Indeterminate, 0, 0, 0, 0);
         var key = Guid.NewGuid().ToString("N");
         if (RmStartSession(out var handle, 0, key) != 0) return unknown;
         try
@@ -60,6 +62,7 @@ internal static class WeChatDatabaseOwnershipService
             uint needed = 0, count = 0, reasons = 0;
             var rc = RmGetList(handle, out needed, ref count, null, ref reasons);
             if (rc != 234 && rc != 0) return unknown;
+            if (needed == 0 && rc == 0) return new OwnerProbe(OwnerEvidence.Unowned, 0, 0, 0, 0);
             if (needed == 0) return unknown;
             var entries = new RM_PROCESS_INFO[needed];
             count = needed;
@@ -81,8 +84,8 @@ internal static class WeChatDatabaseOwnershipService
                 if (ticks == startTicks) target = true;
                 else mismatch++;
             }
-            var status = target && otherPid == 0 && mismatch == 0 ? 1
-                : samePid == 0 && otherPid > 0 ? -1 : 0;
+            var status = target && otherPid == 0 && mismatch == 0 ? OwnerEvidence.OwnedByTarget
+                : samePid == 0 && otherPid > 0 ? OwnerEvidence.OwnedByOther : OwnerEvidence.Indeterminate;
             return new(status, samePid, mismatch, otherPid, maxDeltaMs);
         }
         catch { return unknown; }
