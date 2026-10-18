@@ -123,7 +123,7 @@ public partial class MainWindow
         confirm.Click += (_, _) => { result = true; dialog.Close(); };
         buttons.Children.Add(reconsider);
         buttons.Children.Add(confirm);
-        dialog.ShowDialog();
+        ShowHostedModalDialog(dialog);
         return result;
     }
 
@@ -142,7 +142,7 @@ public partial class MainWindow
         // The exit-choice dialog itself is the confirmation; do not open another prompt.
         all.Click += (_, _) => { result = ExitChoice.All; dialog.Close(); };
         buttons.Children.Add(jnest); buttons.Children.Add(all);
-        dialog.ShowDialog();
+        ShowHostedModalDialog(dialog);
         return result;
     }
 
