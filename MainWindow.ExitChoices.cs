@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Input;
 using JuChuang.Models;
 using JuChuang.Services;
 
@@ -31,7 +33,7 @@ public partial class MainWindow
         var warning = new TextBlock
         {
             Text = "⚠", FontSize = 32, Foreground = new SolidColorBrush(Color.FromRgb(212, 154, 54)),
-            Width = 48, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Top
+            Width = 48, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(warning, 0);
         body.Children.Add(warning);
@@ -47,30 +49,45 @@ public partial class MainWindow
         return dialog;
     }
 
-    private static Button CreateExitButton(string label, bool primary = false)
+    // Mirrors AboutDialog.xaml / AboutConfirmStyle, including hover and pressed states.
+    private static Button CreateExitButton(string label)
     {
         var button = new Button
         {
-            Content = label, MinWidth = label == "仅退出 JNest" ? 118 : 96,
-            Height = 34, Margin = new Thickness(7, 0, 0, 0),
-            Padding = new Thickness(12, 0, 12, 0),
-            Foreground = primary ? Brushes.White : new SolidColorBrush(Color.FromRgb(48, 52, 59)),
-            Background = primary ? new SolidColorBrush(Color.FromRgb(48, 52, 59)) : Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(208, 214, 222)),
+            Content = label, Width = label == "仅退出 JNest" ? 132 : 112,
+            Height = 40, Margin = new Thickness(0),
+            Background = new SolidColorBrush(Color.FromRgb(248, 249, 251)),
+            Foreground = new SolidColorBrush(Color.FromRgb(38, 48, 65)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(217, 222, 229)),
             BorderThickness = new Thickness(1),
-            FontSize = 13
+            FontSize = 13, FontWeight = FontWeights.Medium,
+            Cursor = Cursors.Hand, FocusVisualStyle = null
         };
         var template = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border));
+        border.Name = "Surface";
         border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
         border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Button.BorderBrushProperty));
         border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Button.BorderThicknessProperty));
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
+        border.SetValue(Border.EffectProperty, new DropShadowEffect
+        {
+            Color = Color.FromRgb(51, 65, 85),
+            Opacity = 0.12, BlurRadius = 5, ShadowDepth = 1
+        });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
         presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
         presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         border.AppendChild(presenter);
         template.VisualTree = border;
+        var hover = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BackgroundProperty,
+            new SolidColorBrush(Color.FromRgb(238, 242, 246)), "Surface"));
+        template.Triggers.Add(hover);
+        var pressed = new Trigger { Property = Button.IsPressedProperty, Value = true };
+        pressed.Setters.Add(new Setter(Border.BackgroundProperty,
+            new SolidColorBrush(Color.FromRgb(227, 233, 240)), "Surface"));
+        template.Triggers.Add(pressed);
         button.Template = template;
         return button;
     }
@@ -81,14 +98,12 @@ public partial class MainWindow
             $"确定退出“{name}”吗？\n将结束对应客户端进程（PID {pid}），未保存的内容可能丢失。"
             + (affected > 1 ? $"\n该进程关联的 {affected} 个账号项都会退出。" : ""));
         var result = false;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
-        var cancel = CreateExitButton("取消");
-        var confirm = CreateExitButton("确认退出", true);
-        cancel.Click += (_, _) => dialog.Close();
+        var confirm = CreateExitButton("确认退出");
         confirm.Click += (_, _) => { result = true; dialog.Close(); };
-        buttons.Children.Add(cancel); buttons.Children.Add(confirm);
+        buttons.Children.Add(confirm);
         dialog.ShowDialog();
         return result;
     }
@@ -98,17 +113,16 @@ public partial class MainWindow
         var dialog = CreateExitDialog("退出 JNest",
             "请选择退出方式。\n仅退出 JNest：恢复客户端独立窗口并保持运行。\n全部退出：结束当前管理的微信与 WhatsApp 进程。");
         var result = ExitChoice.Cancel;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
-        var cancel = CreateExitButton("取消");
         var jnest = CreateExitButton("仅退出 JNest");
-        var all = CreateExitButton("全部退出", true);
-        cancel.Click += (_, _) => dialog.Close();
+        var all = CreateExitButton("全部退出");
+        all.Margin = new Thickness(20, 0, 0, 0);
         jnest.Click += (_, _) => { result = ExitChoice.JNestOnly; dialog.Close(); };
         // The exit-choice dialog itself is the confirmation; do not open another prompt.
         all.Click += (_, _) => { result = ExitChoice.All; dialog.Close(); };
-        buttons.Children.Add(cancel); buttons.Children.Add(jnest); buttons.Children.Add(all);
+        buttons.Children.Add(jnest); buttons.Children.Add(all);
         dialog.ShowDialog();
         return result;
     }
