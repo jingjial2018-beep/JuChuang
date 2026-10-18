@@ -1516,7 +1516,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             try
             {
                 RecoverClosedClientWindows();
-                attachedCount = await ScanAndReattachAsync(clearDismissed: true, scanLockHeld: true);
+                attachedCount = await AttachAllDiscoveredClientsAsync();
                 ConsumeRecoveredClientRecords();
             }
             finally
@@ -1533,7 +1533,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async void ScanClients_Click(object sender, RoutedEventArgs e)
+    private void ScanClients_Click(object sender, RoutedEventArgs e)
     {
         if (_isPreviewMode)
         {
@@ -1542,19 +1542,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            ShowTemporaryStatus("正在扫描客户端并重新验证微信资料…");
-            var attachedCount = await ScanAndReattachAsync(clearDismissed: false);
-            var refreshCount = 0;
-            foreach (var entry in Entries.ToArray())
-            {
-                if (ForceRefreshWeChatProfile(entry))
-                    refreshCount++;
-            }
             var hiddenClients = FindHiddenClosedClients();
             ShowTemporaryStatus(hiddenClients.Count > 0
                     ? $"扫描到隐藏主窗口：微信 {hiddenClients.Count(kind => kind == ClientKind.WeChat)} 个、WhatsApp {hiddenClients.Count(kind => kind == ClientKind.WhatsApp)} 个；点击“全部接入”恢复。"
-                    : $"扫描完成：已接入 {attachedCount} 个窗口，已请求重新同步 {refreshCount} 个微信账号。",
-                hiddenClients.Count > 0 ? TimeSpan.FromSeconds(8) : TimeSpan.FromSeconds(3));
+                    : "未发现此前关闭且仍存活的隐藏客户端主窗口。",
+                TimeSpan.FromSeconds(8));
         }
         catch (Exception exception)
         {
@@ -1563,35 +1555,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 扫描本地客户端并把容器外的窗口接入。区别于后台定时扫描（只做被动发现、
-    /// 不打扰用户主动弹出的窗口），这里会显式重试所有未接入的窗口，用于修复
-    /// 启动时因宿主未就绪而导致的“接入失败”状态。
+    /// “全部接入”在显式恢复隐藏主窗后，把发现的窗口接入容器。
+    /// 调用方持有扫描锁，避免与后台扫描同时创建卡片。
     /// </summary>
-    private async Task<int> ScanAndReattachAsync(bool clearDismissed, bool scanLockHeld = false)
+    private async Task<int> AttachAllDiscoveredClientsAsync()
     {
-        if (clearDismissed)
+        _dismissedWindowHandles.Clear();
+        foreach (var entry in Entries)
         {
-            _dismissedWindowHandles.Clear();
-            foreach (var entry in Entries)
-            {
-                entry.IsManuallyDetached = false;
-            }
+            entry.IsManuallyDetached = false;
         }
 
-        await ScanAndAttachAsync(scanLockHeld);
+        await ScanAndAttachAsync(scanLockHeld: true);
 
         var attachedCount = 0;
         foreach (var entry in Entries.Where(entry =>
                      entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle)))
         {
-            // Ordinary scanning must not undo a user's explicit pop-out choice.
-            // Only “全部接入” clears this protection above.
-            if (!clearDismissed
-                && (entry.IsManuallyDetached || _dismissedWindowHandles.Contains(entry.Handle)))
-            {
-                continue;
-            }
-
             if (entry.IsAttached)
             {
                 // 已接入的窗口跳过：避免 AttachWindow(makeActive:false) 把正在显示的
