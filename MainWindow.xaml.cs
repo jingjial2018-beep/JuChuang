@@ -2220,25 +2220,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return true;
     }
 
-    private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuItem { DataContext: ClientWindowEntry entry })
-        {
-            return;
-        }
-
-        try
-        {
-            Clipboard.SetText(DiagnosticLogService.BuildClipboardReport(entry));
-            DiagnosticLogService.WriteAccountEvent(entry, "diagnostic-copied");
-            ShowTemporaryStatus($"{entry.DisplayName} 的诊断信息已复制到剪贴板。");
-        }
-        catch (Exception exception)
-        {
-            ShowTemporaryStatus($"复制诊断信息失败：{exception.Message}", TimeSpan.FromSeconds(12));
-        }
-    }
-
     private void RenameEntry_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { DataContext: ClientWindowEntry entry })
