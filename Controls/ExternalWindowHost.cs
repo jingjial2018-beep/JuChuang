@@ -64,6 +64,7 @@ public sealed class ExternalWindowHost : HwndHost
 
     public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
     {
+        if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"host attach request hwnd=0x{handle.ToInt64():X} ready={IsReady} makeActive={makeActive} valid={NativeMethods.IsWindow(handle)}");
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
         {
             return false;
@@ -587,8 +588,10 @@ public sealed class ExternalWindowHost : HwndHost
         if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
             _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
             {
-                if (_currentHandle == handle && !_ownerMinimized
-                    && _modalDialogSuppressionCount == 0 && !IsZOrderSuppressed) ActivateHostedWindow(handle);
+                var eligible = _currentHandle == handle && !_ownerMinimized
+                    && _modalDialogSuppressionCount == 0 && !IsZOrderSuppressed;
+                if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"activation queued hwnd=0x{handle.ToInt64():X} eligible={eligible} current=0x{_currentHandle.ToInt64():X} suppressed={IsZOrderSuppressed} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+                if (eligible) ActivateHostedWindow(handle);
             }));
     }
 
@@ -597,6 +600,7 @@ public sealed class ExternalWindowHost : HwndHost
         if (IsZOrderSuppressed) return;
         var root = GetOwnerRoot();
         var foreground = NativeMethods.GetForegroundWindow();
+        if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"activate hwnd=0x{handle.ToInt64():X} owner=0x{root.ToInt64():X} foreground=0x{foreground.ToInt64():X} permitted={foreground == root || foreground == handle}");
         if (foreground != root && foreground != handle) return;
         var currentThread = NativeMethods.GetCurrentThreadId();
         var targetThread = NativeMethods.GetWindowThreadProcessId(handle, out _);
