@@ -1,0 +1,21 @@
+name: Validate rc2 modal front-only
+on:
+  push:
+    branches: [fix/rc2-about-settings-frontonly]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build
+        run: dotnet build JuChuang.csproj -c Release -p:Platform=x64
+      - name: ArchitectureProbe
+        run: dotnet run --project Tests/ArchitectureProbe/JuChuang.ArchitectureProbe.csproj -c Release
+      - name: BadgeProbe
+        run: dotnet run --project Tests/BadgeProbe/JuChuang.BadgeProbe.csproj -c Release
