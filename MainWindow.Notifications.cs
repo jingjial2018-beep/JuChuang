@@ -408,6 +408,38 @@ public partial class MainWindow
         }
     }
 
+    internal void ActivateFromToast(string argument)
+    {
+        try
+        {
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Show();
+            Activate();
+            Topmost = true;
+            Topmost = false;
+            Focus();
+            if (string.IsNullOrWhiteSpace(argument) || argument == "activate") return;
+            var parsed = ToastArguments.Parse(argument);
+            var account = parsed.Contains("account") ? parsed["account"] : null;
+            var pidText = parsed.Contains("pid") ? parsed["pid"] : null;
+            int.TryParse(pidText, out var pid);
+            var match = Entries.FirstOrDefault(e =>
+                !string.IsNullOrWhiteSpace(account) &&
+                (string.Equals(e.IdentityKey, account, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(e.AccountId, account, StringComparison.OrdinalIgnoreCase)));
+            match ??= pid > 0 ? Entries.FirstOrDefault(e => e.ProcessId == pid) : null;
+            if (match is not null)
+            {
+                SelectedEntry = match;
+                AccountsList.SelectedItem = match;
+            }
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteActivityEvent("toast-activation-" + exception.GetType().Name);
+        }
+    }
+
     private void ShowAccountNotification(ClientWindowEntry entry)
     {
         var now = DateTime.UtcNow;
@@ -418,7 +450,9 @@ public partial class MainWindow
         {
             var toast = new ToastContentBuilder()
                 .AddText(entry.DisplayName)
-                .AddText("收到新消息");
+                .AddText("收到新消息")
+                .AddArgument("account", entry.IdentityKey ?? entry.AccountId ?? "")
+                .AddArgument("pid", entry.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             var avatar = entry.AvatarPath;
             if (!string.IsNullOrWhiteSpace(avatar) && File.Exists(avatar))
