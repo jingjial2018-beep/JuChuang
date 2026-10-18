@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using JuChuang.Services;
 
@@ -20,6 +21,11 @@ public partial class MainWindow
     private const int WmMButtonUp = 0x0208;
     private const int WmXButtonDown = 0x020B;
     private const int WmXButtonUp = 0x020C;
+    private const int WmRButtonDblClk = 0x0206;
+    private const int WmMButtonDblClk = 0x0209;
+    private const int WmXButtonDblClk = 0x020D;
+    private const int WmMouseWheel = 0x020A;
+    private const int WmMouseHWheel = 0x020E;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct HookPoint { public int X; public int Y; }
@@ -49,6 +55,23 @@ public partial class MainWindow
     private IntPtr _captionMouseHook;
     private IntPtr _guardedClient;
     private IntPtr _guardedOwner;
+    private IntPtr _modalGuardDialogHwnd = IntPtr.Zero;
+
+    private void BeginModalInputGuard(Window dialog)
+    {
+        StartNativeCaptionGuard();
+        _modalGuardDialogHwnd = new WindowInteropHelper(dialog).Handle;
+    }
+
+    private void EndModalInputGuard() => _modalGuardDialogHwnd = IntPtr.Zero;
+
+    private static bool IsModalGuardMessage(int message) => message is
+        WmLButtonDown or WmLButtonUp or WmLButtonDblClk or
+        WmRButtonDown or WmRButtonUp or WmRButtonDblClk or
+        WmMButtonDown or WmMButtonUp or WmMButtonDblClk or
+        WmXButtonDown or WmXButtonUp or WmXButtonDblClk or
+        WmMouseWheel or WmMouseHWheel;
+
     private int _guardLeft, _guardTop, _guardRight, _guardBottom;
 
     private void StartNativeCaptionGuard()
@@ -96,19 +119,29 @@ public partial class MainWindow
 
     private IntPtr OnNativeCaptionMouse(int code, IntPtr msg, IntPtr data)
     {
-        if (code >= 0 && _guardedClient != IntPtr.Zero && !_isClosing)
+        if (code >= 0 && !_isClosing)
         {
             var command = unchecked((int)msg.ToInt64());
-            if (command is WmLButtonDown or WmLButtonUp or WmLButtonDblClk
-                or WmRButtonDown or WmRButtonUp or WmMButtonDown or WmMButtonUp
-                or WmXButtonDown or WmXButtonUp)
+            if (_modalGuardDialogHwnd != IntPtr.Zero && IsModalGuardMessage(command))
+            {
+                var point = Marshal.PtrToStructure<MouseHookData>(data).Point;
+                var target = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = point.X, Y = point.Y });
+                var root = target == IntPtr.Zero ? IntPtr.Zero
+                    : NativeMethods.GetAncestor(target, NativeMethods.GA_ROOT);
+                if (root != _modalGuardDialogHwnd && WindowHost.IsHostedWindow(root))
+                    return new IntPtr(1);
+            }
+
+            if (_guardedClient != IntPtr.Zero
+                && command is (WmLButtonDown or WmLButtonUp or WmLButtonDblClk
+                    or WmRButtonDown or WmRButtonUp or WmMButtonDown or WmMButtonUp
+                    or WmXButtonDown or WmXButtonUp))
             {
                 var point = Marshal.PtrToStructure<MouseHookData>(data).Point;
                 if (point.X >= _guardLeft && point.X < _guardRight
                     && point.Y >= _guardTop && point.Y < _guardBottom)
                 {
                     var foreground = NativeMethods.GetForegroundWindow();
-                    // Never block other apps or a popped-out client.
                     if (foreground == _guardedClient || foreground == _guardedOwner)
                         return new IntPtr(1);
                 }
@@ -120,6 +153,7 @@ public partial class MainWindow
     private void StopNativeCaptionGuard()
     {
         _guardedClient = IntPtr.Zero;
+        _modalGuardDialogHwnd = IntPtr.Zero;
         _captionGuardRefreshTimer.Stop();
         if (_captionMouseHook != IntPtr.Zero)
         {
