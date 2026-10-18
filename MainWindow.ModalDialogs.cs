@@ -53,7 +53,6 @@ public partial class MainWindow
                             handled = true;
                             return IntPtr.Zero;
                         }
-                        }
                         return IntPtr.Zero;
                     });
             };
