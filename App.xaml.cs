@@ -1,7 +1,9 @@
 using System.IO;
 using System.IO.Pipes;
+using System.Diagnostics;
 using System.Threading;
 using Microsoft.Toolkit.Uwp.Notifications;
+using JuChuang.Services;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -14,7 +16,7 @@ public partial class App : Application
     private Mutex? _instanceMutex;
     private bool _ownsMutex;
     private readonly CancellationTokenSource _activationCancellation = new();
-    private string? _pendingActivation;
+    private readonly Queue<string> _pendingActivations = new();
 
     private static string? GetActivationArgument(IEnumerable<string> args)
     {
@@ -22,7 +24,7 @@ public partial class App : Application
         return argument is null ? null : Uri.UnescapeDataString(argument["jnest-activate=".Length..]);
     }
 
-    private static void ForwardActivation(string? argument)
+    private static bool ForwardActivation(string? argument)
     {
         for (var attempt = 0; attempt < 8; attempt++)
         {
@@ -32,10 +34,46 @@ public partial class App : Application
                 pipe.Connect(250);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
                 writer.WriteLine(argument ?? "activate");
-                return;
+                return true;
             }
             catch (IOException) { Thread.Sleep(100); }
             catch (TimeoutException) { Thread.Sleep(100); }
+        }
+        return false;
+    }
+
+    private static void BringExistingInstanceToFront()
+    {
+        try
+        {
+            foreach (var process in Process.GetProcessesByName("JNest"))
+            {
+                using (process)
+                {
+                    if (process.Id == Environment.ProcessId) continue;
+                    var handle = process.MainWindowHandle;
+                    if (handle == IntPtr.Zero)
+                    {
+                        NativeMethods.EnumWindows((candidate, _) =>
+                        {
+                            NativeMethods.GetWindowThreadProcessId(candidate, out var owner);
+                            if (owner != (uint)process.Id
+                                || NativeMethods.GetWindow(candidate, NativeMethods.GW_OWNER) != IntPtr.Zero)
+                                return true;
+                            handle = candidate;
+                            return false;
+                        }, IntPtr.Zero);
+                    }
+                    if (handle == IntPtr.Zero) continue;
+                    NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+                    NativeMethods.SetForegroundWindow(handle);
+                    return;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteActivityEvent("activation-fallback-" + exception.GetType().Name);
         }
     }
 
@@ -68,14 +106,14 @@ public partial class App : Application
         if (MainWindow is MainWindow window && window.IsLoaded)
             window.ActivateFromToast(argument);
         else
-            _pendingActivation = argument;
+            _pendingActivations.Enqueue(argument);
     }
 
     private void MainWindowLoaded(object sender, RoutedEventArgs e)
     {
-        if (_pendingActivation is { } argument)
+        while (_pendingActivations.Count > 0)
         {
-            _pendingActivation = null;
+            var argument = _pendingActivations.Dequeue();
             DispatchActivation(argument);
         }
     }
@@ -85,12 +123,14 @@ public partial class App : Application
         _instanceMutex = new Mutex(true, InstanceMutexName, out _ownsMutex);
         if (!_ownsMutex)
         {
-            ForwardActivation(GetActivationArgument(e.Args));
+            if (!ForwardActivation(GetActivationArgument(e.Args)))
+                BringExistingInstanceToFront();
             Shutdown();
             return;
         }
         base.OnStartup(e);
-        _pendingActivation = GetActivationArgument(e.Args);
+        if (GetActivationArgument(e.Args) is { } initialArgument)
+            _pendingActivations.Enqueue(initialArgument);
         try
         {
             ToastNotificationManagerCompat.OnActivated += args =>

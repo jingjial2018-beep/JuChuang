@@ -738,9 +738,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async Task ScanAndAttachAsync()
+    private async Task ScanAndAttachAsync(bool scanLockHeld = false)
     {
-        if (!await _scanLock.WaitAsync(0))
+        if (!scanLockHeld && !await _scanLock.WaitAsync(0))
         {
             return;
         }
@@ -750,7 +750,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var scanUtc = DateTime.UtcNow;
             foreach (var entry in Entries.Where(entry => entry.Handle != IntPtr.Zero).ToArray())
             {
-                var exists = NativeMethods.IsWindow(entry.Handle);
+                var currentStart = TryGetProcessStartUtcTicks(entry.ProcessId);
+                if (entry.ProcessStartUtcTicks.HasValue
+                    && currentStart != entry.ProcessStartUtcTicks)
+                {
+                    entry.IsAttached = false;
+                    RemoveEntry(entry);
+                    continue;
+                }
+                var exists = WindowBelongsToProcess(entry.Handle, entry.ProcessId);
+                if (!exists && NativeMethods.IsWindow(entry.Handle))
+                {
+                    entry.IsAttached = false; // HWND was reused by another process.
+                    RemoveEntry(entry);
+                    continue;
+                }
                 if (exists)
                 {
                     entry.IsOnline = true;
@@ -878,6 +892,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var rebindingEntry = Entries.FirstOrDefault(entry =>
                     entry.Kind == candidate.Kind
                     && entry.ProcessId == candidate.ProcessId
+                    && entry.ProcessStartUtcTicks.HasValue
+                    && entry.ProcessStartUtcTicks == TryGetProcessStartUtcTicks(candidate.ProcessId)
                     && (entry.SessionState == ClientSessionState.Rebinding
                         || entry.Handle == IntPtr.Zero
                         || !NativeMethods.IsWindow(entry.Handle)));
@@ -965,7 +981,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         finally
         {
-            _scanLock.Release();
+            if (!scanLockHeld) _scanLock.Release();
         }
     }
 
@@ -990,7 +1006,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             candidate.Kind,
             displayName,
             candidate.ClientVersion,
-            MapSessionState(candidate.Role));
+            MapSessionState(candidate.Role))
+        {
+            ProcessStartUtcTicks = TryGetProcessStartUtcTicks(candidate.ProcessId)
+        };
     }
 
     private async void NewWeChat_Click(object sender, RoutedEventArgs e)
@@ -1492,7 +1511,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             ShowTemporaryStatus("正在接入容器外的客户端窗口…");
-            var attachedCount = await ScanAndReattachAsync(clearDismissed: true);
+            await _scanLock.WaitAsync();
+            int attachedCount;
+            try
+            {
+                RecoverClosedClientWindows();
+                attachedCount = await ScanAndReattachAsync(clearDismissed: true, scanLockHeld: true);
+                ConsumeRecoveredClientRecords();
+            }
+            finally
+            {
+                _scanLock.Release();
+            }
             ShowTemporaryStatus(attachedCount > 0
                 ? "接入检查完成"
                 : "未发现可接入的客户端窗口");
@@ -1533,7 +1563,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// 不打扰用户主动弹出的窗口），这里会显式重试所有未接入的窗口，用于修复
     /// 启动时因宿主未就绪而导致的“接入失败”状态。
     /// </summary>
-    private async Task<int> ScanAndReattachAsync(bool clearDismissed)
+    private async Task<int> ScanAndReattachAsync(bool clearDismissed, bool scanLockHeld = false)
     {
         if (clearDismissed)
         {
@@ -1544,7 +1574,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
-        await ScanAndAttachAsync();
+        await ScanAndAttachAsync(scanLockHeld);
 
         var attachedCount = 0;
         foreach (var entry in Entries.Where(entry =>
@@ -2292,6 +2322,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var handle = entry.Handle;
+        RememberClosedClient(entry);
         _dismissedWindowHandles.Add(handle);
         if (entry.IsAttached)
         {

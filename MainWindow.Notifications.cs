@@ -423,15 +423,21 @@ public partial class MainWindow
             var account = parsed.Contains("account") ? parsed["account"] : null;
             var pidText = parsed.Contains("pid") ? parsed["pid"] : null;
             int.TryParse(pidText, out var pid);
-            var match = Entries.FirstOrDefault(e =>
-                !string.IsNullOrWhiteSpace(account) &&
-                (string.Equals(e.IdentityKey, account, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(e.AccountId, account, StringComparison.OrdinalIgnoreCase)));
-            match ??= pid > 0 ? Entries.FirstOrDefault(e => e.ProcessId == pid) : null;
+            var match = !string.IsNullOrWhiteSpace(account)
+                ? Entries.FirstOrDefault(e => string.Equals(e.IdentityKey, account, StringComparison.OrdinalIgnoreCase))
+                : null;
+            // A stale identity must never fall through to a reused PID. PID-only
+            // notifications are safe only when their process generation still matches.
+            if (match is null && string.IsNullOrWhiteSpace(account)
+                && parsed.Contains("start")
+                && long.TryParse(parsed["start"], out var start) && pid > 0
+                && TryGetProcessStartUtcTicks(pid) == start)
+                match = Entries.FirstOrDefault(e => e.ProcessId == pid);
             if (match is not null)
             {
                 SelectedEntry = match;
                 AccountsList.SelectedItem = match;
+                DismissAccountToast(match);
             }
         }
         catch (Exception exception)
@@ -451,8 +457,10 @@ public partial class MainWindow
             var toast = new ToastContentBuilder()
                 .AddText(entry.DisplayName)
                 .AddText("收到新消息")
-                .AddArgument("account", entry.IdentityKey ?? entry.AccountId ?? "")
+                .AddArgument("account", entry.IdentityKey ?? "")
                 .AddArgument("pid", entry.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (TryGetProcessStartUtcTicks(entry.ProcessId) is { } processStart)
+                toast.AddArgument("start", processStart.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             var avatar = entry.AvatarPath;
             if (!string.IsNullOrWhiteSpace(avatar) && File.Exists(avatar))

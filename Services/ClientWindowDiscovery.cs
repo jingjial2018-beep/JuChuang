@@ -27,6 +27,17 @@ public static class ClientWindowDiscovery
     private static readonly TimeSpan ProcessNameCacheLifetime = TimeSpan.FromSeconds(10);
 
     public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null)
+        => FindClientWindowsCore(selfTestTargetProcessId, includeHiddenProcessId: null);
+
+    // Only an explicit recovery request may inspect invisible windows. All normal scans
+    // continue through FindClientWindows and retain their visible-only behavior.
+    public static IReadOnlyList<WindowCandidate> FindRecoverableMainWindows(int processId)
+        => FindClientWindowsCore(null, processId)
+            .Where(candidate => candidate.ProcessId == processId && candidate.Role == ClientWindowRole.Main)
+            .ToArray();
+
+    private static IReadOnlyList<WindowCandidate> FindClientWindowsCore(
+        int? selfTestTargetProcessId, int? includeHiddenProcessId)
     {
         var candidates = new List<WindowCandidate>();
         var ownProcessId = Environment.ProcessId;
@@ -35,14 +46,13 @@ public static class ClientWindowDiscovery
         {
             try
             {
-                if (!NativeMethods.IsWindowVisible(handle))
-                {
-                    return true;
-                }
-
                 NativeMethods.GetWindowThreadProcessId(handle, out var rawProcessId);
                 var processId = unchecked((int)rawProcessId);
                 if (processId <= 0 || processId == ownProcessId)
+                {
+                    return true;
+                }
+                if (!NativeMethods.IsWindowVisible(handle) && processId != includeHiddenProcessId)
                 {
                     return true;
                 }

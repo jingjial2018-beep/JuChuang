@@ -1,0 +1,45 @@
+name: JNest rc.2 test release
+
+on:
+  push:
+    branches:
+      - v1.0.3-rc.2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build and run regression probes
+        shell: pwsh
+        run: |
+          dotnet build .\JuChuang.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($probe in @('BadgeProbe', 'ArchitectureProbe')) {
+            $project = ".\Tests\$probe\JuChuang.$probe.csproj"
+            dotnet run --project $project -c Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Publish Windows x64 packages
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -p:PublishReadyToRun=false -o .\out\framework
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path .\out\framework\* -DestinationPath .\JNest-v1.0.3-rc.2-FrameworkDependent-win-x64.zip
+          Get-FileHash .\JNest-v1.0.3-rc.2-*.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content .\SHA256SUMS.txt
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = 'v1.0.3-rc.2'
+          gh release create $tag .\JNest-v1.0.3-rc.2-FrameworkDependent-win-x64.zip .\SHA256SUMS.txt `
+            --repo '${{ github.repository }}' --target '${{ github.sha }}' `
+            --title 'JNest v1.0.3-rc.2' --notes-file .\RELEASE-NOTES-v1.0.3-rc.2.md --prerelease
