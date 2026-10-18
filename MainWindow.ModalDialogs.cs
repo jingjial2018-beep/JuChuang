@@ -37,25 +37,22 @@ public partial class MainWindow
                 if (PresentationSource.FromVisual(dialog) is HwndSource hwnd)
                     hwnd.AddHook((window, message, wParam, lParam, ref bool handled) =>
                     {
-                        const int wmNcHitTest = 0x0084;
+                        const int wmNcLButtonDown = 0x00A1;
+                        const int wmNcLButtonDblClk = 0x00A3;
                         const int wmSysCommand = 0x0112;
                         const int htCaption = 2;
                         const int scMove = 0xF010;
-                        if (message == wmNcHitTest)
-                        {
-                            // Keep the existing native title bar and its close
-                            // button, but prevent caption dragging.
-                            var result = NativeMethods.DefWindowProc(window, message, wParam, lParam);
-                            if (result.ToInt64() == htCaption)
-                            {
-                                handled = true;
-                                return new IntPtr(1); // HTCLIENT
-                            }
-                        }
-                        else if (message == wmSysCommand && ((wParam.ToInt64() & 0xFFF0) == scMove))
+                        if ((message == wmNcLButtonDown || message == wmNcLButtonDblClk)
+                            && wParam.ToInt64() == htCaption)
                         {
                             handled = true;
                             return IntPtr.Zero;
+                        }
+                        if (message == wmSysCommand && ((wParam.ToInt64() & 0xFFF0) == scMove))
+                        {
+                            handled = true;
+                            return IntPtr.Zero;
+                        }
                         }
                         return IntPtr.Zero;
                     });
