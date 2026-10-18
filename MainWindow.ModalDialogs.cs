@@ -35,7 +35,7 @@ public partial class MainWindow
                 }
 
                 if (PresentationSource.FromVisual(dialog) is HwndSource hwnd)
-                    hwnd.AddHook((window, message, wParam, lParam, ref bool handled) =>
+                    hwnd.AddHook((IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled) =>
                     {
                         const int wmNcLButtonDown = 0x00A1;
                         const int wmNcLButtonDblClk = 0x00A3;
