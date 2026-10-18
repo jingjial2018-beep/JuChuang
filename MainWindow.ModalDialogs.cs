@@ -5,15 +5,14 @@ using JuChuang.Services;
 
 namespace JuChuang;
 
-// The native WeChat / WhatsApp HWNDs remain top-level windows. Temporarily park
-// them for WPF modal dialogs rather than merely suppressing their periodic Z-order.
+// Keep hosted native HWNDs visible during modal dialogs. Prevent background
+// client input while the dialog is open, without using global Topmost.
 // Both dialogs share identical positioning and input restrictions.
 public partial class MainWindow
 {
     private void ShowHostedModalDialog(Window dialog)
     {
         WindowHost.SuspendOverlayZOrder();
-        WindowHost.SuspendForModalDialog();
         try
         {
             dialog.Owner = this;
@@ -55,12 +54,14 @@ public partial class MainWindow
                         }
                         return IntPtr.Zero;
                     });
+                BeginModalInputGuard(dialog);
             };
+            dialog.Closed += (_, _) => EndModalInputGuard();
             dialog.ShowDialog();
         }
         finally
         {
-            WindowHost.ResumeAfterModalDialog();
+            EndModalInputGuard();
             WindowHost.ResumeOverlayZOrder();
         }
     }
