@@ -43,18 +43,33 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = 'v1.0.3'
-          $existing = [string](git ls-remote --tags origin "refs/tags/$tag")
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to check tag' }
-          # Reuse an existing immutable tag only when it is already the current commit.
-          # If a previous attempt created a tag but no release, do not rewrite the tag.
-          $releaseExists = $false
-          gh release view $tag --repo ${{ github.repository }} *> $null
-          if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
-          if ($releaseExists) { throw 'Release already exists; refusing duplicate publication' }
-          if ($existing) { throw 'Final tag already exists; refusing to publish different bits under an old tag' }
+          $repo = '${{ github.repository }}'
+          $sha = '${{ github.sha }}'
           $notes = Join-Path $PWD 'RELEASE-NOTES-v1.0.3.md'
-          if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
-            throw "Missing release notes at checked-out commit: $notes. Ensure workflow builds the latest branch commit."
+          if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) { throw "Missing release notes: $notes" }
+          $assets = @(
+            '.\\JNest-v1.0.3-FrameworkDependent-win-x64.zip',
+            '.\\JNest-v1.0.3-SelfContained-win-x64.zip'
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Missing binary: $asset" }
           }
-          gh release create $tag .\JNest-v1.0.3-FrameworkDependent-win-x64.zip .\JNest-v1.0.3-SelfContained-win-x64.zip --repo ${{ github.repository }} --target "${{ github.sha }}" --title 'JNest v1.0.3' --notes-file "$notes"
-          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+          # User requested to replace the v1.0.3 stable release, keeping the version number.
+          # First upload/recreate the release against the new commit, then align the tag.
+          gh release view $tag --repo $repo *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $tagRemote = [string](git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect remote version tag' }
+          if ($releaseExists) {
+            gh release upload $tag @assets --repo $repo --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to overwrite existing assets (tag/release may be immutable)' }
+            gh release edit $tag --repo $repo --title 'JNest v1.0.3' --notes-file "$notes" --latest
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to update release notes' }
+          } else {
+            gh release create $tag @assets --repo $repo --target $sha --title 'JNest v1.0.3' --notes-file "$notes" --latest
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to create stable release' }
+          }
+          if ($tagRemote) {
+            gh api -X PATCH "repos/$repo/git/refs/tags/$tag" -f sha=$sha -F force=true --silent
+            if ($LASTEXITCODE -ne 0) { throw 'Assets published, but failed to update existing tag to built commit' }
+          }
