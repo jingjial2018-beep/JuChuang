@@ -375,13 +375,6 @@
                                         <Grid.ToolTip>
                                             <ToolTip Placement="Right" HorizontalOffset="12" Content="{Binding DisplayName}" />
                                         </Grid.ToolTip>
-                                        <Grid.ContextMenu>
-                                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                                <MenuItem Header="重命名账号" Click="RenameEntry_Click" />
-                                                <Separator />
-                                                <MenuItem Header="关闭客户端" CommandParameter="{Binding}" Click="CloseEntry_Click" />
-                                            </ContextMenu>
-                                        </Grid.ContextMenu>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition x:Name="AccountAvatarColumn" Width="60" />
                                             <ColumnDefinition Width="*" />
