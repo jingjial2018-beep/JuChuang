@@ -964,7 +964,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false,
                     disableMaximize: entry.Kind == ClientKind.WhatsApp,
                     centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
-                entry.Status = entry.IsAttached ? "已接入" : "接入失败";
+                ReconnectDiagnostics.Write($"attach result kind={entry.Kind} hwnd=0x{entry.Handle.ToInt64():X} attached={entry.IsAttached} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
                 if (entry.IsAttached && candidate.Kind == ClientKind.WeChat)
                     WindowHost.SetCenterInHost(entry.Handle, candidate.Role == ClientWindowRole.Login);
                 TryCompletePendingLaunch(candidate, entry);
@@ -1510,14 +1511,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // 包括之前从列表移除的窗口。
         try
         {
+            ReconnectDiagnostics.Start();
+            ReconnectDiagnostics.Write($"reconnect click foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X} selected=0x{SelectedEntry?.Handle.ToInt64() ?? 0:X}");
             ShowTemporaryStatus("正在接入容器外的客户端窗口…");
             await _scanLock.WaitAsync();
             int attachedCount;
             try
             {
+                ReconnectDiagnostics.Write("recover begin");
                 RecoverClosedClientWindows();
                 attachedCount = await AttachAllDiscoveredClientsAsync();
                 ConsumeRecoveredClientRecords();
+                ReconnectDiagnostics.Write($"reconnect complete attached={attachedCount} selected=0x{SelectedEntry?.Handle.ToInt64() ?? 0:X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             }
             finally
             {
@@ -1580,6 +1585,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 continue;
             }
 
+            ReconnectDiagnostics.Write($"attach attempt kind={entry.Kind} pid={entry.ProcessId} hwnd=0x{entry.Handle.ToInt64():X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false,
                 disableMaximize: entry.Kind == ClientKind.WhatsApp,
                     centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
