@@ -3,6 +3,50 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("RM identifies owner for two live WeChat accounts", () =>
+{
+    var first = WeChatDatabaseOwnershipService.Decide(["A"], 1, 0, 0);
+    var second = WeChatDatabaseOwnershipService.Decide(["B"], 1, 0, 0);
+    Assert(first.Status == WeChatDatabaseOwnershipService.Verdict.Unique && first.AccountId == "A", "A was not resolved");
+    Assert(second.Status == WeChatDatabaseOwnershipService.Verdict.Unique && second.AccountId == "B", "B was not resolved");
+});
+
+Run("RM ignores confirmed unowned historical accounts", () =>
+{
+    var result = WeChatDatabaseOwnershipService.Decide(["A"], 1, 3, 0);
+    Assert(result.Status == WeChatDatabaseOwnershipService.Verdict.Unique && result.AccountId == "A",
+        "Unowned historical account should not block sole live owner");
+});
+
+Run("RM refuses positive owner with indeterminate peer", () =>
+{
+    var result = WeChatDatabaseOwnershipService.Decide(["A"], 0, 0, 1);
+    Assert(result.Status == WeChatDatabaseOwnershipService.Verdict.Unknown && result.AccountId is null,
+        "API failure must not be mistaken for an unowned account");
+});
+
+Run("RM refuses two positive account owners", () =>
+{
+    var result = WeChatDatabaseOwnershipService.Decide(["A", "B"], 0, 0, 0);
+    Assert(result.Status == WeChatDatabaseOwnershipService.Verdict.Conflict,
+        "two positive target owners must conflict");
+});
+
+Run("RM refuses a case with no positive ownership", () =>
+{
+    var result = WeChatDatabaseOwnershipService.Decide([], 2, 1, 0);
+    Assert(result.Status == WeChatDatabaseOwnershipService.Verdict.Unknown && result.AccountId is null,
+        "no owner must never produce an identity");
+});
+
+Run("RM invalid process identity rejects before probing", () =>
+{
+    var result = WeChatDatabaseOwnershipService.Resolve(0, null, ["A"]);
+    Assert(result.Status == WeChatDatabaseOwnershipService.Verdict.Unknown,
+        "invalid process identity must not be resolved");
+});
+
+
 Run("Activity requires a confirmed new badge before notification", () =>
 {
     var noBadge = BadgeResult.NoBadge;
