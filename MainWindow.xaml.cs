@@ -1603,7 +1603,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         UpdateWindowCount();
-        if (SelectedEntry is not null)
+        if (SelectedEntry is { IsAttached: true } selected)
+        {
+            ShowSelectedEntry();
+            // Explicit reconnect activation, through the existing foreground guard.
+            // The deferred activation in ShowOnly remains; this verifies the final state.
+            ReconnectDiagnostics.Write($"reconnect selected activation request hwnd=0x{selected.Handle.ToInt64():X} foregroundBefore=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+            WindowHost.ActivateCurrentWindow();
+            ReconnectDiagnostics.Write($"reconnect selected activation returned hwnd=0x{selected.Handle.ToInt64():X} foregroundAfter=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+        }
+        else if (SelectedEntry is not null)
         {
             ShowSelectedEntry();
         }
