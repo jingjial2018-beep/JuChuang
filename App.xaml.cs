@@ -1,4 +1,7 @@
 using System.IO;
+using System.IO.Pipes;
+using System.Threading;
+using Microsoft.Toolkit.Uwp.Notifications;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -6,9 +9,100 @@ namespace JuChuang;
 
 public partial class App : Application
 {
+    private const string InstanceMutexName = @"Local\JNest-Desktop-SingleInstance";
+    private const string ActivationPipeName = "JNest-Desktop-Activation";
+    private Mutex? _instanceMutex;
+    private bool _ownsMutex;
+    private readonly CancellationTokenSource _activationCancellation = new();
+    private string? _pendingActivation;
+
+    private static string? GetActivationArgument(IEnumerable<string> args)
+    {
+        var argument = args.FirstOrDefault(a => a.StartsWith("jnest-activate=", StringComparison.OrdinalIgnoreCase));
+        return argument is null ? null : Uri.UnescapeDataString(argument["jnest-activate=".Length..]);
+    }
+
+    private static void ForwardActivation(string? argument)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            try
+            {
+                using var pipe = new NamedPipeClientStream(".", ActivationPipeName, PipeDirection.Out);
+                pipe.Connect(250);
+                using var writer = new StreamWriter(pipe) { AutoFlush = true };
+                writer.WriteLine(argument ?? "activate");
+                return;
+            }
+            catch (IOException) { Thread.Sleep(100); }
+            catch (TimeoutException) { Thread.Sleep(100); }
+        }
+    }
+
+    private async Task ListenForActivationAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                using var server = new NamedPipeServerStream(ActivationPipeName, PipeDirection.In, 1,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                await server.WaitForConnectionAsync(token);
+                using var reader = new StreamReader(server);
+                var argument = await reader.ReadLineAsync(token);
+                if (argument is not null)
+                    await Dispatcher.InvokeAsync(() => DispatchActivation(argument));
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception exception)
+            {
+                JuChuang.Services.DiagnosticLogService.WriteActivityEvent("activation-pipe-" + exception.GetType().Name);
+                try { await Task.Delay(250, token); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+    }
+
+    private void DispatchActivation(string argument)
+    {
+        if (MainWindow is MainWindow window && window.IsLoaded)
+            window.ActivateFromToast(argument);
+        else
+            _pendingActivation = argument;
+    }
+
+    private void MainWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_pendingActivation is { } argument)
+        {
+            _pendingActivation = null;
+            DispatchActivation(argument);
+        }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        _instanceMutex = new Mutex(true, InstanceMutexName, out _ownsMutex);
+        if (!_ownsMutex)
+        {
+            ForwardActivation(GetActivationArgument(e.Args));
+            Shutdown();
+            return;
+        }
         base.OnStartup(e);
+        _pendingActivation = GetActivationArgument(e.Args);
+        try
+        {
+            ToastNotificationManagerCompat.OnActivated += args =>
+                Dispatcher.BeginInvoke(new Action(() => DispatchActivation(args.Argument)));
+        }
+        catch (Exception exception)
+        {
+            JuChuang.Services.DiagnosticLogService.WriteActivityEvent("toast-activation-register-" + exception.GetType().Name);
+        }
+        EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent,
+            new RoutedEventHandler(MainWindowLoaded));
+        _ = ListenForActivationAsync(_activationCancellation.Token);
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
@@ -25,6 +119,14 @@ public partial class App : Application
                 // 清理只是尽力而为。
             }
         });
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _activationCancellation.Cancel();
+        if (_ownsMutex) { try { _instanceMutex?.ReleaseMutex(); } catch (ApplicationException) { } }
+        _instanceMutex?.Dispose();
+        base.OnExit(e);
     }
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
