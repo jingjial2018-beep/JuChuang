@@ -59,8 +59,9 @@ public partial class MainWindow
     }
 
     // Called only while the scan semaphore is held by the explicit Attach All action.
-    private void RecoverClosedClientWindows()
+    private bool RecoverClosedClientWindows()
     {
+        var restoredWeChat = false;
         PruneClosedClientRecovery();
         foreach (var record in _closedClientRecovery.ToArray())
         {
@@ -78,8 +79,13 @@ public partial class MainWindow
                 || !WindowBelongsToProcess(candidate.Handle, record.Pid)) continue;
 
             if (!NativeMethods.IsWindowVisible(candidate.Handle))
+            {
+                ReconnectDiagnostics.Write($"recover show kind={candidate.Kind} hwnd=0x{candidate.Handle.ToInt64():X}");
                 NativeMethods.ShowWindow(candidate.Handle, NativeMethods.SW_RESTORE);
+                restoredWeChat |= candidate.Kind == ClientKind.WeChat;
+            }
         }
+        return restoredWeChat;
     }
 
     private void ConsumeRecoveredClientRecords()

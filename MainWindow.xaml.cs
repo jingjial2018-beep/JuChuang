@@ -1519,7 +1519,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             try
             {
                 ReconnectDiagnostics.Write("recover begin");
-                RecoverClosedClientWindows();
+                if (RecoverClosedClientWindows())
+                {
+                    // Give a hidden WeChat window time to finish its own restore
+                    // before changing its style, owner, and size for hosting.
+                    ReconnectDiagnostics.Write("recover wait begin milliseconds=500");
+                    await Task.Delay(500);
+                    ReconnectDiagnostics.Write("recover wait complete");
+                }
                 attachedCount = await AttachAllDiscoveredClientsAsync();
                 ConsumeRecoveredClientRecords();
                 ReconnectDiagnostics.Write($"reconnect complete attached={attachedCount} selected=0x{SelectedEntry?.Handle.ToInt64() ?? 0:X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
