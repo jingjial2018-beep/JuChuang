@@ -262,6 +262,13 @@ public sealed class ExternalWindowHost : HwndHost
     /// 若不抑制，窗口锁定定时器会在对话框弹出期间反复把客户端窗口 SetWindowPos(HWND_TOP)，
     /// 导致对话框被顶到嵌入窗口之下。
     /// </summary>
+    public bool IsHostedWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        var root = NativeMethods.GetAncestor(hwnd, NativeMethods.GA_ROOT);
+        return _hostedWindows.ContainsKey(root);
+    }
+
     public void SuspendOverlayZOrder() => _zOrderSuppressionCount++;
 
     public void ResumeOverlayZOrder()
