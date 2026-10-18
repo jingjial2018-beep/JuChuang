@@ -27,7 +27,7 @@ JNest 适合需要在一台 Windows 电脑上同时管理多个微信账号或�
 
 JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端的未读角标用于提醒。**不会向第三方服务器上传聊天数据，不读取聊天消息正文，不注入微信 DLL，也不 Hook 微信内部聊天 API。**部分微信账号昵称/头像识别会按下方[隐私边界](#隐私边界)所述，只读访问本机账号元数据。
 
-**最新稳定版：** [v0.3.22](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v0.3.22) · **图标测试版：** [v0.3.22-beta1](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v0.3.22-beta1)（预发布，不替代稳定版）
+**最新稳定版：** [v1.0.2](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.2)
 
 ## 软件界面
 
@@ -73,12 +73,12 @@ JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端�
 
 ## 下载与使用
 
-请从本仓库的 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases) 下载**稳定版 v0.3.22**；如需测试任务栏图标修复，可选择单独标记的 v0.3.22-beta1 预发布版。不要从不明来源获取修改版程序。
+请从本仓库的 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases) 下载**稳定版 v1.0.2**。不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JNest-v0.3.22-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JNest-v0.3.22-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
+| `JNest-v1.0.2-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
+| `JNest-v1.0.2-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库 |
 
 使用步骤：
 
