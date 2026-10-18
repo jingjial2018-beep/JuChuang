@@ -1939,17 +1939,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     return;
                 }
 
-                // Do not exclude accounts claimed by another PID *before* verifying
-                // the live process. On JNest restart stale or misattributed claims
-                // otherwise force this process to read a different account's profile.
-                // Duplicate live claims are rejected immediately before commit.
-                // Prefer the v0.99 proven multi-instance strategy: do not let two
-                // concurrently resolved processes compete for the same account DB.
-                // The live contact key still verifies which of the remaining
-                // candidates belongs to this process before a binding is committed.
-                // RC3: Never hide a verified candidate because a different process
-                // claimed it first. Competing claims must be diagnosed, not suppressed.
-                resolution = await Task.Run(() =>
+                // Do not filter candidate accounts by another process' earlier claim.
+            // Resolve ownership first, and quarantine conflicting live claims at commit.
+            resolution = await Task.Run(() =>
                 {
                     var candidates = ClientMetadataService.RankWeChatAccountsForProcess(processId)
                         .OrderBy(account => preferredAccount is not null
@@ -2017,9 +2009,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // A profile candidate selected for one PID must never be committed to
             // another live PID. Keep the second entry unbound and retry rather
             // than showing somebody else's cached nickname, avatar or Toast label.
-            // Do not invalidate a different confirmed account when this process
-            // reports the same candidate. Keep this entry unverified and retry;
-            // the owner must remain usable while the ambiguous source is inspected.
+            // Conflicting live claims invalidate both identities until independently verified.
             var conflictingBinding = _resolvedWeChatAccounts.Any(pair =>
                 pair.Key != processId
                 && pair.Value.Key.Equals(account.Key, StringComparison.OrdinalIgnoreCase)
