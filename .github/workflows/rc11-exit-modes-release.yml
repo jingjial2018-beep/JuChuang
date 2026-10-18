@@ -3,7 +3,7 @@ name: JNest rc.11 exit modes release
 on:
   push:
     branches:
-      - release/v1.0.3-rc11-exit-modes
+      - release/v1.0.3-rc11-exit-dialog-polish
   workflow_dispatch:
 
 permissions:
