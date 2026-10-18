@@ -1,0 +1,50 @@
+name: JNest rc.4 test release
+
+on:
+  push:
+    branches:
+      - release/v1.0.3-rc4-modal-guard
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build and run regression probes
+        shell: pwsh
+        run: |
+          dotnet build .\JuChuang.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($probe in @('BadgeProbe', 'ArchitectureProbe')) {
+            $project = ".\Tests\$probe\JuChuang.$probe.csproj"
+            dotnet run --project $project -c Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Publish Windows x64 packages
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -p:PublishReadyToRun=false -o .\out\framework
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\out\selfcontained
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path .\out\framework\* -DestinationPath .\JNest-v1.0.3-rc.4-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path .\out\selfcontained\* -DestinationPath .\JNest-v1.0.3-rc.4-SelfContained-win-x64.zip
+      - name: Publish prerelease (immutable tag)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v1.0.3-rc.4'
+          $existing = [string](git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to check tag' }
+          if ($existing) { throw 'Tag exists; refusing overwrite' }
+          gh release create $tag .\JNest-v1.0.3-rc.4-FrameworkDependent-win-x64.zip .\JNest-v1.0.3-rc.4-SelfContained-win-x64.zip --repo ${{ github.repository }} --target "${{ github.sha }}" --title 'JNest v1.0.3-rc.4' --notes-file .\RELEASE-NOTES-v1.0.3-rc.4.md --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
