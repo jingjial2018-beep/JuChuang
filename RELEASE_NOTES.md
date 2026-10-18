@@ -1,3 +1,11 @@
+# JNest 发布记录索引
+
+**当前正式版：** [v1.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.3)。当前功能、下载包名称与退出交互请参阅 [README](README.md) 及 [v1.0.3 发布说明](RELEASE-NOTES-v1.0.3.md)。
+
+下方内容是历史版本与实验记录，记录各版本当时的设计和限制；其中已取消的圆角实验、右键菜单及旧测试方案**不代表 v1.0.3 仍提供相应功能**。
+
+---
+
 ## v0.3.34-beta3 — 四角 8 DIP 圆角裁剪测试
 
 - 基于 v0.3.34-beta2：保留 WhatsApp 嵌入状态下暂时清除 WS_MAXIMIZEBOX 的功能。
