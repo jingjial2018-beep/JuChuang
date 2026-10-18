@@ -43,6 +43,7 @@ internal static class NativeMethods
     internal const int SW_SHOWNORMAL = 1;
     internal const int SW_SHOWNOACTIVATE = 4;
     internal const int SW_SHOW = 5;
+    internal const int SW_SHOWNA = 8;
     internal const int SW_RESTORE = 9;
 
     internal const uint SWP_NOZORDER = 0x0004;
