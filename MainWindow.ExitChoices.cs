@@ -25,18 +25,6 @@ public partial class MainWindow
         };
         var root = new DockPanel { Margin = new Thickness(18, 15, 18, 14), LastChildFill = true };
         dialog.Content = root;
-        var body = new Grid { Margin = new Thickness(0, 8, 0, 7) };
-        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(showWarning ? 55 : 0) });
-        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        DockPanel.SetDock(body, Dock.Top);
-        root.Children.Add(body);
-        var warning = new TextBlock
-        {
-            Text = "⚠", FontSize = 32, Foreground = new SolidColorBrush(Color.FromRgb(212, 154, 54)),
-            Width = 48, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-        };
-        Grid.SetColumn(warning, 0);
-        if (showWarning) body.Children.Add(warning);
         var messageText = new TextBlock
         {
             Text = message, TextWrapping = TextWrapping.Wrap,
@@ -44,8 +32,34 @@ public partial class MainWindow
             Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
             VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(messageText, showWarning ? 1 : 0);
-        body.Children.Add(messageText);
+
+        if (!showWarning)
+        {
+            // Remove only the warning icon and its reserved column.
+            // Keep the TextBlock's original/default text alignment unchanged.
+            messageText.Margin = new Thickness(0, 8, 0, 7);
+            DockPanel.SetDock(messageText, Dock.Top);
+            root.Children.Add(messageText);
+        }
+        else
+        {
+            var body = new Grid { Margin = new Thickness(0, 8, 0, 7) };
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(55) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            DockPanel.SetDock(body, Dock.Top);
+            root.Children.Add(body);
+            var warning = new TextBlock
+            {
+                Text = "⚠", FontSize = 32,
+                Foreground = new SolidColorBrush(Color.FromRgb(212, 154, 54)),
+                Width = 48, TextAlignment = TextAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(warning, 0);
+            body.Children.Add(warning);
+            Grid.SetColumn(messageText, 1);
+            body.Children.Add(messageText);
+        }
         return dialog;
     }
 
