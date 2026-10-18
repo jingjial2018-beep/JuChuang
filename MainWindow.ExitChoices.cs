@@ -28,6 +28,7 @@ public partial class MainWindow
         var messageText = new TextBlock
         {
             Text = message, TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
             FontSize = 13, LineHeight = 20,
             Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
             VerticalAlignment = VerticalAlignment.Center
@@ -115,8 +116,12 @@ public partial class MainWindow
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
+        var reconsider = CreateExitButton("我再想想");
+        reconsider.Margin = new Thickness(0, 0, 20, 0);
+        reconsider.Click += (_, _) => dialog.Close();
         var confirm = CreateExitButton("确认退出", destructive: true, filled: true);
         confirm.Click += (_, _) => { result = true; dialog.Close(); };
+        buttons.Children.Add(reconsider);
         buttons.Children.Add(confirm);
         dialog.ShowDialog();
         return result;
