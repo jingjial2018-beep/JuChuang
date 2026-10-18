@@ -1,0 +1,47 @@
+name: JNest RC6 reconnect size test package
+
+on:
+  push:
+    branches:
+      - fix/v1.0.3-rc6-reconnect-size-preserve
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build and run regression probes
+        shell: pwsh
+        run: |
+          dotnet build .\JuChuang.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($probe in @('BadgeProbe', 'ArchitectureProbe')) {
+            dotnet run --project ".\Tests\$probe\JuChuang.$probe.csproj" -c Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Publish self-contained Windows x64 test package
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained true -p:Version=1.0.3-rc.6-sizetest.1 -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\out\selfcontained
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item .\TESTING-RC6-RECONNECT-SIZE.md .\out\selfcontained\TESTING-RC6-RECONNECT-SIZE.md
+          New-Item -ItemType Directory -Force .\packages | Out-Null
+          $package = '.\packages\JNest-RC6-Reconnect-Size-Test-win-x64.zip'
+          Compress-Archive -Path .\out\selfcontained\* -DestinationPath $package
+          $hash = (Get-FileHash $package -Algorithm SHA256).Hash
+          "$hash  $(Split-Path $package -Leaf)" | Set-Content .\packages\SHA256SUMS.txt -Encoding ascii
+      - name: Upload test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: JNest-RC6-Reconnect-Size-Test-win-x64
+          path: .\packages\*
+          retention-days: 7
+          if-no-files-found: error
+
