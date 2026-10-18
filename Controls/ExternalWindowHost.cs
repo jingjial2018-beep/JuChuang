@@ -84,7 +84,9 @@ public sealed class ExternalWindowHost : HwndHost
                 disableMaximize,
                 centerInHost);
 
-            NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+            // Background reconnect must not activate a newly discovered client.
+            NativeMethods.ShowWindow(handle, makeActive
+                ? NativeMethods.SW_RESTORE : NativeMethods.SW_SHOWNA);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
             NativeMethods.SetWindowLongPtr(
                 handle,
@@ -601,7 +603,11 @@ public sealed class ExternalWindowHost : HwndHost
         var root = GetOwnerRoot();
         var foreground = NativeMethods.GetForegroundWindow();
         if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"activate hwnd=0x{handle.ToInt64():X} owner=0x{root.ToInt64():X} foreground=0x{foreground.ToInt64():X} permitted={foreground == root || foreground == handle}");
-        if (foreground != root && foreground != handle) return;
+        if (foreground != root && foreground != handle)
+        {
+            if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"activate skipped hwnd=0x{handle.ToInt64():X} foregroundAfter=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+            return;
+        }
         var currentThread = NativeMethods.GetCurrentThreadId();
         var targetThread = NativeMethods.GetWindowThreadProcessId(handle, out _);
         if (targetThread != 0 && targetThread != currentThread
@@ -621,6 +627,7 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SetActiveWindow(handle);
             NativeMethods.SetFocus(handle);
         }
+        if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"activate completed hwnd=0x{handle.ToInt64():X} foregroundAfter=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
     }
 
     private IntPtr GetOwnerRoot() => _hostHandle == IntPtr.Zero
