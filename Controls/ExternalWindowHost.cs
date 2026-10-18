@@ -106,14 +106,17 @@ public sealed class ExternalWindowHost : HwndHost
                 handle)
                 ? 0u
                 : NativeMethods.SWP_NOZORDER;
+            // Apply the style change at the client's current size. ShowOnly or
+            // ParkWindowOffScreen will place it after the host state is registered.
             NativeMethods.SetWindowPos(
                 handle,
                 NativeMethods.HWND_TOP,
                 0,
                 0,
-                1,
-                1,
-                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
+                0,
+                0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
+                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
             // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
             // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
@@ -843,3 +846,4 @@ public sealed class ExternalWindowHost : HwndHost
         bool DisableMaximize,
         bool CenterInHost = false);
 }
+
