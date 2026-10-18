@@ -3,7 +3,7 @@ name: JNest v1.0.3 final release
 on:
   push:
     branches:
-      - release/v1.0.3-final-exit-dialog-polish
+      - release/v1.0.3-exit-dialog-final
   workflow_dispatch:
 
 permissions:
