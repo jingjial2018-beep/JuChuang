@@ -216,8 +216,7 @@ public partial class MainWindow
             var exitTask = ExitBatchService.RunAsync(
                 validated.Select(process => (IExitProcessTarget)new SystemExitProcessTarget(process)).ToArray(),
                 TimeSpan.FromSeconds(3));
-            if (await Task.WhenAny(exitTask, Task.Delay(TimeSpan.FromSeconds(5))) != exitTask)
-                ShowTemporaryStatus("系统仍在处理客户端退出请求，请稍候…", TimeSpan.FromHours(1));
+            // ExitBatchService now bounds both the native request and confirmation phases.
             var results = await exitTask;
             foreach (var result in results)
             {
@@ -237,7 +236,7 @@ public partial class MainWindow
             ClearTemporaryStatus();
             ShowExitResults($"共 {targets.Length} 个进程，已确认退出 {confirmed} 个。\n"
                 + string.Join("\n", lines)
-                + "\nJNest 将保持运行，请检查未退出的客户端。");
+                + "\nJNest 将保持运行。请求未确认的进程可能仍在完成退出，请先检查状态再重试。");
             return false;
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
@@ -252,6 +251,7 @@ public partial class MainWindow
         }
         finally
         {
+            ClearTemporaryStatus();
             _exitingClientProcessIds.Clear();
             foreach (var process in validated) process.Dispose();
         }
