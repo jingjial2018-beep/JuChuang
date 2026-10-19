@@ -1,4 +1,4 @@
-name: v1.0.3 stability repair validation
+name: v1.0.4 Beta stability validation
 on:
   push:
     branches:
@@ -30,11 +30,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\out\selfcontained
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path .\out\framework\* -DestinationPath .\JNest-v1.0.3-stability-beta.1-FrameworkDependent-win-x64.zip
-          Compress-Archive -Path .\out\selfcontained\* -DestinationPath .\JNest-v1.0.3-stability-beta.1-SelfContained-win-x64.zip
+          Compress-Archive -Path .\out\framework\* -DestinationPath .\JNest-v1.0.4-beta.1-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path .\out\selfcontained\* -DestinationPath .\JNest-v1.0.4-beta.1-SelfContained-win-x64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: JNest-v1.0.3-stability-beta.1-${{ github.sha }}
-          path: JNest-v1.0.3-stability-beta.1-*.zip
+          name: JNest-v1.0.4-beta.1-${{ github.sha }}
+          path: JNest-v1.0.4-beta.1-*.zip
           if-no-files-found: error
           retention-days: 7
