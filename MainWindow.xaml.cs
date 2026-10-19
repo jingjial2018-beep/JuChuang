@@ -2252,9 +2252,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ShowTemporaryStatus($"账号名称已更新为“{entry.DisplayName}”。");
     }
 
-    private void CloseEntry_Click(object sender, RoutedEventArgs e)
+    private bool _clientExitInProgress;
+
+    private async void CloseEntry_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
+        if (_clientExitInProgress) return;
+
         var entry = sender switch
         {
             Button { CommandParameter: ClientWindowEntry buttonEntry } => buttonEntry,
@@ -2296,6 +2300,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        _clientExitInProgress = true;
         try
         {
             using var process = Process.GetProcessById(pid);
@@ -2309,10 +2314,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // Only terminate this PID; do not kill other independent client processes.
             process.Kill(entireProcessTree: false);
             ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
+            using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                ReconnectDiagnostics.Write($"sidebar exit awaiting termination pid={pid}");
+                ShowTemporaryStatus("已请求结束客户端，正在等待系统完成退出。", TimeSpan.FromSeconds(8));
+                return;
+            }
             _closedClientRecovery.RemoveAll(record => record.Pid == pid);
             foreach (var associated in Entries.Where(other => other.ProcessId == pid).ToArray())
                 RemoveEntry(associated);
-            ShowTemporaryStatus($"已请求退出 {entry.DisplayName}（PID {pid}）。");
+            ShowTemporaryStatus($"已退出 {entry.DisplayName}。");
         }
         catch (Exception exception) when (exception is InvalidOperationException
             or System.ComponentModel.Win32Exception or System.UnauthorizedAccessException)
@@ -2320,6 +2336,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReconnectDiagnostics.Write($"sidebar exit failed pid={pid} error={exception.GetType().Name}");
             ShowTemporaryStatus("无法结束该客户端进程，已保留列表项；请检查权限。",
                 TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            _clientExitInProgress = false;
         }
     }
 
