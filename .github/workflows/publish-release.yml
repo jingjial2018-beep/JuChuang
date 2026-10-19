@@ -47,6 +47,16 @@ jobs:
           dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
           dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
 
+      - name: Run BadgeProbe
+        shell: pwsh
+        run: |
+          dotnet restore .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Restore win-x64 publish assets
         run: dotnet restore .\JuChuang.csproj -r win-x64
 
