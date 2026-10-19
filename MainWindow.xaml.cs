@@ -2365,10 +2365,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             catch (OperationCanceledException)
             {
-                ReconnectDiagnostics.Write($"sidebar exit awaiting termination pid={pid}");
+                ReconnectDiagnostics.Write($"sidebar exit timeout pid={pid} confirmed=false");
                 ShowTemporaryStatus("进程尚未确认退出，账号状态将由自动扫描继续核对。", TimeSpan.FromSeconds(8));
                 return;
             }
+            ReconnectDiagnostics.Write($"sidebar exit confirmed pid={pid}");
             _closedClientRecovery.RemoveAll(record => record.Pid == pid);
             foreach (var associated in Entries.Where(other => other.ProcessId == pid).ToArray())
                 RemoveEntry(associated);
