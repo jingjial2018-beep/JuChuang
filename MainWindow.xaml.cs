@@ -363,6 +363,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (_clientExitInProgress)
+        {
+            e.Cancel = true;
+            ShowTemporaryStatus("客户端正在退出，请稍后再关闭 JNest。");
+            return;
+        }
         if (!_exitChoiceApproved && WindowHost is not null && _scanTimer is not null)
         {
             var choice = ShowExitChoice();
