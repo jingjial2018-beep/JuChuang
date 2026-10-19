@@ -74,33 +74,38 @@ Run("Exit results distinguish failure and unconfirmed state", () =>
         "timeout label is wrong");
     Assert(ExitResultPresentation.Status(new ExitProcessResult(4, true, false, "Wait failed")) == "确认失败",
         "confirmation failure label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(5, false, false, "RequestTimeout")).StartsWith("请求未确认"),
+        "native request timeout must not be described as a definite failure");
 });
 
-Run("Blocked OS request keeps batch pending and other requests proceed", () =>
+Run("Blocked OS request returns an uncertain result by deadline while other requests proceed", () =>
 {
     using var entered = new ManualResetEventSlim(false);
     using var release = new ManualResetEventSlim(false);
-    var secondRequested = new ManualResetEventSlim(false);
+    using var otherRequested = new ManualResetEventSlim(false);
     var first = new FakeExitTarget(701, () =>
     {
         entered.Set();
         release.Wait(TimeSpan.FromSeconds(5));
-    }, () => Task.FromResult(true));
-    var second = new FakeExitTarget(702, () => secondRequested.Set(), () => Task.FromResult(true));
-    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromSeconds(1));
+    }, () => throw new InvalidOperationException("must not wait on a pending request"));
+    var second = new FakeExitTarget(702, () => otherRequested.Set(), () => Task.FromResult(true));
+    var timer = Stopwatch.StartNew();
+    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromMilliseconds(300));
     try
     {
         Assert(entered.Wait(TimeSpan.FromSeconds(2)), "blocked request did not start");
-        Assert(secondRequested.Wait(TimeSpan.FromSeconds(2)), "another request was blocked");
-        Assert(!task.IsCompleted, "batch reported completion before OS request returned");
+        Assert(otherRequested.Wait(TimeSpan.FromSeconds(2)), "other request did not start");
+        var results = task.GetAwaiter().GetResult();
+        Assert(timer.Elapsed < TimeSpan.FromSeconds(3), "batch waited indefinitely for a native request");
+        Assert(results.Count == 2 && !results[0].Requested && !results[0].Confirmed
+            && results[0].Error == "RequestTimeout", "pending request must be uncertain");
+        Assert(results[1].Requested && results[1].Confirmed,
+            "other process must complete despite a blocked request");
     }
     finally
     {
         release.Set();
-        secondRequested.Dispose();
     }
-    Assert(task.GetAwaiter().GetResult().All(result => result.Confirmed),
-        "requests did not confirm after blocked request returned");
 });
 
 Run("Exit batch deduplicates a shared process", () =>
