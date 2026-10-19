@@ -151,6 +151,13 @@ public partial class MainWindow
 
     private bool _allExitInProgress;
     private readonly HashSet<int> _exitingClientProcessIds = [];
+    private readonly Dictionary<int, int> _processExitVersions = [];
+
+    private int GetProcessExitVersion(int processId)
+        => _processExitVersions.GetValueOrDefault(processId);
+
+    private void MarkProcessExitRequested(int processId)
+        => _processExitVersions[processId] = GetProcessExitVersion(processId) + 1;
 
     private bool IsProcessExiting(int processId)
         => _allExitInProgress || processId == _exitingClientProcessId
@@ -180,7 +187,10 @@ public partial class MainWindow
                 validated.Add(process);
             }
             foreach (var process in validated)
+            {
                 _exitingClientProcessIds.Add(process.Id);
+                MarkProcessExitRequested(process.Id);
+            }
             var results = await ExitBatchService.RunAsync(
                 validated.Select(process => (IExitProcessTarget)new SystemExitProcessTarget(process)).ToArray(),
                 TimeSpan.FromSeconds(3));

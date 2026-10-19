@@ -1920,10 +1920,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private bool IsCurrentAccountResolution(
         ClientWindowEntry entry, int processId, int accountGeneration,
-        IntPtr windowHandle, long? processStartTicks, long requestToken)
+        IntPtr windowHandle, long? processStartTicks, long requestToken, int exitVersion)
         => !_isClosing
            && Entries.Contains(entry)
            && !IsProcessExiting(processId)
+           && GetProcessExitVersion(processId) == exitVersion
            && entry.ProcessId == processId
            && entry.AccountGeneration == accountGeneration
            && entry.Handle == windowHandle
@@ -1940,6 +1941,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var processId = entry.ProcessId;
         if (_isClosing || IsProcessExiting(processId)) return;
         var accountGeneration = entry.AccountGeneration;
+        var exitVersion = GetProcessExitVersion(processId);
         var windowHandle = entry.Handle;
         var processStartTicks = TryGetProcessStartUtcTicks(processId);
         if (entry.SessionState != ClientSessionState.Main)
@@ -1982,7 +1984,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await Task.Delay(300);
             if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
-                    windowHandle, processStartTicks, resolutionToken))
+                    windowHandle, processStartTicks, resolutionToken, exitVersion))
             {
                 return;
             }
@@ -1992,7 +1994,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             try
             {
                 if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
-                        windowHandle, processStartTicks, resolutionToken))
+                        windowHandle, processStartTicks, resolutionToken, exitVersion))
                 {
                     return;
                 }
@@ -2044,7 +2046,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (resolution.Result.Profile is null || resolution.Account is null)
             {
                 if (IsCurrentAccountResolution(entry, processId, accountGeneration,
-                        windowHandle, processStartTicks, resolutionToken))
+                        windowHandle, processStartTicks, resolutionToken, exitVersion))
                 {
                     ApplyProfileDiagnostic(
                         entry,
@@ -2056,7 +2058,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
-                    windowHandle, processStartTicks, resolutionToken))
+                    windowHandle, processStartTicks, resolutionToken, exitVersion))
             {
                 return;
             }
@@ -2150,7 +2152,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch (Exception ex)
         {
             if (IsCurrentAccountResolution(entry, processId, accountGeneration,
-                    windowHandle, processStartTicks, resolutionToken))
+                    windowHandle, processStartTicks, resolutionToken, exitVersion))
             {
                 entry.ProfileState = AccountProfileState.Error;
                 entry.ProfileDiagnosticCode = "ProfileReadException";
@@ -2353,6 +2355,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             // Only terminate this PID; do not kill other independent client processes.
+            MarkProcessExitRequested(pid);
             process.Kill(entireProcessTree: false);
             ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
             using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));

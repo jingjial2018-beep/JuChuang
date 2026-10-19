@@ -30,7 +30,7 @@ public static class ExitBatchService
             catch (Exception exception)
             {
                 results[index] = Task.FromResult(new ExitProcessResult(
-                    target.ProcessId, false, false, exception.GetType().Name + ": " + exception.Message)));
+                    target.ProcessId, false, false, exception.GetType().Name + ": " + exception.Message));
             }
         }
         foreach (var (index, target) in requested)

@@ -234,6 +234,7 @@ public partial class MainWindow
         var scannedHandle = entry.Handle;
         var scannedProcessId = entry.ProcessId;
         var scannedGeneration = entry.AccountGeneration;
+        var scannedExitVersion = GetProcessExitVersion(scannedProcessId);
 
         var result = await Task.Run(() => _badgeDetector.Detect(scannedHandle, entry.Kind))
             .ConfigureAwait(true);
@@ -243,6 +244,7 @@ public partial class MainWindow
             || !Entries.Contains(entry) || entry.Handle != scannedHandle
             || entry.ProcessId != scannedProcessId
             || entry.AccountGeneration != scannedGeneration
+            || GetProcessExitVersion(scannedProcessId) != scannedExitVersion
             || !NativeMethods.IsWindow(scannedHandle)) return;
 
         if (result is null)
