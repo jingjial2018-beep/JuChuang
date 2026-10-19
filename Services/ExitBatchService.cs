@@ -21,7 +21,15 @@ public static class ExitBatchService
         // WPF Closing handler can yield before any termination request finishes.
         var uniqueTargets = targets.DistinctBy(target => target.ProcessId).ToArray();
         var requests = uniqueTargets.Select(target => Task.Run(() => RequestExit(target))).ToArray();
-        var requestResults = await Task.WhenAll(requests);
+        // A blocking native termination request must not hold the whole batch indefinitely.
+        // Preserve a separate Unknown/RequestTimeout result: its worker might finish later.
+        var requestResults = await Task.WhenAll(requests.Select(async (request, index) =>
+        {
+            var completed = await Task.WhenAny(request, Task.Delay(timeout));
+            return completed == request
+                ? await request
+                : new ExitProcessResult(uniqueTargets[index].ProcessId, false, false, "RequestTimeout");
+        }));
         var confirmations = uniqueTargets.Select((target, index) =>
             requestResults[index] is { } failure
                 ? Task.FromResult(failure)
