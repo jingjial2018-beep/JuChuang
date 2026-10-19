@@ -74,8 +74,8 @@ public partial class MainWindow
     {
         var button = new Button
         {
-            Content = label, Width = 116,
-            Height = 38, Margin = new Thickness(0),
+            Content = label, Width = 112,
+            Height = 40, Margin = new Thickness(0),
             Background = filled ? new SolidColorBrush(Color.FromRgb(255, 77, 79)) : new SolidColorBrush(destructive ? Colors.White : Color.FromRgb(248, 249, 251)),
             Foreground = filled ? Brushes.White : new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(38, 48, 65)),
             BorderBrush = new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(217, 222, 229)),
@@ -118,11 +118,12 @@ public partial class MainWindow
             $"确定退出“{name}”吗？\n将结束 {name} 进程并退出登录，\n未保存的内容可能丢失。"
             + (affected > 1 ? $"\n该进程关联的 {affected} 个账号项都会退出。" : ""), showWarning: false);
         var result = false;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        var stacked = ExitDialogLayout.StackButtons(dialog.Width);
+        var buttons = new StackPanel { Orientation = stacked ? Orientation.Vertical : Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
         var reconsider = CreateExitButton("我再想想");
-        reconsider.Margin = new Thickness(0, 0, 16, 0);
+        reconsider.Margin = stacked ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 16, 0);
         reconsider.Click += (_, _) => dialog.Close();
         var confirm = CreateExitButton("确认退出", destructive: true, filled: true);
         reconsider.Width = confirm.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
@@ -138,19 +139,33 @@ public partial class MainWindow
         var dialog = CreateExitDialog("退出 JNest",
             "请选择退出方式。\n仅退出 JNest：恢复客户端独立窗口并保持运行。\n全部退出：结束当前管理的微信与 WhatsApp 进程。", showWarning: false);
         var result = ExitChoice.Cancel;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        var stacked = ExitDialogLayout.StackButtons(dialog.Width);
+        var buttons = new StackPanel { Orientation = stacked ? Orientation.Vertical : Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
         var jnest = CreateExitButton("仅退出 JNest");
         var all = CreateExitButton("全部退出", destructive: true);
         jnest.Width = all.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
-        all.Margin = new Thickness(16, 0, 0, 0);
+        all.Margin = stacked ? new Thickness(0, 8, 0, 0) : new Thickness(16, 0, 0, 0);
         jnest.Click += (_, _) => { result = ExitChoice.JNestOnly; dialog.Close(); };
         // The exit-choice dialog itself is the confirmation; do not open another prompt.
         all.Click += (_, _) => { result = ExitChoice.All; dialog.Close(); };
         buttons.Children.Add(jnest); buttons.Children.Add(all);
         ShowHostedModalDialog(dialog);
         return result;
+    }
+
+    private void ShowExitResults(string message)
+    {
+        var dialog = CreateExitDialog("全部退出未完成", message);
+        var buttons = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        ((DockPanel)dialog.Content).Children.Insert(0, buttons);
+        var confirm = CreateExitButton("确定");
+        confirm.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
+        confirm.Click += (_, _) => dialog.Close();
+        buttons.Children.Add(confirm);
+        ShowHostedModalDialog(dialog);
     }
 
     private bool _allExitInProgress;
@@ -170,8 +185,11 @@ public partial class MainWindow
     private async Task<bool> TryExitAllHostedClientsAsync()
     {
         // Validate the entire set before terminating any PID: never infer ownership from PID alone.
-        var targets = Entries.Where(e => e.IsAttached && e.ProcessId > 0)
-            .GroupBy(e => e.ProcessId).Select(group => group.First()).ToArray();
+        var groups = Entries.Where(e => ExitTargetPolicy.IsManaged(e.IsAttached, e.IsManuallyDetached)
+                && e.ProcessId > 0)
+            .GroupBy(e => e.ProcessId).ToArray();
+        var targets = groups.Select(group => group.First()).ToArray();
+        ShowTemporaryStatus($"正在退出 {targets.Length} 个客户端进程…", TimeSpan.FromHours(1));
         var validated = new List<Process>();
         try
         {
@@ -180,13 +198,13 @@ public partial class MainWindow
                 if (!entry.ProcessStartUtcTicks.HasValue
                     || !WindowBelongsToProcess(entry.Handle, entry.ProcessId)
                     || TryGetProcessStartUtcTicks(entry.ProcessId) != entry.ProcessStartUtcTicks)
-                    throw new InvalidOperationException($"无法验证进程 PID {entry.ProcessId}");
+                    throw new InvalidOperationException($"无法验证“{entry.DisplayName}”（PID {entry.ProcessId}）");
                 var process = Process.GetProcessById(entry.ProcessId);
                 if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != entry.ProcessStartUtcTicks.Value
                     || !WindowBelongsToProcess(entry.Handle, entry.ProcessId))
                 {
                     process.Dispose();
-                    throw new InvalidOperationException($"进程状态已变化 PID {entry.ProcessId}");
+                    throw new InvalidOperationException($"“{entry.DisplayName}”进程状态已变化（PID {entry.ProcessId}）");
                 }
                 validated.Add(process);
             }
@@ -195,9 +213,12 @@ public partial class MainWindow
                 _exitingClientProcessIds.Add(process.Id);
                 MarkProcessExitRequested(process.Id);
             }
-            var results = await ExitBatchService.RunAsync(
+            var exitTask = ExitBatchService.RunAsync(
                 validated.Select(process => (IExitProcessTarget)new SystemExitProcessTarget(process)).ToArray(),
                 TimeSpan.FromSeconds(3));
+            if (await Task.WhenAny(exitTask, Task.Delay(TimeSpan.FromSeconds(5))) != exitTask)
+                ShowTemporaryStatus("系统仍在处理客户端退出请求，请稍候…", TimeSpan.FromHours(1));
+            var results = await exitTask;
             foreach (var result in results)
             {
                 ReconnectDiagnostics.Write($"exit all pid={result.ProcessId} requested={result.Requested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
@@ -206,15 +227,24 @@ public partial class MainWindow
             var confirmed = results.Count(result => result.Confirmed);
             ReconnectDiagnostics.Write($"exit all result total={targets.Length} requested={requested} confirmed={confirmed}");
             if (confirmed == targets.Length) return true;
-            ShowOwnedMessageBox(
-                $"全部退出未完成：共 {targets.Length} 个进程，已请求结束 {requested} 个，已确认退出 {confirmed} 个。\nJNest 将保持运行，请检查尚未退出的客户端。",
-                "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
+            var lines = groups.Select((group, index) =>
+            {
+                var result = results[index];
+                var names = string.Join("、", group.Select(entry => entry.DisplayName).Distinct());
+                var status = ExitResultPresentation.Status(result);
+                return $"{names}：{status}";
+            });
+            ClearTemporaryStatus();
+            ShowExitResults($"共 {targets.Length} 个进程，已确认退出 {confirmed} 个。\n"
+                + string.Join("\n", lines)
+                + "\nJNest 将保持运行，请检查未退出的客户端。");
             return false;
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
             or ArgumentException or System.UnauthorizedAccessException)
         {
             ReconnectDiagnostics.Write($"exit all validation failed total={targets.Length} error={ex.GetType().Name} {ex.Message}");
+            ClearTemporaryStatus();
             ShowOwnedMessageBox(
                 $"全部退出未完成：进程身份验证失败，未请求结束任何进程。\nJNest 将保持运行，请检查客户端状态。\n" + ex.Message,
                 "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);

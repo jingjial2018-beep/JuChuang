@@ -19,6 +19,10 @@ public static class ExitDialogLayout
         return new ExitDialogSize(width, height);
     }
 
+    public static bool StackButtons(double dialogWidth) => dialogWidth < 300;
+
     public static double ButtonWidth(double dialogWidth)
-        => Math.Max(1, Math.Min(116, (dialogWidth - 52) / 2));
+        => StackButtons(dialogWidth)
+            ? Math.Max(1, Math.Min(112, dialogWidth - 36))
+            : Math.Min(112, (dialogWidth - 52) / 2);
 }

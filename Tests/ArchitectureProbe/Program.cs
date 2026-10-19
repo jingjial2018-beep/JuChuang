@@ -57,6 +57,52 @@ Run("Exit request never blocks the caller thread", () =>
     Assert(task.GetAwaiter().GetResult().Single().Confirmed, "worker request did not complete");
 });
 
+Run("Managed exit target includes manually popped-out clients", () =>
+{
+    Assert(ExitTargetPolicy.IsManaged(true, false), "attached client omitted");
+    Assert(ExitTargetPolicy.IsManaged(false, true), "manually popped-out client omitted");
+    Assert(!ExitTargetPolicy.IsManaged(false, false), "unmanaged client included");
+});
+
+Run("Exit results distinguish failure and unconfirmed state", () =>
+{
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(1, true, true, null)) == "已退出",
+        "confirmed process label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(2, false, false, "Denied")) == "请求失败",
+        "request failure label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(3, true, false, "Timeout")) == "未确认退出",
+        "timeout label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(4, true, false, "Wait failed")) == "确认失败",
+        "confirmation failure label is wrong");
+});
+
+Run("Blocked OS request keeps batch pending and other requests proceed", () =>
+{
+    using var entered = new ManualResetEventSlim(false);
+    using var release = new ManualResetEventSlim(false);
+    var secondRequested = new ManualResetEventSlim(false);
+    var first = new FakeExitTarget(701, () =>
+    {
+        entered.Set();
+        release.Wait(TimeSpan.FromSeconds(5));
+    }, () => Task.FromResult(true));
+    var second = new FakeExitTarget(702, () => secondRequested.Set(), () => Task.FromResult(true));
+    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromSeconds(1));
+    try
+    {
+        Assert(entered.Wait(TimeSpan.FromSeconds(2)), "blocked request did not start");
+        Assert(secondRequested.Wait(TimeSpan.FromSeconds(2)), "another request was blocked");
+        Assert(!task.IsCompleted, "batch reported completion before OS request returned");
+    }
+    finally
+    {
+        release.Set();
+        secondRequested.Dispose();
+    }
+    Assert(task.GetAwaiter().GetResult().All(result => result.Confirmed),
+        "requests did not confirm after blocked request returned");
+});
+
 Run("Exit batch deduplicates a shared process", () =>
 {
     var requests = 0;
@@ -102,8 +148,9 @@ Run("Exit dialogs fit the owner monitor at multiple DPI scales", () =>
             "two exit buttons exceed dialog width");
     }
     var narrow = ExitDialogLayout.Calculate(400, 700, 2, 2);
-    Assert(narrow.Width <= 168 && ExitDialogLayout.ButtonWidth(narrow.Width) * 2 + 52 <= narrow.Width,
-        "narrow monitor must not clip exit buttons");
+    Assert(narrow.Width <= 168 && ExitDialogLayout.StackButtons(narrow.Width)
+        && ExitDialogLayout.ButtonWidth(narrow.Width) <= narrow.Width - 36,
+        "narrow monitor must stack buttons within dialog width");
 });
 
 Run("RM identifies owner for two live WeChat accounts", () =>

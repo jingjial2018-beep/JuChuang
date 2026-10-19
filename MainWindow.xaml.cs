@@ -2348,6 +2348,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _clientExitInProgress = true;
         _exitingClientProcessId = pid;
+        ShowTemporaryStatus($"正在退出 {entry.DisplayName}…", TimeSpan.FromHours(1));
         try
         {
             using var process = Process.GetProcessById(pid);
@@ -2360,7 +2361,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             // Only terminate this PID; do not kill other independent client processes.
             MarkProcessExitRequested(pid);
-            await Task.Run(() =>
+            var killTask = Task.Run(() =>
             {
                 // Recheck immediately before the worker issues Kill: a PID or HWND
                 // may have changed while the dispatcher was yielding.
@@ -2369,6 +2370,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     throw new InvalidOperationException("Client process identity changed before exit.");
                 process.Kill(entireProcessTree: false);
             });
+            if (await Task.WhenAny(killTask, Task.Delay(TimeSpan.FromSeconds(5))) != killTask)
+                ShowTemporaryStatus("系统仍在处理客户端退出请求，请稍候…", TimeSpan.FromHours(1));
+            await killTask;
             ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
             using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
             try
