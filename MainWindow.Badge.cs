@@ -229,7 +229,7 @@ public partial class MainWindow
     /// </summary>
     private async Task ScanSingleAsync(ClientWindowEntry entry)
     {
-        if (!NativeMethods.IsWindow(entry.Handle)) return;
+        if (!NativeMethods.IsWindow(entry.Handle) || entry.ProcessId == _exitingClientProcessId) return;
 
         var scannedHandle = entry.Handle;
         var scannedProcessId = entry.ProcessId;
@@ -239,7 +239,8 @@ public partial class MainWindow
             .ConfigureAwait(true);
 
         // 截图期间账号可能退出、重新登录或重建 HWND。旧结果绝不能写入新账号。
-        if (!Entries.Contains(entry) || entry.Handle != scannedHandle
+        if (_isClosing || scannedProcessId == _exitingClientProcessId
+            || !Entries.Contains(entry) || entry.Handle != scannedHandle
             || entry.ProcessId != scannedProcessId
             || entry.AccountGeneration != scannedGeneration
             || !NativeMethods.IsWindow(scannedHandle)) return;
