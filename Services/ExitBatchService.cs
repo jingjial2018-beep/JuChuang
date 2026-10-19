@@ -74,3 +74,14 @@ internal sealed class SystemExitProcessTarget(Process process) : IExitProcessTar
         }
     }
 }
+
+public static class ExitClosePolicy
+{
+    // A successful all-client exit re-enters Window_Closing through Close().
+    // It must proceed to cleanup without showing another choice or starting exit again.
+    public static bool ShouldPromptForChoice(bool allCompleted, bool choiceApproved, bool initialized)
+        => !allCompleted && !choiceApproved && initialized;
+
+    public static bool ShouldBeginExitAll(bool allCompleted, bool exitAllSelected)
+        => !allCompleted && exitAllSelected;
+}

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using JuChuang.Models;
 using JuChuang.Services;
 
@@ -40,6 +41,69 @@ Run("Exit batch requests every process before awaiting any", () =>
         .GetAwaiter().GetResult();
     Assert(results.All(result => result.Confirmed),
         "all termination requests must precede confirmation waits");
+});
+
+Run("Exit request never blocks the caller thread", () =>
+{
+    using var gate = new ManualResetEventSlim(false);
+    var target = new FakeExitTarget(401,
+        () => gate.Wait(TimeSpan.FromSeconds(2)),
+        () => Task.FromResult(true));
+    var timer = Stopwatch.StartNew();
+    var task = ExitBatchService.RunAsync([target], TimeSpan.FromSeconds(3));
+    var elapsed = timer.Elapsed;
+    gate.Set();
+    Assert(elapsed < TimeSpan.FromSeconds(1), "Kill request blocked the UI caller");
+    Assert(task.GetAwaiter().GetResult().Single().Confirmed, "worker request did not complete");
+});
+
+Run("Exit batch deduplicates a shared process", () =>
+{
+    var requests = 0;
+    var first = new FakeExitTarget(501, () => requests++, () => Task.FromResult(true));
+    var duplicate = new FakeExitTarget(501, () => requests++, () => Task.FromResult(true));
+    var results = ExitBatchService.RunAsync([first, duplicate], TimeSpan.FromSeconds(1))
+        .GetAwaiter().GetResult();
+    Assert(requests == 1 && results.Count == 1 && results[0].Confirmed,
+        "shared PID must receive one termination request");
+});
+
+Run("Exit wait failure remains unconfirmed", () =>
+{
+    var target = new FakeExitTarget(601, () => { },
+        () => throw new InvalidOperationException("wait failed"));
+    var result = ExitBatchService.RunAsync([target], TimeSpan.FromSeconds(1))
+        .GetAwaiter().GetResult().Single();
+    Assert(result.Requested && !result.Confirmed && result.Error!.Contains("InvalidOperationException"),
+        "wait failure must not claim exit");
+});
+
+Run("Confirmed all-exit Close enters cleanup without another prompt", () =>
+{
+    Assert(ExitClosePolicy.ShouldPromptForChoice(false, false, true),
+        "initial close must ask for a choice");
+    Assert(ExitClosePolicy.ShouldBeginExitAll(false, true),
+        "all-exit choice must start the batch");
+    Assert(!ExitClosePolicy.ShouldPromptForChoice(true, true, true)
+        && !ExitClosePolicy.ShouldBeginExitAll(true, false),
+        "Close after confirmation must proceed directly to cleanup");
+    Assert(ExitClosePolicy.ShouldPromptForChoice(false, false, true),
+        "failed exit must allow a new choice");
+});
+
+Run("Exit dialogs fit the owner monitor at multiple DPI scales", () =>
+{
+    foreach (var scale in new[] { 1.0, 1.5, 2.0, 2.5 })
+    {
+        var size = ExitDialogLayout.Calculate(800, 600, scale, scale);
+        Assert(size.Width <= 800 / scale - 32 && size.Height <= 600 / scale - 32,
+            "dialog exceeds monitor work area");
+        Assert(ExitDialogLayout.ButtonWidth(size.Width) * 2 + 52 <= size.Width,
+            "two exit buttons exceed dialog width");
+    }
+    var narrow = ExitDialogLayout.Calculate(400, 700, 2, 2);
+    Assert(narrow.Width <= 168 && ExitDialogLayout.ButtonWidth(narrow.Width) * 2 + 52 <= narrow.Width,
+        "narrow monitor must not clip exit buttons");
 });
 
 Run("RM identifies owner for two live WeChat accounts", () =>

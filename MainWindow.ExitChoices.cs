@@ -18,8 +18,10 @@ public partial class MainWindow
     {
         var dpi = VisualTreeHelper.GetDpi(this);
         var screen = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle);
-        var width = Math.Min(420, Math.Max(300, screen.WorkingArea.Width / dpi.DpiScaleX - 32));
-        var height = Math.Min(212, Math.Max(150, screen.WorkingArea.Height / dpi.DpiScaleY - 32));
+        var layout = ExitDialogLayout.Calculate(
+            screen.WorkingArea.Width, screen.WorkingArea.Height, dpi.DpiScaleX, dpi.DpiScaleY);
+        var width = layout.Width;
+        var height = layout.Height;
         var dialog = new Window
         {
             Title = title, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -35,7 +37,7 @@ public partial class MainWindow
         var textGroup = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
-            MaxWidth = 365,
+            Width = Math.Min(365, Math.Max(1, width - 36)),
             Margin = new Thickness(0, 8, 0, 7)
         };
         var textScroll = new ScrollViewer
@@ -123,6 +125,7 @@ public partial class MainWindow
         reconsider.Margin = new Thickness(0, 0, 16, 0);
         reconsider.Click += (_, _) => dialog.Close();
         var confirm = CreateExitButton("确认退出", destructive: true, filled: true);
+        reconsider.Width = confirm.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
         confirm.Click += (_, _) => { result = true; dialog.Close(); };
         buttons.Children.Add(reconsider);
         buttons.Children.Add(confirm);
@@ -140,6 +143,7 @@ public partial class MainWindow
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
         var jnest = CreateExitButton("仅退出 JNest");
         var all = CreateExitButton("全部退出", destructive: true);
+        jnest.Width = all.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
         all.Margin = new Thickness(16, 0, 0, 0);
         jnest.Click += (_, _) => { result = ExitChoice.JNestOnly; dialog.Close(); };
         // The exit-choice dialog itself is the confirmation; do not open another prompt.

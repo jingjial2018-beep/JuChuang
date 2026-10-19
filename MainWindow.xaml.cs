@@ -41,6 +41,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isClosing;
     private bool _exitChoiceApproved;
     private bool _exitAllClients;
+    private bool _exitAllCompleted;
     private bool _isPreviewMode;
     private bool _isTitleBarInteraction;
     private bool _isSidebarCollapsed;
@@ -369,7 +370,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ShowTemporaryStatus("客户端正在退出，请稍后再关闭 JNest。");
             return;
         }
-        if (!_exitChoiceApproved && WindowHost is not null && _scanTimer is not null)
+        if (ExitClosePolicy.ShouldPromptForChoice(_exitAllCompleted, _exitChoiceApproved,
+                WindowHost is not null && _scanTimer is not null))
         {
             var choice = ShowExitChoice();
             if (choice == ExitChoice.Cancel) { e.Cancel = true; return; }
@@ -377,7 +379,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _exitChoiceApproved = true;
         }
 
-        if (_exitAllClients)
+        if (ExitClosePolicy.ShouldBeginExitAll(_exitAllCompleted, _exitAllClients))
         {
             e.Cancel = true;
             _allExitInProgress = true;
@@ -430,6 +432,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (await TryExitAllHostedClientsAsync())
             {
+                _exitAllCompleted = true;
                 _exitAllClients = false;
                 _allExitInProgress = false;
                 Close();
@@ -445,6 +448,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReconnectDiagnostics.Write($"exit all unexpected error={exception.GetType().Name} {exception.Message}");
             _exitChoiceApproved = false;
             _exitAllClients = false;
+            _exitAllCompleted = false;
             ShowOwnedMessageBox("全部退出未完成。JNest 将保持运行，请检查客户端状态。",
                 "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -2356,7 +2360,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             // Only terminate this PID; do not kill other independent client processes.
             MarkProcessExitRequested(pid);
-            process.Kill(entireProcessTree: false);
+            await Task.Run(() =>
+            {
+                // Recheck immediately before the worker issues Kill: a PID or HWND
+                // may have changed while the dispatcher was yielding.
+                if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != expectedStart.Value
+                    || !WindowBelongsToProcess(handle, pid))
+                    throw new InvalidOperationException("Client process identity changed before exit.");
+                process.Kill(entireProcessTree: false);
+            });
             ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
             using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
             try
