@@ -12,6 +12,7 @@ public static class ExitResultPresentation
 {
     public static string Status(ExitProcessResult result)
         => result.Confirmed ? "已退出"
+            : result.Error == "RequestTimeout" ? "请求未确认（可能仍在执行）"
             : !result.Requested ? "请求失败"
             : result.Error == "Timeout" ? "未确认退出"
             : "确认失败";
