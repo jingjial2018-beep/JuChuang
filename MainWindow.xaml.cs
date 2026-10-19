@@ -441,6 +441,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _exitChoiceApproved = false;
                 _exitAllClients = false;
+                _allExitInProgress = false;
+                // Reconcile cards with actual process/window state after partial termination.
+                // A pending native request remains unconfirmed; scanning must not report success.
+                await TryScanAndAttachAsync();
             }
         }
         catch (Exception exception)
