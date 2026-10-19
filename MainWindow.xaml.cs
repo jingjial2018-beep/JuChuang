@@ -2259,6 +2259,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private bool _clientExitInProgress;
+    private int _exitingClientProcessId;
 
     private async void CloseEntry_Click(object sender, RoutedEventArgs e)
     {
@@ -2307,6 +2308,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _clientExitInProgress = true;
+        _exitingClientProcessId = pid;
         try
         {
             using var process = Process.GetProcessById(pid);
@@ -2328,7 +2330,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             catch (OperationCanceledException)
             {
                 ReconnectDiagnostics.Write($"sidebar exit awaiting termination pid={pid}");
-                ShowTemporaryStatus("已请求结束客户端，正在等待系统完成退出。", TimeSpan.FromSeconds(8));
+                ShowTemporaryStatus("进程尚未确认退出，账号状态将由自动扫描继续核对。", TimeSpan.FromSeconds(8));
                 return;
             }
             _closedClientRecovery.RemoveAll(record => record.Pid == pid);
@@ -2345,6 +2347,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         finally
         {
+            _exitingClientProcessId = 0;
             _clientExitInProgress = false;
         }
     }
