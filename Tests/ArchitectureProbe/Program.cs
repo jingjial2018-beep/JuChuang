@@ -3,6 +3,45 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("Exit batch reports timeout without claiming completion", () =>
+{
+    var target = new FakeExitTarget(101, () => { }, () => Task.FromResult(false));
+    var result = ExitBatchService.RunAsync([target], TimeSpan.FromMilliseconds(10))
+        .GetAwaiter().GetResult().Single();
+    Assert(result.Requested && !result.Confirmed && result.Error == "Timeout",
+        "timed-out termination must remain unconfirmed");
+});
+
+Run("Exit batch continues after a partial request failure", () =>
+{
+    var requested = 0;
+    var failed = new FakeExitTarget(201,
+        () => throw new InvalidOperationException("denied"),
+        () => throw new InvalidOperationException("must not wait"));
+    var successful = new FakeExitTarget(202,
+        () => requested++,
+        () => Task.FromResult(requested == 1));
+    var results = ExitBatchService.RunAsync([failed, successful], TimeSpan.FromSeconds(1))
+        .GetAwaiter().GetResult();
+    Assert(results.Count == 2 && !results[0].Requested && !results[0].Confirmed,
+        "failed process must be reported separately");
+    Assert(results[1].Requested && results[1].Confirmed,
+        "another process must still be requested and confirmed");
+});
+
+Run("Exit batch requests every process before awaiting any", () =>
+{
+    var requests = 0;
+    var first = new FakeExitTarget(301, () => requests++,
+        () => Task.FromResult(requests == 2));
+    var second = new FakeExitTarget(302, () => requests++,
+        () => Task.FromResult(requests == 2));
+    var results = ExitBatchService.RunAsync([first, second], TimeSpan.FromSeconds(1))
+        .GetAwaiter().GetResult();
+    Assert(results.All(result => result.Confirmed),
+        "all termination requests must precede confirmation waits");
+});
+
 Run("RM identifies owner for two live WeChat accounts", () =>
 {
     var first = WeChatDatabaseOwnershipService.Decide(["A"], 1, 0, 0);
@@ -501,5 +540,12 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+sealed class FakeExitTarget(int processId, Action request, Func<Task<bool>> wait) : IExitProcessTarget
+{
+    public int ProcessId => processId;
+    public void RequestExit() => request();
+    public Task<bool> WaitForExitAsync(TimeSpan timeout) => wait();
 }
 

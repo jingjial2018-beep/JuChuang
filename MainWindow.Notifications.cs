@@ -276,7 +276,8 @@ public partial class MainWindow
 
     private void QueueClientActivityScan(ClientWindowEntry entry, string source)
     {
-        if (_isClosing || entry.Handle == IntPtr.Zero || !Entries.Contains(entry)) return;
+        if (_isClosing || IsProcessExiting(entry.ProcessId)
+            || entry.Handle == IntPtr.Zero || !Entries.Contains(entry)) return;
         var now = DateTime.UtcNow;
         if (_lastClientActivityScan.TryGetValue(entry, out var previous)
             && now - previous < ClientActivityDebounce
@@ -299,7 +300,7 @@ public partial class MainWindow
             try
             {
                 await Task.Delay(700);
-                if (_isClosing || !Entries.Contains(entry)
+                if (_isClosing || IsProcessExiting(processId) || !Entries.Contains(entry)
                     || entry.Handle != handle || entry.ProcessId != processId
                     || entry.AccountGeneration != accountGeneration
                     || !_activityRetryGeneration.TryGetValue(entry, out var currentGeneration)

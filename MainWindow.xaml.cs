@@ -363,7 +363,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (_clientExitInProgress)
+        if (_clientExitInProgress || _allExitInProgress)
         {
             e.Cancel = true;
             ShowTemporaryStatus("客户端正在退出，请稍后再关闭 JNest。");
@@ -377,11 +377,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _exitChoiceApproved = true;
         }
 
-        if (_exitAllClients && !TryExitAllHostedClients())
+        if (_exitAllClients)
         {
             e.Cancel = true;
-            _exitChoiceApproved = false;
-            _exitAllClients = false;
+            _allExitInProgress = true;
+            _ = CompleteExitAllAsync();
             return;
         }
 
@@ -422,6 +422,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReleaseJNestTaskbarIcon();
 
         WindowHost.DetachAll();
+    }
+
+    private async Task CompleteExitAllAsync()
+    {
+        try
+        {
+            if (await TryExitAllHostedClientsAsync())
+            {
+                _exitAllClients = false;
+                _allExitInProgress = false;
+                Close();
+            }
+            else
+            {
+                _exitChoiceApproved = false;
+                _exitAllClients = false;
+            }
+        }
+        catch (Exception exception)
+        {
+            ReconnectDiagnostics.Write($"exit all unexpected error={exception.GetType().Name} {exception.Message}");
+            _exitChoiceApproved = false;
+            _exitAllClients = false;
+            ShowOwnedMessageBox("全部退出未完成。JNest 将保持运行，请检查客户端状态。",
+                "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _allExitInProgress = false;
+        }
     }
 
     private async void ScanTimer_Tick(object? sender, EventArgs e)
@@ -764,6 +794,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task ScanAndAttachAsync(bool scanLockHeld = false)
     {
+        if (_allExitInProgress) return;
         if (!scanLockHeld && !await _scanLock.WaitAsync(0))
         {
             return;
@@ -847,7 +878,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return (Candidates: discoveredCandidates, Accounts: resolvedAccounts);
             });
 
-            if (_isClosing)
+            if (_isClosing || _allExitInProgress)
             {
                 return;
             }
@@ -1892,6 +1923,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         IntPtr windowHandle, long? processStartTicks, long requestToken)
         => !_isClosing
            && Entries.Contains(entry)
+           && !IsProcessExiting(processId)
            && entry.ProcessId == processId
            && entry.AccountGeneration == accountGeneration
            && entry.Handle == windowHandle
@@ -1906,6 +1938,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WeChatAccountIdentity? preferredAccount)
     {
         var processId = entry.ProcessId;
+        if (_isClosing || IsProcessExiting(processId)) return;
         var accountGeneration = entry.AccountGeneration;
         var windowHandle = entry.Handle;
         var processStartTicks = TryGetProcessStartUtcTicks(processId);

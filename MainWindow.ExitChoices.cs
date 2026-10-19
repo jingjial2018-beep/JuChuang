@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Input;
+using System.Windows.Interop;
 using JuChuang.Models;
 using JuChuang.Services;
 
@@ -15,28 +16,40 @@ public partial class MainWindow
 
     private Window CreateExitDialog(string title, string message, bool showWarning = true)
     {
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var screen = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle);
+        var width = Math.Min(420, Math.Max(300, screen.WorkingArea.Width / dpi.DpiScaleX - 32));
+        var height = Math.Min(212, Math.Max(150, screen.WorkingArea.Height / dpi.DpiScaleY - 32));
         var dialog = new Window
         {
             Title = title, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Width = 420, Height = 212, MinWidth = 420, MaxWidth = 420,
-            MinHeight = 212, MaxHeight = 212,
+            Width = width, Height = height, MinWidth = width, MaxWidth = width,
+            MinHeight = height, MaxHeight = height,
             ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
             Background = Brushes.White, FontFamily = FontFamily,
         };
         var root = new DockPanel { Margin = new Thickness(18, 15, 18, 14), LastChildFill = true };
         dialog.Content = root;
-        // Title centered; description lines share one left edge and the group is centered.
+        // Keep the button row visible while long names and translated text scroll.
         var lines = message.Split('\n', 2);
         var textGroup = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
+            MaxWidth = 365,
             Margin = new Thickness(0, 8, 0, 7)
         };
-        DockPanel.SetDock(textGroup, Dock.Top);
-        root.Children.Add(textGroup);
+        var textScroll = new ScrollViewer
+        {
+            Content = textGroup,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Focusable = false
+        };
+        root.Children.Add(textScroll);
         textGroup.Children.Add(new TextBlock
         {
             Text = lines[0], TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
             FontSize = 15, LineHeight = 23,
             Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56)),
             Margin = new Thickness(0, 0, 0, 7)
@@ -46,7 +59,7 @@ public partial class MainWindow
             textGroup.Children.Add(new TextBlock
             {
                 Text = lines[1], TextAlignment = TextAlignment.Left,
-                TextWrapping = TextWrapping.Wrap, MaxWidth = 365,
+                TextWrapping = TextWrapping.Wrap,
                 FontSize = 13.5, LineHeight = 22,
                 Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56))
             });
@@ -136,14 +149,19 @@ public partial class MainWindow
         return result;
     }
 
-    private bool TryExitAllHostedClients()
+    private bool _allExitInProgress;
+    private readonly HashSet<int> _exitingClientProcessIds = [];
+
+    private bool IsProcessExiting(int processId)
+        => _allExitInProgress || processId == _exitingClientProcessId
+           || _exitingClientProcessIds.Contains(processId);
+
+    private async Task<bool> TryExitAllHostedClientsAsync()
     {
         // Validate the entire set before terminating any PID: never infer ownership from PID alone.
         var targets = Entries.Where(e => e.IsAttached && e.ProcessId > 0)
             .GroupBy(e => e.ProcessId).Select(group => group.First()).ToArray();
         var validated = new List<Process>();
-        var requested = new List<int>();
-        var confirmed = new List<int>();
         try
         {
             foreach (var entry in targets)
@@ -162,27 +180,35 @@ public partial class MainWindow
                 validated.Add(process);
             }
             foreach (var process in validated)
+                _exitingClientProcessIds.Add(process.Id);
+            var results = await ExitBatchService.RunAsync(
+                validated.Select(process => (IExitProcessTarget)new SystemExitProcessTarget(process)).ToArray(),
+                TimeSpan.FromSeconds(3));
+            foreach (var result in results)
             {
-                process.Kill(entireProcessTree: false);
-                requested.Add(process.Id);
-                // Kill requests termination; record completion separately rather than assuming it.
-                if (process.WaitForExit(200))
-                    confirmed.Add(process.Id);
-                ReconnectDiagnostics.Write($"exit all pid={process.Id} exited={process.HasExited}");
+                ReconnectDiagnostics.Write($"exit all pid={result.ProcessId} requested={result.Requested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
             }
-            return true;
+            var requested = results.Count(result => result.Requested);
+            var confirmed = results.Count(result => result.Confirmed);
+            ReconnectDiagnostics.Write($"exit all result total={targets.Length} requested={requested} confirmed={confirmed}");
+            if (confirmed == targets.Length) return true;
+            ShowOwnedMessageBox(
+                $"全部退出未完成：共 {targets.Length} 个进程，已请求结束 {requested} 个，已确认退出 {confirmed} 个。\nJNest 将保持运行，请检查尚未退出的客户端。",
+                "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
             or ArgumentException or System.UnauthorizedAccessException)
         {
-            ReconnectDiagnostics.Write($"exit all stopped: requested={requested.Count} confirmed={confirmed.Count} total={targets.Length} error={ex.GetType().Name} {ex.Message}");
+            ReconnectDiagnostics.Write($"exit all validation failed total={targets.Length} error={ex.GetType().Name} {ex.Message}");
             ShowOwnedMessageBox(
-                $"全部退出未完成：共 {targets.Length} 个进程，已请求结束 {requested.Count} 个，已确认退出 {confirmed.Count} 个。\nJNest 将保持运行，请检查尚未退出的客户端。\n" + ex.Message,
+                $"全部退出未完成：进程身份验证失败，未请求结束任何进程。\nJNest 将保持运行，请检查客户端状态。\n" + ex.Message,
                 "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
         finally
         {
+            _exitingClientProcessIds.Clear();
             foreach (var process in validated) process.Dispose();
         }
     }
