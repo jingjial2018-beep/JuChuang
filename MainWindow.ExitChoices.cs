@@ -59,8 +59,8 @@ public partial class MainWindow
     {
         var button = new Button
         {
-            Content = label, Width = 112,
-            Height = 40, Margin = new Thickness(0),
+            Content = label, Width = 116,
+            Height = 38, Margin = new Thickness(0),
             Background = filled ? new SolidColorBrush(Color.FromRgb(255, 77, 79)) : new SolidColorBrush(destructive ? Colors.White : Color.FromRgb(248, 249, 251)),
             Foreground = filled ? Brushes.White : new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(38, 48, 65)),
             BorderBrush = new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(217, 222, 229)),
@@ -107,7 +107,7 @@ public partial class MainWindow
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
         var reconsider = CreateExitButton("我再想想");
-        reconsider.Margin = new Thickness(0, 0, 20, 0);
+        reconsider.Margin = new Thickness(0, 0, 16, 0);
         reconsider.Click += (_, _) => dialog.Close();
         var confirm = CreateExitButton("确认退出", destructive: true, filled: true);
         confirm.Click += (_, _) => { result = true; dialog.Close(); };
@@ -127,7 +127,7 @@ public partial class MainWindow
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
         var jnest = CreateExitButton("仅退出 JNest");
         var all = CreateExitButton("全部退出", destructive: true);
-        all.Margin = new Thickness(20, 0, 0, 0);
+        all.Margin = new Thickness(16, 0, 0, 0);
         jnest.Click += (_, _) => { result = ExitChoice.JNestOnly; dialog.Close(); };
         // The exit-choice dialog itself is the confirmation; do not open another prompt.
         all.Click += (_, _) => { result = ExitChoice.All; dialog.Close(); };
@@ -142,6 +142,8 @@ public partial class MainWindow
         var targets = Entries.Where(e => e.IsAttached && e.ProcessId > 0)
             .GroupBy(e => e.ProcessId).Select(group => group.First()).ToArray();
         var validated = new List<Process>();
+        var requested = new List<int>();
+        var confirmed = new List<int>();
         try
         {
             foreach (var entry in targets)
@@ -162,16 +164,20 @@ public partial class MainWindow
             foreach (var process in validated)
             {
                 process.Kill(entireProcessTree: false);
-                ReconnectDiagnostics.Write($"exit all requested pid={process.Id}");
+                requested.Add(process.Id);
+                // Kill requests termination; record completion separately rather than assuming it.
+                if (process.WaitForExit(200))
+                    confirmed.Add(process.Id);
+                ReconnectDiagnostics.Write($"exit all pid={process.Id} exited={process.HasExited}");
             }
             return true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
             or ArgumentException or System.UnauthorizedAccessException)
         {
-            ReconnectDiagnostics.Write($"exit all stopped: {ex.GetType().Name} {ex.Message}");
+            ReconnectDiagnostics.Write($"exit all stopped: requested={requested.Count} confirmed={confirmed.Count} total={targets.Length} error={ex.GetType().Name} {ex.Message}");
             ShowOwnedMessageBox(
-                "部分客户端无法安全结束。JNest 将保持运行，请先检查客户端状态。\n" + ex.Message,
+                $"全部退出未完成：共 {targets.Length} 个进程，已请求结束 {requested.Count} 个，已确认退出 {confirmed.Count} 个。\nJNest 将保持运行，请检查尚未退出的客户端。\n" + ex.Message,
                 "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
