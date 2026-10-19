@@ -17,25 +17,30 @@ public static class ExitBatchService
         IReadOnlyList<IExitProcessTarget> targets, TimeSpan timeout)
     {
         // Issue every request before waiting so one slow process cannot delay the others.
-        var results = new Task<ExitProcessResult>[targets.Count];
-        var requested = new List<(int Index, IExitProcessTarget Target)>();
-        for (var index = 0; index < targets.Count; index++)
+        // Kill can block in the OS. Start all requests on worker threads so a
+        // WPF Closing handler can yield before any termination request finishes.
+        var uniqueTargets = targets.DistinctBy(target => target.ProcessId).ToArray();
+        var requests = uniqueTargets.Select(target => Task.Run(() => RequestExit(target))).ToArray();
+        var requestResults = await Task.WhenAll(requests);
+        var confirmations = uniqueTargets.Select((target, index) =>
+            requestResults[index] is { } failure
+                ? Task.FromResult(failure)
+                : ConfirmAsync(target, timeout));
+        return await Task.WhenAll(confirmations);
+    }
+
+    private static ExitProcessResult? RequestExit(IExitProcessTarget target)
+    {
+        try
         {
-            var target = targets[index];
-            try
-            {
-                target.RequestExit();
-                requested.Add((index, target));
-            }
-            catch (Exception exception)
-            {
-                results[index] = Task.FromResult(new ExitProcessResult(
-                    target.ProcessId, false, false, exception.GetType().Name + ": " + exception.Message));
-            }
+            target.RequestExit();
+            return null;
         }
-        foreach (var (index, target) in requested)
-            results[index] = ConfirmAsync(target, timeout);
-        return await Task.WhenAll(results);
+        catch (Exception exception)
+        {
+            return new ExitProcessResult(target.ProcessId, false, false,
+                exception.GetType().Name + ": " + exception.Message);
+        }
     }
 
     private static async Task<ExitProcessResult> ConfirmAsync(IExitProcessTarget target, TimeSpan timeout)
