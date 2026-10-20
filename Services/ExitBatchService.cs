@@ -67,11 +67,31 @@ public static class ExitBatchService
     }
 }
 
-internal sealed class SystemExitProcessTarget(Process process) : IExitProcessTarget
+internal sealed class SystemExitProcessTarget : IExitProcessTarget
 {
-    public int ProcessId => process.Id;
+    private readonly Process process;
+    private readonly int processId;
+    private readonly long processStartUtcTicks;
 
-    public void RequestExit() => process.Kill(entireProcessTree: false);
+    public SystemExitProcessTarget(Process process)
+    {
+        this.process = process;
+        processId = process.Id;
+        processStartUtcTicks = process.StartTime.ToUniversalTime().Ticks;
+    }
+
+    public int ProcessId => processId;
+
+    public void RequestExit()
+    {
+        // The caller may dispose its Process wrapper after a bounded request timeout.
+        // A late native Kill worker owns a separate wrapper and must verify process
+        // identity again, rather than accessing a disposed wrapper or a reused PID.
+        using var current = Process.GetProcessById(processId);
+        if (current.HasExited || current.StartTime.ToUniversalTime().Ticks != processStartUtcTicks)
+            throw new InvalidOperationException("Client process identity changed during exit.");
+        current.Kill(entireProcessTree: false);
+    }
 
     public async Task<bool> WaitForExitAsync(TimeSpan timeout)
     {
