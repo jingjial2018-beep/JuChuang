@@ -441,6 +441,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _exitChoiceApproved = false;
                 _exitAllClients = false;
+                _allExitInProgress = false;
+                await TryScanAndAttachAsync();
             }
         }
         catch (Exception exception)
