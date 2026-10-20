@@ -236,8 +236,10 @@
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="MenuItem">
                                                         <Border x:Name="MenuRow" Background="Transparent" CornerRadius="7" Margin="2,1">
-                                                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
-                                                                              HorizontalAlignment="Left" Margin="{TemplateBinding Padding}"/>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,8,0">
+                                                            <ContentPresenter ContentSource="Icon" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                                                        </StackPanel>
                                                         </Border>
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsHighlighted" Value="True">
@@ -261,21 +263,22 @@
                                             </Setter>
                                         </Style>
                                     </ContextMenu.Resources>
-                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"/>
-                                    <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"/>
+                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M3,10 A7,7 0 1 1 10,17 L5,19 L6,15 M10,6 V13 M6.5,9.5 H13.5"/></MenuItem.Icon></MenuItem>
+                                    <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M10,3 V17 M3,10 H17"/></MenuItem.Icon></MenuItem>
                                     <MenuItem x:Name="PopOutButton" IsEnabled="False" Click="PopOutButton_Click"
                                               ToolTip="将当前客户端恢复为桌面独立窗口">
+                                        <MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M3,4 H17 V9 H3 Z M3,11 H10 V17 H3 Z M12,11 H17 V17 H12 Z"/></MenuItem.Icon>
                                         <MenuItem.Header>
                                             <TextBlock x:Name="PopOutButtonText" Text="弹出窗口"/>
                                         </MenuItem.Header>
                                     </MenuItem>
-                                    <MenuItem Header="全部接入" Click="ReconnectAll_Click"/>
-                                    <MenuItem Header="扫描客户端" Click="ScanClients_Click"/>
+                                    <MenuItem Header="全部接入" Click="ReconnectAll_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M3,8 L10,3 L17,8 M3,11 H17 M3,15 H17"/></MenuItem.Icon></MenuItem>
+                                    <MenuItem Header="扫描客户端" Click="ScanClients_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M3,7 V3 H7 M13,3 H17 V7 M3,13 V17 H7 M13,17 H17 V13"/></MenuItem.Icon></MenuItem>
                                     <Separator/>
-                                    <MenuItem Header="设置" Click="Settings_Click"/>
-                                    <MenuItem Header="关于 JNest" Click="About_Click"/>
+                                    <MenuItem Header="设置" Click="Settings_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M10,3 L12,5 L15,4 L16,7 L18,9 L16,12 L17,15 L14,16 L12,18 L9,16 L6,17 L4,14 L5,11 L3,9 L5,6 L8,5 Z M10,7 A3,3 0 1 0 10,13 A3,3 0 1 0 10,7"/></MenuItem.Icon></MenuItem>
+                                    <MenuItem Header="关于 JNest" Click="About_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M10,3 A7,7 0 1 0 10,17 A7,7 0 1 0 10,3 M10,9 V14 M10,6 V7"/></MenuItem.Icon></MenuItem>
                                     <Separator/>
-                                    <MenuItem Header="退出 JNest" Click="Close_Click"/>
+                                    <MenuItem Header="退出 JNest" Click="Close_Click"><MenuItem.Icon><Path Width="20" Height="20" Stretch="Uniform" Stroke="#62676E" StrokeThickness="1.7" StrokeLineCap="Round" StrokeLineJoin="Round" Data="M10,3 H4 V17 H10 M10,10 H18 M14,6 L18,10 L14,14"/></MenuItem.Icon></MenuItem>
                                 </ContextMenu>
                             </Button.ContextMenu>
                             <Path Width="15" Height="15" Stroke="#344054" StrokeThickness="1.5"
