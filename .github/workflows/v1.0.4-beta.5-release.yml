@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - release/v1.0.4-beta.5-stability
+      - release/v1.0.4-beta.5-icons-stability
 
 permissions:
   contents: write
