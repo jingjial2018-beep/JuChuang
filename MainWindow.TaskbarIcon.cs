@@ -8,6 +8,7 @@ namespace JuChuang;
 public partial class MainWindow
 {
     private Icon? _taskbarLargeIcon;
+    private Icon? _titlebarSmallIcon;
 
     private void ApplyTaskbarLargeIcon()
     {
@@ -23,6 +24,15 @@ public partial class MainWindow
             SendMessage(hwnd, 0x0080, new IntPtr(1), icon.Handle);
             _taskbarLargeIcon?.Dispose();
             _taskbarLargeIcon = icon;
+            // Preserve the original small titlebar logo.
+            var original = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+            if (System.IO.File.Exists(original))
+            {
+                var small = new Icon(original, new System.Drawing.Size(16, 16));
+                SendMessage(hwnd, 0x0080, IntPtr.Zero, small.Handle);
+                _titlebarSmallIcon?.Dispose();
+                _titlebarSmallIcon = small;
+            }
         }
         catch (Exception)
         {
