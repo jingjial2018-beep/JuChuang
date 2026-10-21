@@ -37,7 +37,7 @@ public partial class MainWindow
         var textGroup = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
-            Width = Math.Min(centerDescription ? 340 : 365, Math.Max(1, width - (centerDescription ? 60 : 36))),
+            Width = Math.Min(centerDescription ? 300 : 320, Math.Max(1, width - (centerDescription ? 120 : 100))),
             Margin = new Thickness(0, 8, 0, 7)
         };
         var textScroll = new ScrollViewer
