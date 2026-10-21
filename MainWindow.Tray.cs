@@ -15,6 +15,7 @@ public partial class MainWindow
     private ContextMenu? _trayMenu;
     private MenuItem? _startupMenuItem;
     private TextBlock? _startupCheckmark;
+    private System.Drawing.Point _trayMenuOpenClickPoint;
 
     private void RefreshStartupMenuState()
     {
@@ -174,6 +175,7 @@ public partial class MainWindow
         topPx = Math.Max(area.Top, Math.Min(topPx, area.Bottom - heightPx));
         _trayMenu.HorizontalOffset = leftPx / dpiX;
         _trayMenu.VerticalOffset = topPx / dpiY;
+        _trayMenuOpenClickPoint = cursor;
         _trayMenu.IsOpen = true;
     }
 
