@@ -15,7 +15,7 @@ jobs:
       - name: Checkout beta7 source
         uses: actions/checkout@v4
         with:
-          ref: beta/v0.3.34-client-panel-rounded-beta7
+          ref: release/v1.0.4-beta.7-menu-icons-buttons
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -29,18 +29,18 @@ jobs:
       - name: Zip
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/framework/* -DestinationPath JNest-v0.3.34-beta7-FrameworkDependent-win-x64.zip
-          Compress-Archive -Path publish/selfcontained/* -DestinationPath JNest-v0.3.34-beta7-SelfContained-win-x64.zip
+          Compress-Archive -Path publish/framework/* -DestinationPath JNest-v1.0.4-beta.7-FrameworkDependent-win-x64.zip
+          Compress-Archive -Path publish/selfcontained/* -DestinationPath JNest-v1.0.4-beta.7-SelfContained-win-x64.zip
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JNest-v0.3.34-beta7-win-x64
-          path: JNest-v0.3.34-beta7-*.zip
+          name: JNest-v1.0.4-beta.7-win-x64
+          path: JNest-v1.0.4-beta.7-*.zip
       - name: Release beta7
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.3.34-beta7 *> $null
+          gh release view v1.0.4-beta.7 *> $null
           if ($LASTEXITCODE -eq 0) { throw 'beta7 release already exists; will not overwrite' }
-          gh release create v0.3.34-beta7 JNest-v0.3.34-beta7-FrameworkDependent-win-x64.zip JNest-v0.3.34-beta7-SelfContained-win-x64.zip --target beta/v0.3.34-client-panel-rounded-beta7 --title 'JNest v0.3.34-beta7' --prerelease --notes 'Right content panel 20 DIP rounded corners. Beta test only, unsigned Windows x64.'
+          gh release create v1.0.4-beta.7 JNest-v1.0.4-beta.7-FrameworkDependent-win-x64.zip JNest-v1.0.4-beta.7-SelfContained-win-x64.zip --target release/v1.0.4-beta.7-menu-icons-buttons --title 'JNest v1.0.4-beta.7' --prerelease --notes 'Menu icons, rounded Settings close button, and left-aligned quiet hours. Beta test only, unsigned Windows x64.'
