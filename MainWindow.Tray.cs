@@ -14,11 +14,12 @@ public partial class MainWindow
     private System.Drawing.Icon? _trayIcon;
     private ContextMenu? _trayMenu;
     private MenuItem? _startupMenuItem;
+    private TextBlock? _startupCheckmark;
 
     private void RefreshStartupMenuState()
     {
         if (_startupMenuItem is not null)
-            _startupMenuItem.IsChecked = StartupService.IsEnabled();
+            { var enabled = StartupService.IsEnabled(); _startupMenuItem.IsChecked = enabled; if (_startupCheckmark is not null) _startupCheckmark.Visibility = enabled ? Visibility.Visible : Visibility.Hidden; }
     }
 
     private void InitializeTrayIcon()
@@ -110,7 +111,18 @@ public partial class MainWindow
         show.Click += (_, _) => RestoreFromTray();
         menu.Items.Add(show);
 
-        var startup = new MenuItem { Header = "开机自启", IsCheckable = true,
+        var startupHeader = new Grid { Width = 110 };
+        var startupText = new TextBlock { Text = "开机自启", VerticalAlignment = VerticalAlignment.Center };
+        var checkmark = new TextBlock { Text = "√", Margin = new Thickness(18, 0, 0, 0),
+            FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Hidden };
+        var startupLayout = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(checkmark, Dock.Right);
+        startupLayout.Children.Add(checkmark);
+        startupLayout.Children.Add(startupText);
+        startupHeader.Children.Add(startupLayout);
+        _startupCheckmark = checkmark;
+        var startup = new MenuItem { Header = startupHeader, IsCheckable = true,
             IsChecked = StartupService.IsEnabled() };
         startup.Click += (_, _) =>
         {
@@ -118,6 +130,7 @@ public partial class MainWindow
             _settings.LaunchAtStartup = StartupService.IsEnabled();
             _settings.Save();
             startup.IsChecked = _settings.LaunchAtStartup;
+            checkmark.Visibility = startup.IsChecked ? Visibility.Visible : Visibility.Hidden;
         };
         _startupMenuItem = startup;
         menu.Items.Add(startup);
@@ -129,6 +142,7 @@ public partial class MainWindow
         exit.Click += (_, _) => Close();
         menu.Items.Add(exit);
         _trayMenu = menu;
+        RefreshStartupMenuState();
     }
 
     private void ShowTrayMenu()
