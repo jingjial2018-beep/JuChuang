@@ -1,4 +1,4 @@
-name: JNest v1.0.5-beta.5 tray close build and release
+name: JNest v1.0.5-beta.5 tray menu build and release
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
   publish:
     runs-on: windows-latest
     steps:
-      - name: Checkout v1.0.5 beta.4 tray-close source
+      - name: Checkout v1.0.5 beta.5 tray-menu source
         uses: actions/checkout@v4
         with:
           ref: release/v1.0.5-beta.5-tray-menu
