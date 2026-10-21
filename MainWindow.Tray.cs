@@ -147,7 +147,7 @@ public partial class MainWindow
         var heightPx = Math.Ceiling(_trayMenu.DesiredSize.Height * dpiY);
         var area = monitor.WorkingArea;
         var leftPx = Math.Max(area.Left, Math.Min(cursor.X - widthPx / 2, area.Right - widthPx));
-        var topPx = cursor.Y + 8;
+        double topPx = cursor.Y + 8.0;
         if (topPx + heightPx > area.Bottom)
             topPx = cursor.Y - heightPx - 8;
         topPx = Math.Max(area.Top, Math.Min(topPx, area.Bottom - heightPx));
