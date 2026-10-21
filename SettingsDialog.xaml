@@ -6,55 +6,121 @@
         Background="#F7F8FA" ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI, Segoe UI">
     <Window.Resources>
-        <Style TargetType="CheckBox">
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Style x:Key="SettingsSwitch" TargetType="ToggleButton">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent" MinHeight="34">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter Grid.Column="0" VerticalAlignment="Center"
+                                              Content="{TemplateBinding Content}"/>
+                            <Grid Grid.Column="1" Width="44" Height="24" VerticalAlignment="Center">
+                                <Border x:Name="Track" Background="#C8C8C8" CornerRadius="12"/>
+                                <Ellipse Width="18" Height="18" Fill="White"
+                                         HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,0,0,0">
+                                    <Ellipse.RenderTransform>
+                                        <TranslateTransform x:Name="ThumbTransform"/>
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                            </Grid>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#0067C0"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ThumbTransform"
+                                                         Storyboard.TargetProperty="X" To="20" Duration="0:0:0.16"/>
+                                    </Storyboard></BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ThumbTransform"
+                                                         Storyboard.TargetProperty="X" To="0" Duration="0:0:0.16"/>
+                                    </Storyboard></BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
-    <Grid Margin="28,22,28,18">
+    <Grid Margin="28,10,28,8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <TextBlock Text="设置" FontSize="21" FontWeight="SemiBold" Foreground="#202939"/>
-        <StackPanel Grid.Row="1" Margin="0,22,0,0">
+        <StackPanel Grid.Row="1" Margin="0,8,0,0">
             <TextBlock Text="常规" FontSize="13" FontWeight="SemiBold" Foreground="#667085"/>
-            <Grid Margin="0,14,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ToggleButton x:Name="StartupCheck" Style="{StaticResource SettingsSwitch}"
+                          Margin="0,3,0,0" Checked="StartupChanged" Unchecked="StartupChanged">
                 <StackPanel>
                     <TextBlock Text="开机自动启动" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="登录 Windows 后启动 JNest" FontSize="11.5" Foreground="#667085" Margin="0,4,0,0"/>
+                    <TextBlock Text="登录 Windows 后启动 JNest" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/>
                 </StackPanel>
-                <CheckBox x:Name="StartupCheck" Grid.Column="1" Checked="StartupChanged" Unchecked="StartupChanged"/>
-            </Grid>
+            </ToggleButton>
         </StackPanel>
-        <StackPanel Grid.Row="2" Margin="0,24,0,0">
+        <StackPanel Grid.Row="2" Margin="0,8,0,0">
             <TextBlock Text="消息通知" FontSize="13" FontWeight="SemiBold" Foreground="#667085"/>
-            <Grid Margin="0,16,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ToggleButton x:Name="FlashCheck" Style="{StaticResource SettingsSwitch}"
+                          Margin="0,3,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
                 <StackPanel><TextBlock Text="任务栏闪烁" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="有新消息时提示任务栏注意" FontSize="11.5" Foreground="#667085" Margin="0,3,0,0"/></StackPanel>
-                <CheckBox x:Name="FlashCheck" Grid.Column="1" Checked="NotificationChanged" Unchecked="NotificationChanged"/>
-            </Grid>
-            <Grid Margin="0,15,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="有新消息时提示任务栏注意" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
+            </ToggleButton>
+            <ToggleButton x:Name="ToastCheck" Style="{StaticResource SettingsSwitch}"
+                          Margin="0,3,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
                 <StackPanel><TextBlock Text="Windows Toast 通知" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="JNest 在后台或最小化时弹出系统通知" FontSize="11.5" Foreground="#667085" Margin="0,3,0,0"/></StackPanel>
-                <CheckBox x:Name="ToastCheck" Grid.Column="1" Checked="NotificationChanged" Unchecked="NotificationChanged"/>
-            </Grid>
-            <Grid Margin="0,15,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="JNest 在后台或最小化时弹出系统通知" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
+            </ToggleButton>
+            <ToggleButton x:Name="SoundCheck" Style="{StaticResource SettingsSwitch}"
+                          Margin="0,3,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
                 <StackPanel><TextBlock Text="新消息提示音" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="新消息到达时播放系统提示音" FontSize="11.5" Foreground="#667085" Margin="0,3,0,0"/></StackPanel>
-                <CheckBox x:Name="SoundCheck" Grid.Column="1" Checked="NotificationChanged" Unchecked="NotificationChanged"/>
-            </Grid>
+                    <TextBlock Text="新消息到达时播放系统提示音" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
+            </ToggleButton>
+            <Border Height="1" Background="#E3E7ED" Margin="0,4,0,4"/>
+            <ToggleButton x:Name="DndCheck" Style="{StaticResource SettingsSwitch}"
+                          Checked="DndChanged" Unchecked="DndChanged">
+                <StackPanel>
+                    <TextBlock Text="免打扰时段" FontSize="13" Foreground="#202939"/>
+                    <TextBlock Text="在设定时段内不弹出 Toast 通知和提示音" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/>
+                </StackPanel>
+            </ToggleButton>
+            <StackPanel x:Name="DndTimes" Orientation="Horizontal" HorizontalAlignment="Right"
+                        Margin="0,4,0,0" IsEnabled="{Binding IsChecked, ElementName=DndCheck}">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Opacity" Value="1"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=DndCheck}" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="开始" VerticalAlignment="Center" FontSize="11.5" Foreground="#667085" Margin="0,0,6,0"/>
+                <ComboBox x:Name="DndStartTime" Width="83" Height="25" DisplayMemberPath="Label"
+                          SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
+                <TextBlock Text="结束" VerticalAlignment="Center" FontSize="11.5" Foreground="#667085" Margin="14,0,6,0"/>
+                <ComboBox x:Name="DndEndTime" Width="83" Height="25" DisplayMemberPath="Label"
+                          SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
+            </StackPanel>
         </StackPanel>
-        <Grid Grid.Row="3" Margin="0,18,0,0">
+        <Grid Grid.Row="4" Margin="0,4,0,0">
             <TextBlock Text="设置即时生效并自动保存" FontSize="11.5" Foreground="#667085" VerticalAlignment="Center"/>
-            <Button Content="关闭" Width="90" Height="32" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
+            <Button Content="关闭" Width="90" Height="26" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
         </Grid>
     </Grid>
 </Window>

@@ -529,9 +529,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DiagnosticLogService.WriteAccountEvent(entry, "entry-removed");
         entry.SessionState = ClientSessionState.Exited;
 
-        if (entry.IsAttached)
+        if (entry.IsAttached && WindowBelongsToProcess(entry.Handle, entry.ProcessId))
         {
             WindowHost.DetachWindow(entry.Handle, bringToFront: false);
+        }
+        else if (entry.IsAttached)
+        {
+            WindowHost.ForgetWindow(entry.Handle);
         }
 
         var wasSelected = ReferenceEquals(SelectedEntry, entry);
@@ -596,6 +600,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private static bool IsVerifiedClientWindow(ClientWindowEntry entry)
+        => WindowBelongsToProcess(entry.Handle, entry.ProcessId)
+           && (entry.ProcessStartUtcTicks is not { } expectedStart
+               || TryGetProcessStartUtcTicks(entry.ProcessId) == expectedStart);
+
+    private static bool IsVerifiedCandidate(WindowCandidate candidate)
+        => WindowBelongsToProcess(candidate.Handle, candidate.ProcessId)
+           && (candidate.ProcessStartUtcTicks is not { } expectedStart
+               || TryGetProcessStartUtcTicks(candidate.ProcessId) == expectedStart);
+
+    private static bool CanRebindProcess(ClientWindowEntry entry, WindowCandidate candidate)
+        => ClientWindowDiscovery.IsSameProcessInstance(entry, candidate)
+           && !IsVerifiedClientWindow(entry);
+
     private static ClientSessionState MapSessionState(ClientWindowRole role)
         => role switch
         {
@@ -610,6 +628,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         entry.Handle = candidate.Handle;
         entry.ProcessId = candidate.ProcessId;
+        if (candidate.ProcessStartUtcTicks.HasValue)
+            entry.ProcessStartUtcTicks = candidate.ProcessStartUtcTicks;
         entry.ProcessName = candidate.ProcessName;
         entry.WindowTitle = candidate.WindowTitle;
         entry.ClientVersion = candidate.ClientVersion;
@@ -1070,7 +1090,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             candidate.ClientVersion,
             MapSessionState(candidate.Role))
         {
-            ProcessStartUtcTicks = TryGetProcessStartUtcTicks(candidate.ProcessId)
+            ProcessStartUtcTicks = candidate.ProcessStartUtcTicks
         };
     }
 
@@ -1523,8 +1543,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void PopOutButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = SelectedEntry;
-        if (entry is null || entry.Handle == IntPtr.Zero || !NativeMethods.IsWindow(entry.Handle))
+        if (entry is null || !IsVerifiedClientWindow(entry))
         {
+            return;
+        }
+
+        if (!entry.IsAttached && entry.ProcessStartUtcTicks is null)
+        {
+            ShowTemporaryStatus("无法确认客户端进程启动时间，请重新扫描后再接入。", TimeSpan.FromSeconds(8));
             return;
         }
 
@@ -1580,9 +1606,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             try
             {
                 ReconnectDiagnostics.Write("recover begin");
-                RecoverClosedClientWindows();
                 attachedCount = await AttachAllDiscoveredClientsAsync();
-                ConsumeRecoveredClientRecords();
                 ReconnectDiagnostics.Write($"reconnect complete attached={attachedCount} selected=0x{SelectedEntry?.Handle.ToInt64() ?? 0:X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             }
             finally
@@ -1599,20 +1623,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private void ScanClients_Click(object sender, RoutedEventArgs e)
+    private async void ScanClients_Click(object sender, RoutedEventArgs e)
     {
-        if (_isPreviewMode)
+        if (_isPreviewMode || _allExitInProgress)
         {
             return;
         }
 
         try
         {
-            var hiddenClients = FindHiddenClosedClients();
-            ShowTemporaryStatus(hiddenClients.Count > 0
-                    ? $"扫描到隐藏主窗口：微信 {hiddenClients.Count(kind => kind == ClientKind.WeChat)} 个、WhatsApp {hiddenClients.Count(kind => kind == ClientKind.WhatsApp)} 个；点击“全部接入”恢复。"
-                    : "未发现此前关闭且仍存活的隐藏客户端主窗口。",
-                TimeSpan.FromSeconds(8));
+            ShowTemporaryStatus("正在扫描本地客户端…");
+            await _scanLock.WaitAsync();
+            (int DiscoveredCount, int NewCount) result;
+            try
+            {
+                result = await ScanClientsCoreAsync();
+            }
+            finally
+            {
+                _scanLock.Release();
+            }
+            if (_isClosing) return;
+            ShowTemporaryStatus(result.DiscoveredCount > 0
+                ? $"扫描完成，发现 {result.DiscoveredCount} 个客户端（新增 {result.NewCount} 个）"
+                : "未发现正在运行的客户端窗口");
         }
         catch (Exception exception)
         {
@@ -1621,23 +1655,133 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     /// <summary>
-    /// “全部接入”在显式恢复隐藏主窗后，把发现的窗口接入容器。
-    /// 调用方持有扫描锁，避免与后台扫描同时创建卡片。
+    /// 调用方持有扫描锁。只更新发现结果和账号状态，不嵌入或恢复客户端窗口。
     /// </summary>
-    private async Task<int> AttachAllDiscoveredClientsAsync()
+    private async Task<(int DiscoveredCount, int NewCount)> ScanClientsCoreAsync()
     {
-        _dismissedWindowHandles.Clear();
-        foreach (var entry in Entries)
+        if (_isClosing || _allExitInProgress) return (0, 0);
+
+        var selfTestTargetProcessId = _selfTestTargetProcessId;
+        var scanResult = await Task.Run(() =>
         {
-            entry.IsManuallyDetached = false;
+            var candidates = ClientWindowDiscovery.FindClientWindows(selfTestTargetProcessId);
+            var accounts = ClientMetadataService.ResolveWeChatAccounts(candidates);
+            return (Candidates: candidates, Accounts: accounts);
+        });
+
+        if (_isClosing || _allExitInProgress) return (0, 0);
+        var candidates = scanResult.Candidates.Where(IsVerifiedCandidate).ToArray();
+        var scanUtc = DateTime.UtcNow;
+        foreach (var entry in Entries.ToArray())
+        {
+            if (candidates.Any(candidate => candidate.Kind == entry.Kind
+                && candidate.ProcessId == entry.ProcessId
+                && (entry.Handle == candidate.Handle && IsVerifiedClientWindow(entry)
+                    || CanRebindProcess(entry, candidate))))
+                continue;
+
+            if (IsVerifiedClientWindow(entry))
+            {
+                entry.IsOnline = true;
+                entry.LastSeenUtc = scanUtc;
+                entry.WindowMissingSinceUtc = null;
+                entry.Status = entry.IsAttached ? "已接入" : "独立窗口";
+                continue;
+            }
+
+            if (entry.ProcessStartUtcTicks is { } knownStart
+                && TryGetProcessStartUtcTicks(entry.ProcessId) is { } currentStart
+                && knownStart != currentStart)
+            {
+                RemoveEntry(entry);
+                continue;
+            }
+
+            var processAlive = IsClientProcessAlive(entry.ProcessId);
+            entry.WindowMissingSinceUtc ??= scanUtc;
+            entry.IsOnline = processAlive;
+            entry.SessionState = processAlive
+                ? ClientSessionState.Rebinding
+                : ClientSessionState.Exited;
+            entry.Status = processAlive ? "窗口切换中" : "已离线";
         }
 
-        await ScanAndAttachAsync(scanLockHeld: true);
+        var newCount = 0;
+        foreach (var discoveredCandidate in candidates)
+        {
+            var candidate = discoveredCandidate;
+            var entry = Entries.FirstOrDefault(existing => existing.Kind == candidate.Kind
+                && existing.ProcessId == candidate.ProcessId
+                && (existing.Handle == candidate.Handle && IsVerifiedClientWindow(existing)
+                    || CanRebindProcess(existing, candidate)));
+            // Hosting may resize a confirmed chat window to login-sized dimensions.
+            // Keep the existing role unless its title or class identifies a login window.
+            if (entry is not null
+                && candidate.Kind == ClientKind.WeChat
+                && candidate.Role == ClientWindowRole.Login
+                && entry.SessionState == ClientSessionState.Main
+                && !candidate.WindowTitle.Contains("登录", StringComparison.OrdinalIgnoreCase)
+                && !candidate.WindowClass.Contains("WeChatLoginWndForPC", StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = candidate with { Role = ClientWindowRole.Main };
+            }
+            if (entry is null)
+            {
+                if (Entries.Any(existing => ClientWindowDiscovery.IsSameProcessInstance(existing, candidate)
+                    && IsVerifiedClientWindow(existing)))
+                    continue;
+
+                entry = CreateEntry(candidate);
+                entry.Status = "独立窗口";
+                Entries.Add(entry);
+                newCount++;
+            }
+            else
+            {
+                if (entry.Handle != candidate.Handle && entry.IsAttached)
+                {
+                    WindowHost.ForgetWindow(entry.Handle);
+                    entry.IsAttached = false;
+                }
+
+                PrepareEntryForCandidate(entry, candidate);
+                entry.Status = entry.IsAttached ? "已接入" : "独立窗口";
+            }
+
+            QueueOrApplyWeChatIdentity(entry, candidate, scanResult.Accounts);
+        }
+
+        if (newCount > 0) ApplySavedAccountOrder();
+        UpdateWindowCount();
+        if (SelectedEntry is { } selected)
+        {
+            CurrentStatusDot.Fill = selected.StatusBrush;
+            if (!IsVerifiedClientWindow(selected))
+                CurrentStatusText.Text = selected.IsOnline ? "窗口切换中" : "窗口已关闭";
+            else
+                RefreshSelectedProfileStatus(selected);
+        }
+
+        return (candidates.Length, newCount);
+    }
+
+    /// <summary>调用方持有扫描锁；仅“全部接入”执行窗口接入。</summary>
+    private async Task<int> AttachAllDiscoveredClientsAsync()
+    {
+        await ScanClientsCoreAsync();
+        if (_isClosing || _allExitInProgress) return 0;
 
         var attachedCount = 0;
-        foreach (var entry in Entries.Where(entry =>
-                     entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle)))
+        foreach (var entry in Entries.Where(IsVerifiedClientWindow))
         {
+            if (!entry.IsAttached && entry.ProcessStartUtcTicks is null)
+            {
+                entry.Status = "无法验证进程";
+                continue;
+            }
+
+            _dismissedWindowHandles.Remove(entry.Handle);
+            entry.IsManuallyDetached = false;
             if (entry.IsAttached)
             {
                 // 已接入的窗口跳过：避免 AttachWindow(makeActive:false) 把正在显示的
@@ -1760,9 +1904,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void UpdateWindowCount()
     {
-        var online = Entries.Count(entry =>
-            entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle));
-        WindowCountText.Text = $"已接入 {online} 个窗口";
+        var online = Entries.Count(IsVerifiedClientWindow);
+        var attached = Entries.Count(entry => entry.IsAttached && IsVerifiedClientWindow(entry));
+        WindowCountText.Text = $"发现 {online} 个窗口，已接入 {attached} 个";
     }
 
     private void LoadPreviewEntries()
@@ -2388,7 +2532,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
             ReconnectDiagnostics.Write($"sidebar exit confirmed pid={pid}");
-            _closedClientRecovery.RemoveAll(record => record.Pid == pid);
             foreach (var associated in Entries.Where(other => other.ProcessId == pid).ToArray())
                 RemoveEntry(associated);
             ShowTemporaryStatus($"已退出 {entry.DisplayName}。");

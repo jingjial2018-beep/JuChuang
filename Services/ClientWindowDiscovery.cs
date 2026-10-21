@@ -14,7 +14,8 @@ public sealed record WindowCandidate(
     ClientKind Kind,
     ClientWindowRole Role,
     long PixelArea,
-    string? ClientVersion = null);
+    string? ClientVersion = null,
+    long? ProcessStartUtcTicks = null);
 
 public static class ClientWindowDiscovery
 {
@@ -112,7 +113,8 @@ public static class ClientWindowDiscovery
                     kind,
                     ResolveWindowRole(kind, title, windowClass, rect.Width, rect.Height),
                     (long)rect.Width * rect.Height,
-                    TryReadClientVersion(processId, kind)));
+                    TryReadClientVersion(processId, kind),
+                    TryReadProcessStartUtcTicks(processId)));
             }
             catch
             {
@@ -138,6 +140,25 @@ public static class ClientWindowDiscovery
             .ThenBy(candidate => candidate.ProcessId)
             .ToArray();
     }
+
+    private static long? TryReadProcessStartUtcTicks(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.HasExited ? null : process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static bool IsSameProcessInstance(ClientWindowEntry entry, WindowCandidate candidate)
+        => entry.Kind == candidate.Kind
+           && entry.ProcessId == candidate.ProcessId
+           && entry.ProcessStartUtcTicks is { } knownStart
+           && candidate.ProcessStartUtcTicks == knownStart;
 
     internal static bool TryGetKind(string processName, string title, string windowClass, out ClientKind kind)
     {
