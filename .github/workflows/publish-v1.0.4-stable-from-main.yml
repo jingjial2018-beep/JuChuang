@@ -125,6 +125,5 @@ jobs:
               --repo "${{ github.repository }}" `
               --target "release/v1.0.4-final-localized-weekday" `
               --title "JNest v$version" `
-              
               --notes-file .\artifacts\release-notes.md
           }
