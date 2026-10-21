@@ -1,4 +1,4 @@
-name: JNest v1.0.4-beta.7 validation and release
+name: JNest v1.0.4-beta.7 UI validation and release
 
 on:
   workflow_dispatch:
