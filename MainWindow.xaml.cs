@@ -74,6 +74,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow()
     {
         InitializeComponent();
+        SourceInitialized += (_, _) => ApplyTaskbarLargeIcon();
+        Closed += (_, _) => _taskbarLargeIcon?.Dispose();
         DataContext = this;
         var commandLineArguments = Environment.GetCommandLineArgs();
         _isClientSelfTestMode = commandLineArguments
