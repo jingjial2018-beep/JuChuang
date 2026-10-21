@@ -23,6 +23,8 @@ public static class ExitDialogLayout
 
     public static double ButtonWidth(double dialogWidth)
         => StackButtons(dialogWidth)
-            ? Math.Max(1, Math.Min(112, dialogWidth - 36))
-            : Math.Min(112, (dialogWidth - 52) / 2);
+            ? Math.Max(1, Math.Min(104, dialogWidth - 36))
+            : Math.Min(104, (dialogWidth - 68) / 2);
+
+    public static double ButtonGap(double dialogWidth) => StackButtons(dialogWidth) ? 8 : 32;
 }
