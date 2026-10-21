@@ -60,7 +60,8 @@ public partial class MainWindow
         {
             textGroup.Children.Add(new TextBlock
             {
-                Text = lines[1], TextAlignment = centerDescription ? TextAlignment.Center : TextAlignment.Left,
+                Text = centerDescription ? lines[1].Replace("\n", "") : lines[1],
+                TextAlignment = centerDescription ? TextAlignment.Center : TextAlignment.Left,
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 13.5, LineHeight = 22,
                 Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56))
