@@ -38,7 +38,6 @@ try {
 } finally { $source.Dispose() }
 try {
     & (Join-Path $PSScriptRoot 'GenerateAppIcon.ps1') -InputPng $tempPath -OutputIco $outputPath
-    if($LASTEXITCODE -ne 0) { throw 'Taskbar icon generation failed' }
 } finally {
     Remove-Item $tempPath -ErrorAction SilentlyContinue
 }
