@@ -2624,6 +2624,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
 
+    // The titlebar X hides the manager; menu exit retains its confirmation.
+    private void CloseWindow_Click(object sender, RoutedEventArgs e) => HideToTray();
+
+    private void HideToTray()
+    {
+        if (_isClosing || _allExitInProgress || _clientExitInProgress) return;
+        WindowHost.HandleOwnerWindowStateChanged(true);
+        _clockTimer.Stop();
+        ShowInTaskbar = false;
+        Hide();
+    }
+
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     private void ToggleMaximize()
