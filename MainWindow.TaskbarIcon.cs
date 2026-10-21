@@ -25,10 +25,11 @@ public partial class MainWindow
             _taskbarLargeIcon?.Dispose();
             _taskbarLargeIcon = icon;
             // Preserve the original small titlebar logo.
-            var original = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-            if (System.IO.File.Exists(original))
+            var uri = new Uri("pack://application:,,,/Assets/app.ico");
+            using var resource = Application.GetResourceStream(uri)?.Stream;
+            if (resource is not null)
             {
-                var small = new Icon(original, new System.Drawing.Size(16, 16));
+                var small = new Icon(resource, new System.Drawing.Size(16, 16));
                 SendMessage(hwnd, 0x0080, IntPtr.Zero, small.Handle);
                 _titlebarSmallIcon?.Dispose();
                 _titlebarSmallIcon = small;
