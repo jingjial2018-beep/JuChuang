@@ -82,6 +82,8 @@ public partial class MainWindow
         border.AppendChild(host);
         template.VisualTree = border;
         menu.Template = template;
+        menu.Opened += (_, _) => BeginTrayMenuDismissTracking();
+        menu.Closed += (_, _) => EndTrayMenuDismissTracking();
 
         var style = new Style(typeof(MenuItem));
         style.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Microsoft YaHei UI")));
@@ -147,7 +149,7 @@ public partial class MainWindow
 
     private void ShowTrayMenu()
     {
-        if (_trayMenu is null) return;
+        if (_trayMenu is null || _trayMenu.IsOpen) return;
         RefreshStartupMenuState();
         // Anchor to the tray click, including overflow flyouts and top taskbars.
         // Use monitor bounds (not WorkingArea, which excludes a top taskbar).
@@ -177,6 +179,7 @@ public partial class MainWindow
 
     private void RestoreFromTray()
     {
+        if (_trayMenu is not null) _trayMenu.IsOpen = false;
         ShowInTaskbar = true;
         Show();
         if (WindowState == WindowState.Minimized)
