@@ -268,7 +268,7 @@
                                     <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.WhatsApp}"/></MenuItem.Icon></MenuItem>
                                     <MenuItem x:Name="PopOutButton" IsEnabled="False" Click="PopOutButton_Click"
                                               ToolTip="将当前客户端恢复为桌面独立窗口">
-                                        <MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.PopOut}"/></MenuItem.Icon>
+                                        <MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.PopOut}" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="1.15" ScaleY="1.15"/></Image.RenderTransform></Image></MenuItem.Icon>
                                         <MenuItem.Header>
                                             <TextBlock x:Name="PopOutButtonText" Text="弹出窗口"/>
                                         </MenuItem.Header>
