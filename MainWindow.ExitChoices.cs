@@ -14,7 +14,7 @@ public partial class MainWindow
 {
     private enum ExitChoice { Cancel, JNestOnly, All }
 
-    private Window CreateExitDialog(string title, string message, bool showWarning = true)
+    private Window CreateExitDialog(string title, string message, bool showWarning = true, bool centerDescription = false)
     {
         var dpi = VisualTreeHelper.GetDpi(this);
         var screen = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle);
@@ -37,7 +37,7 @@ public partial class MainWindow
         var textGroup = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
-            Width = Math.Min(365, Math.Max(1, width - 36)),
+            Width = Math.Min(centerDescription ? 340 : 365, Math.Max(1, width - (centerDescription ? 60 : 36))),
             Margin = new Thickness(0, 8, 0, 7)
         };
         var textScroll = new ScrollViewer
@@ -60,7 +60,7 @@ public partial class MainWindow
         {
             textGroup.Children.Add(new TextBlock
             {
-                Text = lines[1], TextAlignment = TextAlignment.Left,
+                Text = lines[1], TextAlignment = centerDescription ? TextAlignment.Center : TextAlignment.Left,
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 13.5, LineHeight = 22,
                 Foreground = new SolidColorBrush(Color.FromRgb(45, 50, 56))
@@ -116,14 +116,14 @@ public partial class MainWindow
     {
         var dialog = CreateExitDialog("退出客户端",
             $"确定退出“{name}”吗？\n将结束 {name} 进程并退出登录，\n未保存的内容可能丢失。"
-            + (affected > 1 ? $"\n该进程关联的 {affected} 个账号项都会退出。" : ""), showWarning: false);
+            + (affected > 1 ? $"\n该进程关联的 {affected} 个账号项都会退出。" : ""), showWarning: false, centerDescription: true);
         var result = false;
         var stacked = ExitDialogLayout.StackButtons(dialog.Width);
         var buttons = new StackPanel { Orientation = stacked ? Orientation.Vertical : Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         DockPanel.SetDock(buttons, Dock.Bottom);
         ((DockPanel)dialog.Content).Children.Insert(0, buttons);
         var reconsider = CreateExitButton("我再想想");
-        reconsider.Margin = stacked ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 16, 0);
+        reconsider.Margin = stacked ? new Thickness(0, 0, 0, ExitDialogLayout.ButtonGap(dialog.Width)) : new Thickness(0, 0, ExitDialogLayout.ButtonGap(dialog.Width), 0);
         reconsider.Click += (_, _) => dialog.Close();
         var confirm = CreateExitButton("确认退出", destructive: true, filled: true);
         reconsider.Width = confirm.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
@@ -146,7 +146,7 @@ public partial class MainWindow
         var jnest = CreateExitButton("仅退出 JNest");
         var all = CreateExitButton("全部退出", destructive: true);
         jnest.Width = all.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
-        all.Margin = stacked ? new Thickness(0, 8, 0, 0) : new Thickness(16, 0, 0, 0);
+        all.Margin = stacked ? new Thickness(0, ExitDialogLayout.ButtonGap(dialog.Width), 0, 0) : new Thickness(ExitDialogLayout.ButtonGap(dialog.Width), 0, 0, 0);
         jnest.Click += (_, _) => { result = ExitChoice.JNestOnly; dialog.Close(); };
         // The exit-choice dialog itself is the confirmation; do not open another prompt.
         all.Click += (_, _) => { result = ExitChoice.All; dialog.Close(); };
