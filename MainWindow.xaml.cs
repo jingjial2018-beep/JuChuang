@@ -115,8 +115,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var now = DateTimeOffset.Now;
         LocalDateText.Text = now.ToString("yyyy/MM/dd", System.Globalization.CultureInfo.InvariantCulture);
         LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
-        var offset = now.Offset;
-        LocalTimeZoneText.Text = $"UTC{(offset < TimeSpan.Zero ? "-" : "+")}{Math.Abs(offset.Hours):00}:{Math.Abs(offset.Minutes):00}";
+        LocalTimeZoneText.Text = $"星期{new[] { "日", "一", "二", "三", "四", "五", "六" }[(int)now.DayOfWeek]}";
     }
     private string? _pendingStatusText;
     private ClientWindowEntry? _pendingMessageEntry;
