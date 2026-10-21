@@ -264,7 +264,7 @@
                                             </Setter>
                                         </Style>
                                     </ContextMenu.Resources>
-                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.WeChat}"/></MenuItem.Icon></MenuItem>
+                                    <MenuItem x:Name="AddWeChatButton" Header="添加微信" Click="NewWeChat_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.WeChat}" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="1.16" ScaleY="1.16"/></Image.RenderTransform></Image></MenuItem.Icon></MenuItem>
                                     <MenuItem x:Name="AddWhatsAppMenuItem" Header="添加 WhatsApp" Click="AddWhatsApp_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.WhatsApp}"/></MenuItem.Icon></MenuItem>
                                     <MenuItem x:Name="PopOutButton" IsEnabled="False" Click="PopOutButton_Click"
                                               ToolTip="将当前客户端恢复为桌面独立窗口">
@@ -277,7 +277,7 @@
                                     <MenuItem Header="扫描客户端" Click="ScanClients_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.Scan}"/></MenuItem.Icon></MenuItem>
                                     <Separator/>
                                     <MenuItem Header="设置" Click="Settings_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.Settings}"/></MenuItem.Icon></MenuItem>
-                                    <MenuItem Header="关于 JNest" Click="About_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.About}"/></MenuItem.Icon></MenuItem>
+                                    <MenuItem Header="关于 JNest" Click="About_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.About}" Opacity="0.72" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="0.90" ScaleY="0.90"/></Image.RenderTransform></Image></MenuItem.Icon></MenuItem>
                                     <Separator/>
                                     <MenuItem Header="退出 JNest" Click="Close_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.Exit}"/></MenuItem.Icon></MenuItem>
                                 </ContextMenu>
