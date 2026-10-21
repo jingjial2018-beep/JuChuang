@@ -191,9 +191,11 @@ Run("Exit dialogs fit the owner monitor at multiple DPI scales", () =>
         var size = ExitDialogLayout.Calculate(800, 600, scale, scale);
         Assert(size.Width <= 800 / scale - 32 && size.Height <= 600 / scale - 32,
             "dialog exceeds monitor work area");
-        Assert(ExitDialogLayout.ButtonWidth(size.Width) * 2 + 52 <= size.Width,
+        Assert(ExitDialogLayout.ButtonWidth(size.Width) * 2 + ExitDialogLayout.ButtonGap(size.Width) + 36 <= size.Width,
             "two exit buttons exceed dialog width");
     }
+    Assert(ExitDialogLayout.ButtonWidth(420) == 104 && ExitDialogLayout.ButtonGap(420) == 32,
+        "standard dialog must use 104 DIP buttons and 32 DIP spacing");
     var narrow = ExitDialogLayout.Calculate(400, 700, 2, 2);
     Assert(narrow.Width <= 168 && ExitDialogLayout.StackButtons(narrow.Width)
         && ExitDialogLayout.ButtonWidth(narrow.Width) <= narrow.Width - 36,
