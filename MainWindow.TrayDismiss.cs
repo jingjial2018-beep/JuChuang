@@ -16,6 +16,7 @@ public partial class MainWindow
     };
     private bool _trayLeftWasDown;
     private bool _trayRightWasDown;
+    private bool _trayRightWasDownAtOpening;
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int virtualKey);
@@ -27,6 +28,7 @@ public partial class MainWindow
     {
         _trayLeftWasDown = IsMouseButtonDown(0x01);
         _trayRightWasDown = IsMouseButtonDown(0x02);
+        _trayRightWasDownAtOpening = _trayRightWasDown;
         _trayDismissTimer.Tick -= TrayDismissTimer_Tick;
         _trayDismissTimer.Tick += TrayDismissTimer_Tick;
         _trayDismissTimer.Start();
@@ -52,6 +54,13 @@ public partial class MainWindow
         _trayLeftWasDown = left;
         _trayRightWasDown = right;
         if (!newlyPressed) return;
+
+        // Another right-click on the activating tray icon is inert while the
+        // popup is open. Other tray icons remain external dismiss targets.
+        if (right && !_trayRightWasDownAtOpening
+            && Math.Abs(WinForms.Cursor.Position.X - _trayMenuOpenClickPoint.X) <= 20
+            && Math.Abs(WinForms.Cursor.Position.Y - _trayMenuOpenClickPoint.Y) <= 20)
+            return;
 
         // Do not interfere with real menu-item clicks.
         var pointer = WinForms.Cursor.Position;
