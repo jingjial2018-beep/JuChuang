@@ -47,7 +47,11 @@ public partial class MainWindow
             Text = "JNest",
             Visible = true
         };
-        _notifyIcon.DoubleClick += (_, _) => RestoreFromTray();
+        _notifyIcon.MouseClick += (_, args) =>
+        {
+            if (args.Button == WinForms.MouseButtons.Left)
+                Dispatcher.BeginInvoke(new Action(RestoreFromTray));
+        };
 
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add("显示主窗口", null, (_, _) => RestoreFromTray());
@@ -77,11 +81,19 @@ public partial class MainWindow
 
     private void RestoreFromTray()
     {
+        ShowInTaskbar = true;
         Show();
         if (WindowState == WindowState.Minimized)
-        {
             WindowState = WindowState.Normal;
-        }
+        WindowHost.HandleOwnerWindowStateChanged(false);
+        UpdateLocalClock();
+        _clockTimer.Start();
         Activate();
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle,
+            new Action(() =>
+            {
+                WindowHost.UpdateOverlayBounds();
+                WindowHost.ActivateCurrentWindow();
+            }));
     }
 }
