@@ -296,7 +296,7 @@
                                   StrokeThickness="1.15" StrokeLineJoin="Round" StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round" Data="M4,3 H10 Q11,3 11,4 V10 Q11,11 10,11 H4 Q3,11 3,10 V4 Q3,3 4,3 Z" />
                         </Button>
-                        <Button x:Name="CloseWindowButton" ToolTip="关闭" Tag="Close" Click="Close_Click">
+                        <Button x:Name="CloseWindowButton" ToolTip="隐藏到系统托盘" Tag="Close" Click="CloseWindow_Click">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource WindowControlButtonStyle}">
                                     <Style.Triggers>
