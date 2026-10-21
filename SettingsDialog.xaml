@@ -1,7 +1,7 @@
 <Window x:Class="JuChuang.SettingsDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="JNest 设置" Icon="Assets/app.ico" Width="540" Height="392"
+        Title="JNest 设置" Icon="Assets/app.ico" Width="540" Height="482"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="#F7F8FA" ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI, Segoe UI">
@@ -87,7 +87,7 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <Grid Margin="28,10,28,8">
+    <Grid Margin="28,18,28,18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -96,34 +96,34 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <TextBlock Text="设置" FontSize="21" FontWeight="SemiBold" Foreground="#202939"/>
-        <StackPanel Grid.Row="1" Margin="0,8,0,0">
+        <StackPanel Grid.Row="1" Margin="0,18,0,0">
             <TextBlock Text="常规" FontSize="13" FontWeight="SemiBold" Foreground="#667085"/>
             <ToggleButton x:Name="StartupCheck" Style="{StaticResource SettingsSwitch}"
-                          Margin="0,3,0,0" Checked="StartupChanged" Unchecked="StartupChanged">
+                          Margin="0,8,0,0" Checked="StartupChanged" Unchecked="StartupChanged">
                 <StackPanel>
                     <TextBlock Text="开机自动启动" FontSize="13" Foreground="#202939"/>
                     <TextBlock Text="登录 Windows 后启动 JNest" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/>
                 </StackPanel>
             </ToggleButton>
         </StackPanel>
-        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+        <StackPanel Grid.Row="2" Margin="0,20,0,0">
             <TextBlock Text="消息通知" FontSize="13" FontWeight="SemiBold" Foreground="#667085"/>
             <ToggleButton x:Name="FlashCheck" Style="{StaticResource SettingsSwitch}"
-                          Margin="0,3,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
+                          Margin="0,9,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
                 <StackPanel><TextBlock Text="任务栏闪烁" FontSize="13" Foreground="#202939"/>
                     <TextBlock Text="有新消息时提示任务栏注意" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="ToastCheck" Style="{StaticResource SettingsSwitch}"
-                          Margin="0,3,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
+                          Margin="0,12,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
                 <StackPanel><TextBlock Text="Windows Toast 通知" FontSize="13" Foreground="#202939"/>
                     <TextBlock Text="JNest 在后台或最小化时弹出系统通知" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="SoundCheck" Style="{StaticResource SettingsSwitch}"
-                          Margin="0,3,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
+                          Margin="0,12,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
                 <StackPanel><TextBlock Text="新消息提示音" FontSize="13" Foreground="#202939"/>
                     <TextBlock Text="新消息到达时播放系统提示音" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
             </ToggleButton>
-            <Border Height="1" Background="#E3E7ED" Margin="0,4,0,4"/>
+            <Border Height="1" Background="#E3E7ED" Margin="0,15,0,13"/>
             <ToggleButton x:Name="DndCheck" Style="{StaticResource SettingsSwitch}"
                           Checked="DndChanged" Unchecked="DndChanged">
                 <StackPanel>
@@ -132,7 +132,7 @@
                 </StackPanel>
             </ToggleButton>
             <StackPanel x:Name="DndTimes" Orientation="Horizontal" HorizontalAlignment="Left"
-                        Margin="0,4,0,0" IsEnabled="{Binding IsChecked, ElementName=DndCheck}">
+                        Margin="0,12,0,0" IsEnabled="{Binding IsChecked, ElementName=DndCheck}">
                 <StackPanel.Style>
                     <Style TargetType="StackPanel">
                         <Setter Property="Opacity" Value="1"/>
@@ -151,7 +151,7 @@
                           SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
             </StackPanel>
         </StackPanel>
-        <Grid Grid.Row="4" Margin="0,4,0,0">
+        <Grid Grid.Row="4" Margin="0,14,0,0">
             <TextBlock Text="设置即时生效并自动保存" FontSize="11.5" Foreground="#667085" VerticalAlignment="Center"/>
             <Button Content="关闭" Style="{StaticResource SettingsCloseButtonStyle}" Width="104" Height="34" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
         </Grid>
