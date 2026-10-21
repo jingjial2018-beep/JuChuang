@@ -149,7 +149,8 @@ public partial class MainWindow
     {
         if (_trayMenu is null) return;
         RefreshStartupMenuState();
-        // Anchor to cursor, above the taskbar when possible, bounded to active monitor.
+        // Anchor to the tray click, including overflow flyouts and top taskbars.
+        // Use monitor bounds (not WorkingArea, which excludes a top taskbar).
         var cursor = WinForms.Cursor.Position;
         var monitor = WinForms.Screen.FromPoint(cursor);
         var source = PresentationSource.FromVisual(this);
@@ -157,13 +158,17 @@ public partial class MainWindow
         var dpiY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1;
         _trayMenu.ApplyTemplate();
         _trayMenu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var widthPx = Math.Ceiling(Math.Max(120, _trayMenu.DesiredSize.Width) * dpiX);
+        var widthPx = Math.Ceiling(_trayMenu.DesiredSize.Width * dpiX);
         var heightPx = Math.Ceiling(_trayMenu.DesiredSize.Height * dpiY);
-        var area = monitor.WorkingArea;
-        var leftPx = Math.Max(area.Left, Math.Min(cursor.X - widthPx / 2, area.Right - widthPx));
-        double topPx = cursor.Y + 8.0;
+        var area = monitor.Bounds;
+        const double gap = 6;
+        var leftPx = cursor.X + gap * dpiX;
+        var topPx = cursor.Y + gap * dpiY;
+        if (leftPx + widthPx > area.Right)
+            leftPx = cursor.X - widthPx - gap * dpiX;
         if (topPx + heightPx > area.Bottom)
-            topPx = cursor.Y - heightPx - 8;
+            topPx = cursor.Y - heightPx - gap * dpiY;
+        leftPx = Math.Max(area.Left, Math.Min(leftPx, area.Right - widthPx));
         topPx = Math.Max(area.Top, Math.Min(topPx, area.Bottom - heightPx));
         _trayMenu.HorizontalOffset = leftPx / dpiX;
         _trayMenu.VerticalOffset = topPx / dpiY;
