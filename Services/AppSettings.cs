@@ -25,6 +25,25 @@ public sealed class AppSettings
 
     public bool EnableNotificationSound { get; set; } = true;
 
+    public bool DndEnabled { get; set; }
+
+    public int DndStartMinutes { get; set; } = 22 * 60;
+
+    public int DndEndMinutes { get; set; } = 8 * 60;
+
+    public bool IsDoNotDisturbActive(TimeOnly time)
+    {
+        if (!DndEnabled) return false;
+
+        var now = time.Hour * 60 + time.Minute;
+        var start = Math.Clamp(DndStartMinutes, 0, 1439);
+        var end = Math.Clamp(DndEndMinutes, 0, 1439);
+        if (start == end) return true;
+        return start < end
+            ? now >= start && now < end
+            : now >= start || now < end;
+    }
+
     public double? SidebarWidth { get; set; }
 
     public Dictionary<string, string> AccountNamesByIdentity { get; set; } = new(StringComparer.OrdinalIgnoreCase);

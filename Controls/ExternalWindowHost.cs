@@ -288,6 +288,14 @@ public sealed class ExternalWindowHost : HwndHost
         return true;
     }
 
+    /// <summary>Forget a dead or reused HWND without changing the window now using that handle.</summary>
+    public bool ForgetWindow(IntPtr handle)
+    {
+        if (!_hostedWindows.TryRemove(handle, out _)) return false;
+        if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
+        return true;
+    }
+
     public void DetachAll()
     {
         foreach (var handle in _hostedWindows.Keys.ToArray()) DetachWindow(handle, false);

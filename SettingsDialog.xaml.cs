@@ -1,10 +1,17 @@
 using System.Windows;
+using System.Windows.Controls;
 using JuChuang.Services;
 
 namespace JuChuang;
 
 public partial class SettingsDialog : Window
 {
+    private sealed record TimeOption(int Minutes, string Label);
+
+    private static readonly TimeOption[] DndTimeOptions = Enumerable.Range(0, 48)
+        .Select(index => new TimeOption(index * 30, $"{index / 2:00}:{index % 2 * 30:00}"))
+        .ToArray();
+
     private readonly AppSettings _settings;
     private readonly Action _notificationSettingsChanged;
     private readonly Action _startupSettingsChanged;
@@ -20,6 +27,11 @@ public partial class SettingsDialog : Window
         FlashCheck.IsChecked = settings.EnableTaskbarFlash;
         ToastCheck.IsChecked = settings.EnableToastNotifications;
         SoundCheck.IsChecked = settings.EnableNotificationSound;
+        DndStartTime.ItemsSource = DndTimeOptions;
+        DndEndTime.ItemsSource = DndTimeOptions;
+        DndStartTime.SelectedValue = settings.DndStartMinutes;
+        DndEndTime.SelectedValue = settings.DndEndMinutes;
+        DndCheck.IsChecked = settings.DndEnabled;
         _loading = false;
     }
 
@@ -40,6 +52,20 @@ public partial class SettingsDialog : Window
         _settings.EnableTaskbarFlash = FlashCheck.IsChecked == true;
         _settings.EnableToastNotifications = ToastCheck.IsChecked == true;
         _settings.EnableNotificationSound = SoundCheck.IsChecked == true;
+        _settings.Save();
+        _notificationSettingsChanged();
+    }
+
+    private void DndChanged(object sender, RoutedEventArgs e) => SaveDoNotDisturb();
+
+    private void DndTimeChanged(object sender, SelectionChangedEventArgs e) => SaveDoNotDisturb();
+
+    private void SaveDoNotDisturb()
+    {
+        if (_loading) return;
+        _settings.DndEnabled = DndCheck.IsChecked == true;
+        if (DndStartTime.SelectedValue is int start) _settings.DndStartMinutes = start;
+        if (DndEndTime.SelectedValue is int end) _settings.DndEndMinutes = end;
         _settings.Save();
         _notificationSettingsChanged();
     }

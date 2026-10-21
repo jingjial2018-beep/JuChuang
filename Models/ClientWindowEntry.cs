@@ -113,6 +113,8 @@ public sealed class ClientWindowEntry : INotifyPropertyChanged
 
     public int ProcessId { get; set; }
 
+    public long? ProcessStartUtcTicks { get; set; }
+
     public string ProcessName { get; set; }
 
     public string WindowTitle { get; set; }

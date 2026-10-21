@@ -3,6 +3,50 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("Do not disturb handles daytime and overnight boundaries", () =>
+{
+    var settings = new AppSettings
+    {
+        DndEnabled = true,
+        DndStartMinutes = 22 * 60,
+        DndEndMinutes = 8 * 60
+    };
+    Assert(!settings.IsDoNotDisturbActive(new TimeOnly(21, 59)), "before overnight start");
+    Assert(settings.IsDoNotDisturbActive(new TimeOnly(22, 0)), "overnight start");
+    Assert(settings.IsDoNotDisturbActive(new TimeOnly(7, 59)), "before overnight end");
+    Assert(!settings.IsDoNotDisturbActive(new TimeOnly(8, 0)), "overnight end");
+
+    settings.DndStartMinutes = 9 * 60;
+    settings.DndEndMinutes = 17 * 60;
+    Assert(!settings.IsDoNotDisturbActive(new TimeOnly(8, 59)), "before daytime start");
+    Assert(settings.IsDoNotDisturbActive(new TimeOnly(9, 0)), "daytime start");
+    Assert(!settings.IsDoNotDisturbActive(new TimeOnly(17, 0)), "daytime end");
+
+    settings.DndEndMinutes = settings.DndStartMinutes;
+    Assert(settings.IsDoNotDisturbActive(new TimeOnly(1, 0)), "equal endpoints mean all day");
+
+    settings.DndEnabled = false;
+    Assert(!settings.IsDoNotDisturbActive(new TimeOnly(12, 0)), "disabled schedule");
+});
+
+Run("Window rebind requires matching client process identity", () =>
+{
+    var entry = NewWeChatEntry();
+    entry.ProcessId = 321;
+    entry.ProcessStartUtcTicks = 1000;
+    var candidate = new WindowCandidate(new IntPtr(0x2222), 321, "Weixin", "微信",
+        "QWindowIcon", ClientKind.WeChat, ClientWindowRole.Main, 500000, null, 1000);
+
+    Assert(ClientWindowDiscovery.IsSameProcessInstance(entry, candidate),
+        "same PID and process start should allow a rebind");
+    Assert(!ClientWindowDiscovery.IsSameProcessInstance(entry, candidate with { ProcessStartUtcTicks = 2000 }),
+        "reused PID must not inherit the previous account");
+    Assert(!ClientWindowDiscovery.IsSameProcessInstance(entry, candidate with { ProcessStartUtcTicks = null }),
+        "unknown process start must not authorize a rebind");
+    Assert(!ClientWindowDiscovery.IsSameProcessInstance(entry, candidate with { Kind = ClientKind.WhatsApp }),
+        "different client kind must not share an account");
+});
+
 Run("Activity requires a confirmed new badge before notification", () =>
 {
     var noBadge = BadgeResult.NoBadge;
