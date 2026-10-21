@@ -9,7 +9,7 @@
         xmlns:controls="clr-namespace:JuChuang.Controls"
         mc:Ignorable="d"
         Title="JNest"
-        Icon="Assets/app.ico"
+        Icon="Assets/taskbar.ico"
         ShowInTaskbar="True"
         Width="1296"
         Height="842"
