@@ -5,7 +5,7 @@
         Title="关于 JNest" Icon="Assets/app.ico"
         Width="550" Height="380" MinWidth="480" MinHeight="330"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
-        Background="#FFFFFF" FontFamily="Microsoft YaHei UI, Segoe UI">
+        Background="#FFFFFF" >
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
