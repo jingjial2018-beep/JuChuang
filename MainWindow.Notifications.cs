@@ -321,7 +321,7 @@ public partial class MainWindow
     /// </summary>
     private void NotifyAccountAttention(ClientWindowEntry entry)
     {
-        if (_isClosing || IsEntryActivelyViewed(entry))
+        if (_isClosing || (!IsJNestProtected && IsEntryActivelyViewed(entry)))
         {
             return;
         }
