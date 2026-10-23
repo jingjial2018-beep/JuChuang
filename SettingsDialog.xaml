@@ -1,6 +1,7 @@
 <Window x:Class="JuChuang.SettingsDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        FontFamily="./Assets/Fonts/#Source Han Sans CN"
         Title="JNest 设置" Icon="Assets/app.ico" Width="540" Height="520"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="#F7F8FA" ShowInTaskbar="False"
