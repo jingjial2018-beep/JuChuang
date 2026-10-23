@@ -373,10 +373,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (IsJNestProtected)
+        if (IsJNestProtected && !_trayExitRequested)
         {
+            // A normal close cannot bypass the lock. In particular, never
+            // call Show/RestoreFromTray from inside the WPF Closing event.
             e.Cancel = true;
-            RestoreFromTray();
             LockPasswordInput.Focus();
             return;
         }
@@ -390,7 +391,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 WindowHost is not null && _scanTimer is not null))
         {
             var choice = ShowExitChoice();
-            if (choice == ExitChoice.Cancel) { e.Cancel = true; return; }
+            if (choice == ExitChoice.Cancel)
+            {
+                e.Cancel = true;
+                _trayExitRequested = false;
+                return;
+            }
             _exitAllClients = choice == ExitChoice.All;
             _exitChoiceApproved = true;
         }
@@ -458,6 +464,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _exitChoiceApproved = false;
                 _exitAllClients = false;
                 _allExitInProgress = false;
+                _trayExitRequested = false;
                 await TryScanAndAttachAsync();
             }
         }
@@ -467,6 +474,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _exitChoiceApproved = false;
             _exitAllClients = false;
             _exitAllCompleted = false;
+            _trayExitRequested = false;
             ShowOwnedMessageBox("全部退出未完成。JNest 将保持运行，请检查客户端状态。",
                 "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
