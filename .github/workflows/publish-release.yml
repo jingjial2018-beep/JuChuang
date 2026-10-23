@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - fix/modal-click-return-beta5
+      - fix/modal-shield-native-beta6
     paths:
       - JuChuang.csproj
       - .github/workflows/publish-release.yml

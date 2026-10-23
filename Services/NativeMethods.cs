@@ -24,6 +24,7 @@ internal static class NativeMethods
 
     internal const int GWL_STYLE = -16;
     internal const int GWL_EXSTYLE = -20;
+    internal const int GWLP_WNDPROC = -4;
     internal const int GWLP_HWNDPARENT = -8;
     internal const long WS_CHILD = 0x40000000L;
     internal const long WS_POPUP = 0x80000000L;

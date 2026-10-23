@@ -2,7 +2,6 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Threading;
 using JuChuang.Services;
 
 namespace JuChuang;
@@ -18,8 +17,14 @@ public partial class MainWindow
     private const int MaActivateAndEat = 2;
     private const int WsExLayered = 0x00080000;
     private const uint LwaAlpha = 0x2;
-    private HwndSource? _modalClickShield;
     private IntPtr _modalClickShieldHwnd;
+    private ShieldWindowProc? _modalShieldWindowProc;
+    private IntPtr _modalShieldPreviousProc;
+    private delegate IntPtr ShieldWindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr CallWindowProc(IntPtr previous, IntPtr hwnd,
+        uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -48,22 +53,31 @@ public partial class MainWindow
             // The window is deliberately created after ShowDialog has disabled
             // the owner's existing thread windows. It is a non-topmost popup
             // owned by JNest and can receive normal Win32 mouse activation.
-            var p = new HwndSourceParameters("JNest modal input shield")
+            // HwndSource removes WS_EX_LAYERED during HWND creation. On beta.5
+            // SetLayeredWindowAttributes therefore failed with ERROR_INVALID_PARAMETER
+            // and the shield was always disposed. A native popup retains the
+            // layered style, while remaining owned by the manager window.
+            _modalClickShieldHwnd = NativeMethods.CreateWindowEx(
+                checked((int)(NativeMethods.WS_EX_TOOLWINDOW | WsExLayered)),
+                "STATIC", "JNest modal input shield", unchecked((int)NativeMethods.WS_POPUP),
+                0, 0, 1, 1, parent, IntPtr.Zero, NativeMethods.GetModuleHandle(null), IntPtr.Zero);
+            if (_modalClickShieldHwnd == IntPtr.Zero)
             {
-                ParentWindow = parent,
-                WindowStyle = unchecked((int)(NativeMethods.WS_POPUP | NativeMethods.WS_VISIBLE)),
-                ExtendedWindowStyle = checked((int)(NativeMethods.WS_EX_TOOLWINDOW | WsExLayered)),
-                PositionX = 0,
-                PositionY = 0,
-                Width = 1,
-                Height = 1
-            };
-            _modalClickShield = new HwndSource(p);
-            _modalClickShield.AddHook(ModalShieldWindowProc);
-            _modalClickShieldHwnd = _modalClickShield.Handle;
+                ReconnectDiagnostics.Write($"modal-shield create HWND failed error={Marshal.GetLastWin32Error()}");
+                return;
+            }
             if (!SetLayeredWindowAttributes(_modalClickShieldHwnd, 0, 1, LwaAlpha))
             {
-                ReconnectDiagnostics.Write("modal-shield failed to set alpha");
+                ReconnectDiagnostics.Write($"modal-shield failed to set alpha error={Marshal.GetLastWin32Error()} exstyle=0x{NativeMethods.GetWindowLongPtr(_modalClickShieldHwnd, NativeMethods.GWL_EXSTYLE).ToInt64():X}");
+                DisposeModalClickShield();
+                return;
+            }
+            _modalShieldWindowProc = ModalShieldWindowProc;
+            _modalShieldPreviousProc = NativeMethods.SetWindowLongPtr(_modalClickShieldHwnd,
+                NativeMethods.GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_modalShieldWindowProc));
+            if (_modalShieldPreviousProc == IntPtr.Zero)
+            {
+                ReconnectDiagnostics.Write($"modal-shield subclass failed error={Marshal.GetLastWin32Error()}");
                 DisposeModalClickShield();
                 return;
             }
@@ -168,9 +182,10 @@ public partial class MainWindow
             + $"z={ZOrderBetween(shield, client)} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}";
     }
 
-    private IntPtr ModalShieldWindowProc(IntPtr hwnd, int message, IntPtr wParam,
-        IntPtr lParam, ref bool handled)
+    private IntPtr ModalShieldWindowProc(IntPtr hwnd, uint message, IntPtr wParam,
+        IntPtr lParam)
     {
+        var mouseMessage = (int)message;
         if (message == WmMouseActivate)
         {
             if (ReconnectDiagnostics.Active)
@@ -179,30 +194,32 @@ public partial class MainWindow
             // then transfers foreground to the deepest visible modal. Eating
             // the click here prevents any operation in the native chat.
             RestoreHostedModalFromUserClick();
-            handled = true;
             return new IntPtr(MaActivateAndEat);
         }
-        if (message is WmLButtonDown or WmLButtonUp or WmLButtonDblClk
+        if (mouseMessage is WmLButtonDown or WmLButtonUp or WmLButtonDblClk
             or WmRButtonDown or WmRButtonUp or WmRButtonDblClk
             or WmMButtonDown or WmMButtonUp or WmMButtonDblClk
             or WmXButtonDown or WmXButtonUp or WmXButtonDblClk
             or WmMouseWheel or WmMouseHWheel)
         {
-            if (IsModalActivationButtonDown(message))
+            if (IsModalActivationButtonDown(mouseMessage))
                 RestoreHostedModalFromUserClick();
-            handled = true;
             return IntPtr.Zero; // never forward to native client
         }
-        return IntPtr.Zero;
+        return CallWindowProc(_modalShieldPreviousProc, hwnd, message, wParam, lParam);
     }
 
     private void DisposeModalClickShield()
     {
+        var hwnd = _modalClickShieldHwnd;
+        if (hwnd != IntPtr.Zero && NativeMethods.IsWindow(hwnd))
+        {
+            if (_modalShieldPreviousProc != IntPtr.Zero)
+                NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWLP_WNDPROC, _modalShieldPreviousProc);
+            NativeMethods.DestroyWindow(hwnd);
+        }
         _modalClickShieldHwnd = IntPtr.Zero;
-        var shield = _modalClickShield;
-        _modalClickShield = null;
-        if (shield is null) return;
-        try { shield.RemoveHook(ModalShieldWindowProc); shield.Dispose(); }
-        catch (InvalidOperationException) { }
+        _modalShieldPreviousProc = IntPtr.Zero;
+        _modalShieldWindowProc = null;
     }
 }
