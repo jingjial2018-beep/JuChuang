@@ -19,7 +19,7 @@
         WindowStyle="None"
         ResizeMode="CanMinimize"
         Background="{StaticResource WindowBackgroundBrush}"
-        FontFamily="Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei, Segoe UI"
+        FontFamily="./Assets/Fonts/#Source Han Sans CN"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display"
