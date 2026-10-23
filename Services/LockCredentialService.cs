@@ -23,8 +23,8 @@ internal static class LockCredentialService
 
     internal static void SetPassword(string password)
     {
-        if (string.IsNullOrEmpty(password) || password.Length < 8)
-            throw new ArgumentException("Lock password must contain at least eight characters.", nameof(password));
+        if (string.IsNullOrEmpty(password) || password.Length < 6)
+            throw new ArgumentException("Lock password must contain at least six characters.", nameof(password));
         if (IsConfigured) throw new InvalidOperationException("Credential exists; verify the old password before replacing it.");
         WriteCredential(password);
     }
@@ -32,8 +32,8 @@ internal static class LockCredentialService
     internal static void ChangePassword(string oldPassword, string newPassword)
     {
         if (!Verify(oldPassword)) throw new UnauthorizedAccessException("Invalid current lock password.");
-        if (string.IsNullOrEmpty(newPassword) || newPassword.Length < 8)
-            throw new ArgumentException("Lock password must contain at least eight characters.", nameof(newPassword));
+        if (string.IsNullOrEmpty(newPassword) || newPassword.Length < 6)
+            throw new ArgumentException("Lock password must contain at least six characters.", nameof(newPassword));
         WriteCredential(newPassword);
     }
 
