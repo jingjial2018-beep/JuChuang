@@ -228,7 +228,7 @@
                                     </ContextMenu.Template>
                                     <ContextMenu.Resources>
                                         <Style TargetType="MenuItem">
-                                            <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
+                                            <Setter Property="FontFamily" Value="./Assets/Fonts/#Source Han Sans CN"/>
                                             <Setter Property="FontSize" Value="13.5"/>
                                             <Setter Property="Foreground" Value="#263041"/>
                                             <Setter Property="Height" Value="39"/>
@@ -276,7 +276,18 @@
                                     <MenuItem Header="全部接入" Click="ReconnectAll_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.AttachAll}"/></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="扫描客户端" Click="ScanClients_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.Scan}"/></MenuItem.Icon></MenuItem>
                                     <Separator/>
-                                    <MenuItem Header="锁定 JNest" Click="LockJNest_Click"/>
+                                    <MenuItem Header="锁定 JNest" Click="LockJNest_Click">
+                                        <MenuItem.Icon>
+                                            <!-- Outlined lock uses the same 20-DIP icon slot as other menu items. -->
+                                            <Grid Width="20" Height="20">
+                                                <Path Data="M5,9 V6 A5,5 0 0 1 15,6 V9 M5,9 H15 Q17,9 17,11 V17 Q17,19 15,19 H5 Q3,19 3,17 V11 Q3,9 5,9 Z"
+                                                      Stroke="#263041" StrokeThickness="1.45" StrokeLineJoin="Round"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                                                <Path Data="M10,13 V15" Stroke="#263041" StrokeThickness="1.4"
+                                                      StrokeStartLineCap="Round"/>
+                                            </Grid>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
                                     <MenuItem Header="设置" Click="Settings_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.Settings}"/></MenuItem.Icon></MenuItem>
                                     <MenuItem Header="关于 JNest" Click="About_Click"><MenuItem.Icon><Image Width="20" Height="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{x:Static icons:MenuIconAssets.About}" Opacity="0.72" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="0.90" ScaleY="0.90"/></Image.RenderTransform></Image></MenuItem.Icon></MenuItem>
                                     <Separator/>
@@ -591,11 +602,11 @@
                     <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="13"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="./Assets/Fonts/#Source Han Sans CN" VerticalAlignment="Center" />
                         <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="14" Foreground="#475467"
-                                   FontWeight="SemiBold" FontFamily="Consolas" VerticalAlignment="Center" />
+                                   FontWeight="SemiBold" FontFamily="./Assets/Fonts/#Source Han Sans CN" VerticalAlignment="Center" />
                         <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="13"
-                                   Foreground="#667085" FontFamily="Consolas" VerticalAlignment="Center" />
+                                   Foreground="#667085" FontFamily="./Assets/Fonts/#Source Han Sans CN" VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>
             </Border>
