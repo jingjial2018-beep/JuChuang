@@ -35,16 +35,13 @@ public partial class MainWindow
 
         if (!LockCredentialService.IsConfigured)
         {
-            WindowHost.SuspendForModalDialog();
-            try
-            {
-                var dialog = new LockPasswordDialog { Owner = this };
-                if (dialog.ShowDialog() != true) return;
-            }
-            finally
-            {
-                WindowHost.ResumeAfterModalDialog();
-            }
+            // Match Settings/About: keep the hosted WeChat/WhatsApp workspace
+            // visible and use the same owner, Z-order and modal-input guard.
+            // The previous SuspendForModalDialog parked native clients off
+            // screen, leaving a blank workspace behind this password prompt.
+            var dialog = new LockPasswordDialog();
+            ShowHostedModalDialog(dialog);
+            if (dialog.DialogResult != true) return;
         }
 
         if (!_lockState.BeginLock()) return;
