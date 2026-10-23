@@ -8,7 +8,11 @@
         >
     <Window.Resources>
         <Style x:Key="SettingsCloseButtonStyle" TargetType="Button"
-               BasedOn="{StaticResource JNestDialogButtonStyle}"/>
+               BasedOn="{StaticResource JNestDialogButtonStyle}">
+            <Setter Property="Width" Value="104"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
         <Style x:Key="SettingsSwitch" TargetType="ToggleButton">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -119,7 +123,7 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled"
                       CanContentScroll="False">
           <ScrollViewer.Resources>
               <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource JNestSettingsScrollbarStyle}"/>
@@ -193,15 +197,16 @@
                            FontSize="13.5" Foreground="#596273"
                            VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
                 <Button Grid.Column="1" x:Name="ChangeLockPasswordButton" Content="修改密码"
-                        Width="102" Height="34" VerticalAlignment="Center"
+                        VerticalAlignment="Center"
                         Style="{StaticResource SettingsCloseButtonStyle}"
                         Click="ChangeLockPassword_Click"/>
             </Grid>
           </StackPanel>
         </ScrollViewer>
-        <Grid Grid.Row="1" Margin="0,12,0,0">
+        <!-- 12-DIP scrollbar and 8-DIP content inset place this edge at the switch edge. -->
+        <Grid Grid.Row="1" Margin="0,12,20,0">
             <TextBlock Text="设置即时生效并自动保存" FontSize="13" Foreground="#667085" VerticalAlignment="Center"/>
-            <Button Content="关闭" Style="{StaticResource SettingsCloseButtonStyle}" Width="104" Height="34" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
+            <Button Content="关闭" Style="{StaticResource SettingsCloseButtonStyle}" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
         </Grid>
     </Grid>
 </Window>

@@ -52,6 +52,7 @@ internal static class NativeMethods
     internal const uint SWP_FRAMECHANGED = 0x0020;
     internal const uint SWP_SHOWWINDOW = 0x0040;
 
+    internal const uint GW_HWNDPREV = 3;
     internal const uint GW_OWNER = 4;
     internal const uint GA_ROOT = 2;
     internal static readonly IntPtr HWND_TOP = IntPtr.Zero;

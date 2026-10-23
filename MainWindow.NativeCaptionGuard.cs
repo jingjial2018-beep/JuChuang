@@ -64,6 +64,7 @@ public partial class MainWindow
         StartNativeCaptionGuard();
         _modalRootDialog = dialog;
         _modalGuardDialogHwnd = new WindowInteropHelper(dialog).Handle;
+        ReconnectDiagnostics.Start();
     }
 
     private void EndModalInputGuard()
@@ -116,12 +117,15 @@ public partial class MainWindow
                 // HWND_TOP is not HWND_TOPMOST. This is a one-shot user-click
                 // response, never an always-on-top timer or background promotion.
                 NativeMethods.SetWindowPos(ownerHwnd, NativeMethods.HWND_TOP, 0, 0, 0, 0, flags);
+                RaiseShieldWithinModalGroup();
                 NativeMethods.SetWindowPos(dialogHwnd, NativeMethods.HWND_TOP, 0, 0, 0, 0, flags);
-                var activated = NativeMethods.SetForegroundWindow(dialogHwnd);
-                if (!activated)
-                    activated = dialog.Activate();
+                var setForeground = NativeMethods.SetForegroundWindow(dialogHwnd);
+                var foreground = NativeMethods.GetForegroundWindow();
+                var wpfActivated = false;
+                if (!setForeground)
+                    wpfActivated = dialog.Activate();
                 if (ReconnectDiagnostics.Active)
-                    ReconnectDiagnostics.Write($"modal-click-restore owner=0x{ownerHwnd.ToInt64():X} dialog=0x{dialogHwnd.ToInt64():X} activated={activated} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+                    ReconnectDiagnostics.Write($"modal-click-restore owner=0x{ownerHwnd.ToInt64():X} dialog=0x{dialogHwnd.ToInt64():X} setForeground={setForeground} immediateForeground=0x{foreground.ToInt64():X} wpfActivate={wpfActivated} {ModalClickSnapshot()}");
             }
             finally { _modalActivationQueued = false; }
         }));
@@ -191,14 +195,6 @@ public partial class MainWindow
         if (code >= 0 && !_isClosing)
         {
             var command = unchecked((int)msg.ToInt64());
-            if (ReconnectDiagnostics.Active && command is (WmLButtonDown or WmLButtonUp or WmLButtonDblClk))
-            {
-                var pt = Marshal.PtrToStructure<MouseHookData>(data).Point;
-                var target = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = pt.X, Y = pt.Y });
-                var root = target == IntPtr.Zero ? IntPtr.Zero : NativeMethods.GetAncestor(target, NativeMethods.GA_ROOT);
-                if (WindowHost.IsHostedWindow(root))
-                    ReconnectDiagnostics.Mouse($"msg=0x{command:X} point={pt.X},{pt.Y} target=0x{target.ToInt64():X} root=0x{root.ToInt64():X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X} modal=0x{_modalGuardDialogHwnd.ToInt64():X}");
-            }
             if (_modalGuardDialogHwnd != IntPtr.Zero && IsModalGuardMessage(command))
             {
                 var point = Marshal.PtrToStructure<MouseHookData>(data).Point;
@@ -212,6 +208,10 @@ public partial class MainWindow
                 var isHostedTarget = WindowHost.IsHostedWindow(root)
                     || WindowHost.IsHostedWindow(target);
                 var isManagerTarget = root == managerRoot;
+                var isShieldTarget = root == _modalClickShieldHwnd;
+                if (ReconnectDiagnostics.Active && IsModalActivationButtonDown(command)
+                    && (isHostedTarget || isManagerTarget || isShieldTarget))
+                    ReconnectDiagnostics.Mouse($"modal-click-before msg=0x{command:X} point={point.X},{point.Y} hit=0x{target.ToInt64():X} root=0x{root.ToInt64():X} {ModalClickSnapshot()}");
                 // WPF's disabled modal owner can be returned by WindowFromPoint
                 // instead of the separate embedded client top-level HWND.
                 // Beta.2 only checked IsHostedWindow(root), missing that path.
@@ -231,9 +231,20 @@ public partial class MainWindow
                         // user gesture is being processed. Deferring *all*
                         // activation until after swallowing the click loses the
                         // normal Windows foreground opportunity.
+                        // If another window got above the shield, this click
+                        // cannot safely pass to the chat. Repair the owned
+                        // surface in response to this user gesture and try to
+                        // activate it before consuming the native click.
+                        var shieldActivated = false;
+                        if (_modalClickShieldHwnd != IntPtr.Zero
+                            && NativeMethods.IsWindow(_modalClickShieldHwnd))
+                        {
+                            RaiseShieldWithinModalGroup();
+                            shieldActivated = NativeMethods.SetForegroundWindow(_modalClickShieldHwnd);
+                        }
                         var direct = NativeMethods.SetForegroundWindow(currentHwnd);
                         if (ReconnectDiagnostics.Active)
-                            ReconnectDiagnostics.Write($"modal-direct-click activate={direct} hwnd=0x{currentHwnd.ToInt64():X}");
+                            ReconnectDiagnostics.Write($"modal-direct-click shieldActivate={shieldActivated} dialogActivate={direct} dialog=0x{currentHwnd.ToInt64():X} {ModalClickSnapshot()}");
                         RestoreHostedModalFromUserClick();
                     }
 

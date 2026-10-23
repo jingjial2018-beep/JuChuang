@@ -15,7 +15,7 @@ public partial class MainWindow
     // The real click lands in JNest's process instead of being discarded by
     // WH_MOUSE_LL before Windows has a chance to activate JNest.
     private const int WmMouseActivate = 0x0021;
-    private const int MaNoActivateAndEat = 4;
+    private const int MaActivateAndEat = 2;
     private const int WsExLayered = 0x00080000;
     private const uint LwaAlpha = 0x2;
     private HwndSource? _modalClickShield;
@@ -68,16 +68,10 @@ public partial class MainWindow
                 return;
             }
             RefreshModalClickShield();
-            // Keep actual Settings/About/password dialog *above* the shield.
-            var active = GetTopmostHostedModal();
-            if (active is not null)
-            {
-                var modalHwnd = new WindowInteropHelper(active).Handle;
-                if (modalHwnd != IntPtr.Zero)
-                    NativeMethods.SetWindowPos(modalHwnd, NativeMethods.HWND_TOP,
-                        0, 0, 0, 0, NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
-                            | NativeMethods.SWP_NOACTIVATE);
-            }
+            // Establish the owned shield above the separate native client once,
+            // when the modal opens. The layout timer must not raise it later
+            // while Chrome or another application is in the foreground.
+            RaiseShieldWithinModalGroup();
             ReconnectDiagnostics.Write($"modal-shield created hwnd=0x{_modalClickShieldHwnd.ToInt64():X}");
         }
         catch (Exception ex)
@@ -128,27 +122,65 @@ public partial class MainWindow
         }
     }
 
+    private void RaiseShieldWithinModalGroup()
+    {
+        if (_modalClickShieldHwnd == IntPtr.Zero || !NativeMethods.IsWindow(_modalClickShieldHwnd))
+            return;
+        var flags = NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
+                    | NativeMethods.SWP_NOACTIVATE;
+        var shieldRaised = NativeMethods.SetWindowPos(_modalClickShieldHwnd,
+            NativeMethods.HWND_TOP, 0, 0, 0, 0, flags);
+        var modal = GetTopmostHostedModal();
+        var modalHwnd = modal is null ? IntPtr.Zero : new WindowInteropHelper(modal).Handle;
+        var dialogRaised = modalHwnd != IntPtr.Zero && NativeMethods.IsWindow(modalHwnd)
+            && NativeMethods.SetWindowPos(modalHwnd, NativeMethods.HWND_TOP,
+                0, 0, 0, 0, flags);
+        if (ReconnectDiagnostics.Active)
+            ReconnectDiagnostics.Write($"modal-shield-order shieldRaised={shieldRaised} dialogRaised={dialogRaised} {ModalClickSnapshot()}");
+    }
+
+    private static string ZOrderBetween(IntPtr shield, IntPtr client)
+    {
+        if (shield == IntPtr.Zero || client == IntPtr.Zero) return "unknown";
+        // GW_HWNDPREV follows the actual desktop Z order, including the
+        // separately owned native client. Bound the walk against HWND reuse.
+        var cursor = client;
+        for (var i = 0; i < 512 && cursor != IntPtr.Zero; i++)
+        {
+            cursor = NativeMethods.GetWindow(cursor, NativeMethods.GW_HWNDPREV);
+            if (cursor == shield) return "shield-above-client";
+        }
+        cursor = shield;
+        for (var i = 0; i < 512 && cursor != IntPtr.Zero; i++)
+        {
+            cursor = NativeMethods.GetWindow(cursor, NativeMethods.GW_HWNDPREV);
+            if (cursor == client) return "client-above-shield";
+        }
+        return "unknown";
+    }
+
+    private string ModalClickSnapshot()
+    {
+        var client = SelectedEntry?.Handle ?? IntPtr.Zero;
+        var shield = _modalClickShieldHwnd;
+        return $"shield=0x{shield.ToInt64():X} visible={NativeMethods.IsWindowVisible(shield)} enabled={IsWindowEnabled(shield)} "
+            + $"client=0x{client.ToInt64():X} visible={NativeMethods.IsWindowVisible(client)} enabled={IsWindowEnabled(client)} "
+            + $"z={ZOrderBetween(shield, client)} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}";
+    }
+
     private IntPtr ModalShieldWindowProc(IntPtr hwnd, int message, IntPtr wParam,
         IntPtr lParam, ref bool handled)
     {
         if (message == WmMouseActivate)
         {
-            var modal = GetTopmostHostedModal();
-            if (modal is not null && _modalGuardDialogHwnd != IntPtr.Zero)
-            {
-                var target = new WindowInteropHelper(modal).Handle;
-                if (target != IntPtr.Zero && NativeMethods.IsWindow(target))
-                {
-                    // This callback is running on the receiving process's
-                    // actual mouse event, not in a delayed low-level hook.
-                    var success = NativeMethods.SetForegroundWindow(target);
-                    if (ReconnectDiagnostics.Active)
-                        ReconnectDiagnostics.Write($"modal-shield-mouseactivate target=0x{target.ToInt64():X} result={success}");
-                    RestoreHostedModalFromUserClick();
-                }
-            }
+            if (ReconnectDiagnostics.Active)
+                ReconnectDiagnostics.Mouse($"shield-mouseactivate before {ModalClickSnapshot()}");
+            // Windows first activates the clicked shield. The queued callback
+            // then transfers foreground to the deepest visible modal. Eating
+            // the click here prevents any operation in the native chat.
+            RestoreHostedModalFromUserClick();
             handled = true;
-            return new IntPtr(MaNoActivateAndEat); // no chat operation
+            return new IntPtr(MaActivateAndEat);
         }
         if (message is WmLButtonDown or WmLButtonUp or WmLButtonDblClk
             or WmRButtonDown or WmRButtonUp or WmRButtonDblClk

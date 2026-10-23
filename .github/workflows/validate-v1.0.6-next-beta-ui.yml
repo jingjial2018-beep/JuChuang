@@ -2,7 +2,7 @@ name: JNest next-beta modal and UI validation (no release)
 on:
   push:
     branches:
-      - feature/v1.0.6-next-beta-ui
+      - fix/modal-click-return-beta5
   workflow_dispatch:
 
 permissions:
