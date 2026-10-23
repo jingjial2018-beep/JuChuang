@@ -7,39 +7,8 @@
         Background="#F7F8FA" ShowInTaskbar="False"
         >
     <Window.Resources>
-        <Style x:Key="SettingsCloseButtonStyle" TargetType="Button">
-                    <Setter Property="Background" Value="#F8F9FB"/>
-                    <Setter Property="Foreground" Value="#263041"/>
-                    <Setter Property="BorderBrush" Value="#D9DEE5"/>
-                    <Setter Property="BorderThickness" Value="1"/>
-                    <Setter Property="FontSize" Value="13"/>
-                    <Setter Property="FontWeight" Value="Medium"/>
-                    <Setter Property="Cursor" Value="Hand"/>
-                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Surface" CornerRadius="11"
-                                        Background="{TemplateBinding Background}"
-                                        BorderBrush="{TemplateBinding BorderBrush}"
-                                        BorderThickness="{TemplateBinding BorderThickness}">
-                                    <Border.Effect>
-                                        <DropShadowEffect Color="#334155" Opacity="0.12" BlurRadius="5" ShadowDepth="1"/>
-                                    </Border.Effect>
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Surface" Property="Background" Value="#EEF2F6"/>
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="Surface" Property="Background" Value="#E3E9F0"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
+        <Style x:Key="SettingsCloseButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource JNestDialogButtonStyle}"/>
         <Style x:Key="SettingsSwitch" TargetType="ToggleButton">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -275,12 +244,19 @@
             <Border Height="1" Background="#E3E7ED" Margin="0,20,0,14"/>
             <TextBlock Text="隐私与安全" FontSize="13" FontWeight="Medium"
                        Foreground="#667085"/>
-            <TextBlock Text="通过独立密码锁定 JNest 全部工作区"
-                       FontSize="11.5" Foreground="#667085" Margin="0,8,0,0"/>
-            <Button x:Name="ChangeLockPasswordButton" Content="修改锁定密码"
-                    Width="118" Height="34" HorizontalAlignment="Left"
-                    Margin="0,10,0,0" Style="{StaticResource SettingsCloseButtonStyle}"
-                    Click="ChangeLockPassword_Click"/>
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="通过独立密码锁定 JNest 全部工作区"
+                           FontSize="11.5" Foreground="#667085"
+                           VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
+                <Button Grid.Column="1" x:Name="ChangeLockPasswordButton" Content="修改锁定密码"
+                        Width="118" Height="34" VerticalAlignment="Center"
+                        Style="{StaticResource SettingsCloseButtonStyle}"
+                        Click="ChangeLockPassword_Click"/>
+            </Grid>
           </StackPanel>
         </ScrollViewer>
         <Grid Grid.Row="1" Margin="0,12,0,0">
