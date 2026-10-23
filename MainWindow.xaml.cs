@@ -309,6 +309,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
+        RestorePersistedLockIfNeeded();
         // Fixed startup size and centered position come from MainWindow.xaml.
         _isPreviewMode = Environment.GetCommandLineArgs()
             .Any(argument => argument.Equals("--preview", StringComparison.OrdinalIgnoreCase));
@@ -321,6 +322,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 ShowClientSelfTestPopup();
             }
+            return;
+        }
+
+        if (IsJNestProtected)
+        {
+            _scanTimer.Start();
+            StartBadgePolling();
             return;
         }
 
@@ -365,6 +373,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (IsJNestProtected)
+        {
+            e.Cancel = true;
+            RestoreFromTray();
+            LockPasswordInput.Focus();
+            return;
+        }
         if (_clientExitInProgress || _allExitInProgress)
         {
             e.Cancel = true;
@@ -477,6 +492,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// </summary>
     private async Task TryScanAndAttachAsync()
     {
+        if (IsJNestProtected) return;
         // 失败后不再追加“补扫”：ScanAndAttachAsync 在 finally 中释放扫描锁，5 秒周期的
         // 扫描定时器会自然重新发现窗口状态；额外补扫在持续失败时只会让失败次数和负载翻倍。
         await GuardedRunner.RunAsync(
@@ -1490,6 +1506,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ShowSelectedEntry()
     {
+        if (IsJNestProtected) return;
         var entry = SelectedEntry;
         if (entry is null)
         {
