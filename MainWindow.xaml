@@ -627,7 +627,7 @@
                     <TextBlock Text="请输入密码以解锁" FontSize="14"
                                Foreground="{StaticResource SecondaryTextBrush}"
                                HorizontalAlignment="Center" Margin="0,9,0,27"/>
-                    <PasswordBox x:Name="LockPasswordInput" Width="320"
+                    <PasswordBox x:Name="LockPasswordInput" Width="275"
                                  HorizontalAlignment="Center"
                                  Style="{StaticResource JNestPasswordBoxStyle}"
                                  KeyDown="LockPassword_KeyDown"/>

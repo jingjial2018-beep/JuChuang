@@ -76,7 +76,7 @@ public partial class SettingsDialog : Window
     private void UpdateLockPasswordButton()
     {
         ChangeLockPasswordButton.Content = LockCredentialService.IsConfigured
-            ? "修改锁定密码" : "设置锁定密码";
+            ? "修改密码" : "设置密码";
     }
 
     private void ChangeLockPassword_Click(object sender, RoutedEventArgs e)

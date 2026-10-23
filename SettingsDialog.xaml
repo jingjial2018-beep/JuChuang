@@ -56,63 +56,20 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Settings-only scrollbar: low-relief rail and lightly raised thumb, matching dialog buttons. -->
+        <!-- Quiet, narrow floating scrollbar, with no heavy track or arrows. -->
         <Style x:Key="JNestSettingsScrollThumbStyle" TargetType="{x:Type Thumb}">
-            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="MinHeight" Value="26"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Thumb}">
-                        <Border x:Name="ThumbSurface" Margin="2,1"
-                                CornerRadius="6" BorderThickness="1" BorderBrush="#B5BFCC"
-                                SnapsToDevicePixels="True">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#E4E9F0" Offset="0"/>
-                                    <GradientStop Color="#CCD5E0" Offset="0.48"/>
-                                    <GradientStop Color="#BDC8D5" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Border.Effect>
-                                <DropShadowEffect Color="#657286" Opacity="0.16"
-                                                  BlurRadius="3" ShadowDepth="1"/>
-                            </Border.Effect>
-                        </Border>
+                        <Border x:Name="ThumbSurface" Background="#CDD2D9" CornerRadius="4" Margin="2,0"/>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ThumbSurface" Property="Background" Value="#CED8E4"/>
-                                <Setter TargetName="ThumbSurface" Property="BorderBrush" Value="#9CAABD"/>
+                                <Setter TargetName="ThumbSurface" Property="Background" Value="#B2BAC5"/>
                             </Trigger>
                             <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="ThumbSurface" Property="Background" Value="#B6C4D4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="JNestSettingsScrollArrowStyle" TargetType="{x:Type RepeatButton}">
-            <Setter Property="Focusable" Value="False"/>
-            <Setter Property="IsTabStop" Value="False"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type RepeatButton}">
-                        <Border x:Name="ArrowSurface" Background="Transparent" CornerRadius="5" Margin="1">
-                            <Path x:Name="Arrow" Data="M 3,5 L 6,8 L 9,5"
-                                  Stroke="#788393" StrokeThickness="1.5" StrokeLineJoin="Round"
-                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  Width="12" Height="12" Stretch="Uniform"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="Tag" Value="Up">
-                                <Setter TargetName="Arrow" Property="Data" Value="M 3,8 L 6,5 L 9,8"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ArrowSurface" Property="Background" Value="#DEE5EE"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ArrowSurface" Property="Background" Value="#CBD5E1"/>
+                                <Setter TargetName="ThumbSurface" Property="Background" Value="#9DA7B4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -131,43 +88,26 @@
             </Setter>
         </Style>
         <Style x:Key="JNestSettingsScrollbarStyle" TargetType="{x:Type ScrollBar}">
-            <Setter Property="Width" Value="18"/>
+            <Setter Property="Width" Value="12"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ScrollBar}">
-                        <Grid Width="{TemplateBinding Width}" SnapsToDevicePixels="True">
-                            <Border Background="#F0F2F6" BorderBrush="#E2E6EC"
-                                    BorderThickness="1" CornerRadius="8" Margin="1,0"/>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="18"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="18"/>
-                                </Grid.RowDefinitions>
-                                <RepeatButton Grid.Row="0" Tag="Up"
-                                              Command="{x:Static ScrollBar.LineUpCommand}"
-                                              Style="{StaticResource JNestSettingsScrollArrowStyle}"/>
-                                <Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="True"
-                                       Minimum="{TemplateBinding Minimum}"
-                                       Maximum="{TemplateBinding Maximum}"
-                                       Value="{TemplateBinding Value}"
-                                       ViewportSize="{TemplateBinding ViewportSize}">
-                                    <Track.DecreaseRepeatButton>
-                                        <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
-                                                      Style="{StaticResource JNestSettingsScrollPageStyle}"/>
-                                    </Track.DecreaseRepeatButton>
-                                    <Track.Thumb>
-                                        <Thumb Style="{StaticResource JNestSettingsScrollThumbStyle}"/>
-                                    </Track.Thumb>
-                                    <Track.IncreaseRepeatButton>
-                                        <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
-                                                      Style="{StaticResource JNestSettingsScrollPageStyle}"/>
-                                    </Track.IncreaseRepeatButton>
-                                </Track>
-                                <RepeatButton Grid.Row="2" Tag="Down"
-                                              Command="{x:Static ScrollBar.LineDownCommand}"
-                                              Style="{StaticResource JNestSettingsScrollArrowStyle}"/>
-                            </Grid>
+                        <Grid Width="{TemplateBinding Width}" Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True"
+                                   Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                  Style="{StaticResource JNestSettingsScrollPageStyle}"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource JNestSettingsScrollThumbStyle}"/>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                  Style="{StaticResource JNestSettingsScrollPageStyle}"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -250,10 +190,10 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="通过独立密码锁定 JNest 全部工作区"
-                           FontSize="11.5" Foreground="#667085"
+                           FontSize="13.5" Foreground="#596273"
                            VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
-                <Button Grid.Column="1" x:Name="ChangeLockPasswordButton" Content="修改锁定密码"
-                        Width="118" Height="34" VerticalAlignment="Center"
+                <Button Grid.Column="1" x:Name="ChangeLockPasswordButton" Content="修改密码"
+                        Width="102" Height="34" VerticalAlignment="Center"
                         Style="{StaticResource SettingsCloseButtonStyle}"
                         Click="ChangeLockPassword_Click"/>
             </Grid>

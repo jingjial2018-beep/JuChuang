@@ -16,15 +16,29 @@ public partial class LockPasswordDialog : Window
         {
             Heading.Text = "修改 JNest 锁定密码";
             Title = "修改 JNest 锁定密码";
-            Height = 410;
             OldPasswordPanel.Visibility = Visibility.Visible;
-            RemovalHint.Visibility = Visibility.Visible;
+            UpdateRemovalPlaceholders();
             Loaded += (_, _) => OldPasswordBox.Focus();
         }
         else
         {
             Loaded += (_, _) => NewPasswordBox.Focus();
         }
+    }
+
+    private void PasswordField_Changed(object sender, RoutedEventArgs e)
+        => UpdateRemovalPlaceholders();
+
+    private void UpdateRemovalPlaceholders()
+    {
+        if (NewPasswordPlaceholder is null || ConfirmPasswordPlaceholder is null)
+            return;
+        NewPasswordPlaceholder.Visibility =
+            _changeExisting && NewPasswordBox.Password.Length == 0
+                ? Visibility.Visible : Visibility.Collapsed;
+        ConfirmPasswordPlaceholder.Visibility =
+            _changeExisting && ConfirmPasswordBox.Password.Length == 0
+                ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;

@@ -17,9 +17,9 @@
         <TextBlock Grid.Row="1" Margin="0,14,0,0" TextWrapping="Wrap"
                    Foreground="#475467" FontSize="13" LineHeight="23"
                    Text="取消后，JNest 将不再使用密码保护工作区。你可以随时重新设置。"/>
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center"
                     Margin="0,12,0,0">
-            <Button Content="保留密码" Width="112" Height="40" Margin="0,0,12,0"
+            <Button Content="保留密码" Width="112" Height="40" Margin="0,0,20,0"
                     Style="{StaticResource JNestDialogButtonStyle}"
                     IsDefault="True" IsCancel="True" Click="KeepPassword_Click"/>
             <Button Content="取消锁定" Width="112" Height="40"
