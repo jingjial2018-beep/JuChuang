@@ -1282,6 +1282,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    // ListBoxItem selects itself on a right-button press by default.
+    // Intercept the tunneled press at the list to preserve the active account.
+    // Left-click selection, drag-reordering and close controls stay unchanged.
+    private void AccountsList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+    }
+
     private void AccountsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _accountDragEntry = null;
