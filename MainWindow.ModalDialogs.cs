@@ -99,6 +99,12 @@ public partial class MainWindow
                 }
                 BeginModalInputGuard(dialog);
             };
+            // ShowDialog disables the other UI-thread windows. Create the
+            // native hit-test shield after that transition, not before it.
+            // The shield is never globally topmost and is disposed on close.
+            dialog.Loaded += (_, _) => _ = Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Background,
+                new Action(EnsureModalClickShield));
             dialog.Closed += (_, _) =>
             {
                 LogModalZOrder($"closed dialog={dialog.GetType().Name}");

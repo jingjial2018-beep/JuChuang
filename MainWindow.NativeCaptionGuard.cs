@@ -68,6 +68,7 @@ public partial class MainWindow
 
     private void EndModalInputGuard()
     {
+        DisposeModalClickShield();
         _modalRootDialog = null;
         _modalGuardDialogHwnd = IntPtr.Zero;
     }
@@ -149,7 +150,11 @@ public partial class MainWindow
             ShowTemporaryStatus("窗口按钮保护测试未启用");
             return;
         }
-        _captionGuardRefreshTimer.Tick += (_, _) => RefreshNativeCaptionGuard();
+        _captionGuardRefreshTimer.Tick += (_, _) =>
+        {
+            RefreshNativeCaptionGuard();
+            RefreshModalClickShield();
+        };
         _captionGuardRefreshTimer.Start();
         RefreshNativeCaptionGuard();
     }
@@ -201,7 +206,11 @@ public partial class MainWindow
                 var root = target == IntPtr.Zero ? IntPtr.Zero
                     : NativeMethods.GetAncestor(target, NativeMethods.GA_ROOT);
                 var managerRoot = new WindowInteropHelper(this).Handle;
-                var isHostedTarget = WindowHost.IsHostedWindow(root);
+                // A physical click may target a child HWND of an attached client.
+                // The root may also be the manager's disabled owner, depending
+                // on native hit-test behavior during ShowDialog.
+                var isHostedTarget = WindowHost.IsHostedWindow(root)
+                    || WindowHost.IsHostedWindow(target);
                 var isManagerTarget = root == managerRoot;
                 // WPF's disabled modal owner can be returned by WindowFromPoint
                 // instead of the separate embedded client top-level HWND.
@@ -217,7 +226,16 @@ public partial class MainWindow
                             isButtonDown: IsModalActivationButtonDown(command),
                             isAlreadyForeground: NativeMethods.GetForegroundWindow() == currentHwnd,
                             isManagerTarget: isManagerTarget))
+                    {
+                        // In the shield's absence, do this while the genuine
+                        // user gesture is being processed. Deferring *all*
+                        // activation until after swallowing the click loses the
+                        // normal Windows foreground opportunity.
+                        var direct = NativeMethods.SetForegroundWindow(currentHwnd);
+                        if (ReconnectDiagnostics.Active)
+                            ReconnectDiagnostics.Write($"modal-direct-click activate={direct} hwnd=0x{currentHwnd.ToInt64():X}");
                         RestoreHostedModalFromUserClick();
+                    }
 
                     // Native clients must not receive modal-blocked input.
                     // For WPF owner clicks let OS/WPF process the normal event.
@@ -254,6 +272,7 @@ public partial class MainWindow
     private void StopNativeCaptionGuard()
     {
         _guardedClient = IntPtr.Zero;
+        DisposeModalClickShield();
         _modalRootDialog = null;
         _modalGuardDialogHwnd = IntPtr.Zero;
         _modalActivationQueued = false;
