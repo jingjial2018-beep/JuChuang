@@ -152,6 +152,15 @@
                           SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
             </StackPanel>
         </StackPanel>
+            <Border Height="1" Background="#E3E7ED" Margin="0,20,0,14"/>
+            <TextBlock Text="隐私与安全" FontSize="13" FontWeight="Medium"
+                       Foreground="#667085"/>
+            <TextBlock Text="通过独立密码锁定 JNest 全部工作区"
+                       FontSize="11.5" Foreground="#667085" Margin="0,8,0,0"/>
+            <Button x:Name="ChangeLockPasswordButton" Content="修改锁定密码"
+                    Width="118" Height="34" HorizontalAlignment="Left"
+                    Margin="0,10,0,0" Style="{StaticResource SettingsCloseButtonStyle}"
+                    Click="ChangeLockPassword_Click"/>
           </StackPanel>
         </ScrollViewer>
         <Grid Grid.Row="1" Margin="0,12,0,0">
