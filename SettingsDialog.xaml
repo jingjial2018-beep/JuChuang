@@ -131,38 +131,38 @@
           <StackPanel Margin="0,0,8,12">
         <TextBlock Text="设置" FontSize="21" FontWeight="SemiBold" Foreground="#202939"/>
         <StackPanel Margin="0,18,0,0">
-            <TextBlock Text="常规" FontSize="13" FontWeight="SemiBold" Foreground="#667085"/>
+            <TextBlock Text="常规" FontSize="15" FontWeight="SemiBold" Foreground="#667085"/>
             <ToggleButton x:Name="StartupCheck" Style="{StaticResource SettingsSwitch}"
                           Margin="0,8,0,0" Checked="StartupChanged" Unchecked="StartupChanged">
                 <StackPanel>
-                    <TextBlock Text="开机自动启动" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="登录 Windows 后启动 JNest" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/>
+                    <TextBlock Text="开机自动启动" FontSize="14" Foreground="#202939"/>
+                    <TextBlock Text="登录 Windows 后启动 JNest" FontSize="13" Foreground="#596273" Margin="0,3,0,0"/>
                 </StackPanel>
             </ToggleButton>
         </StackPanel>
         <StackPanel Margin="0,20,0,0">
-            <TextBlock Text="消息通知" FontSize="13" FontWeight="SemiBold" Foreground="#667085"/>
+            <TextBlock Text="消息通知" FontSize="15" FontWeight="SemiBold" Foreground="#667085"/>
             <ToggleButton x:Name="FlashCheck" Style="{StaticResource SettingsSwitch}"
                           Margin="0,9,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
-                <StackPanel><TextBlock Text="任务栏闪烁" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="有新消息时提示任务栏注意" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
+                <StackPanel><TextBlock Text="任务栏闪烁" FontSize="14" Foreground="#202939"/>
+                    <TextBlock Text="有新消息时提示任务栏注意" FontSize="13" Foreground="#596273" Margin="0,3,0,0"/></StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="ToastCheck" Style="{StaticResource SettingsSwitch}"
                           Margin="0,12,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
-                <StackPanel><TextBlock Text="Windows Toast 通知" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="JNest 在后台或最小化时弹出系统通知" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
+                <StackPanel><TextBlock Text="Windows Toast 通知" FontSize="14" Foreground="#202939"/>
+                    <TextBlock Text="JNest 在后台或最小化时弹出系统通知" FontSize="13" Foreground="#596273" Margin="0,3,0,0"/></StackPanel>
             </ToggleButton>
             <ToggleButton x:Name="SoundCheck" Style="{StaticResource SettingsSwitch}"
                           Margin="0,12,0,0" Checked="NotificationChanged" Unchecked="NotificationChanged">
-                <StackPanel><TextBlock Text="新消息提示音" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="新消息到达时播放系统提示音" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/></StackPanel>
+                <StackPanel><TextBlock Text="新消息提示音" FontSize="14" Foreground="#202939"/>
+                    <TextBlock Text="新消息到达时播放系统提示音" FontSize="13" Foreground="#596273" Margin="0,3,0,0"/></StackPanel>
             </ToggleButton>
             <Border Height="1" Background="#E3E7ED" Margin="0,15,0,13"/>
             <ToggleButton x:Name="DndCheck" Style="{StaticResource SettingsSwitch}"
                           Checked="DndChanged" Unchecked="DndChanged">
                 <StackPanel>
-                    <TextBlock Text="免打扰时段" FontSize="13" Foreground="#202939"/>
-                    <TextBlock Text="在设定时段内不弹出 Toast 通知和提示音" FontSize="11.5" Foreground="#667085" Margin="0,2,0,0"/>
+                    <TextBlock Text="免打扰时段" FontSize="14" Foreground="#202939"/>
+                    <TextBlock Text="在设定时段内不弹出 Toast 通知和提示音" FontSize="13" Foreground="#596273" Margin="0,3,0,0"/>
                 </StackPanel>
             </ToggleButton>
             <StackPanel x:Name="DndTimes" Orientation="Horizontal" HorizontalAlignment="Left"
@@ -177,16 +177,16 @@
                         </Style.Triggers>
                     </Style>
                 </StackPanel.Style>
-                <TextBlock Text="开始" VerticalAlignment="Center" FontSize="11.5" Foreground="#667085" Margin="0,0,6,0"/>
-                <ComboBox x:Name="DndStartTime" Width="83" Height="25" DisplayMemberPath="Label"
+                <TextBlock Text="开始" VerticalAlignment="Center" FontSize="13" Foreground="#667085" Margin="0,0,6,0"/>
+                <ComboBox x:Name="DndStartTime" Width="83" Height="25" FontSize="13" DisplayMemberPath="Label"
                           SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
-                <TextBlock Text="结束" VerticalAlignment="Center" FontSize="11.5" Foreground="#667085" Margin="14,0,6,0"/>
-                <ComboBox x:Name="DndEndTime" Width="83" Height="25" DisplayMemberPath="Label"
+                <TextBlock Text="结束" VerticalAlignment="Center" FontSize="13" Foreground="#667085" Margin="14,0,6,0"/>
+                <ComboBox x:Name="DndEndTime" Width="83" Height="25" FontSize="13" DisplayMemberPath="Label"
                           SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
             </StackPanel>
         </StackPanel>
             <Border Height="1" Background="#E3E7ED" Margin="0,20,0,14"/>
-            <TextBlock Text="隐私与安全" FontSize="13" FontWeight="Medium"
+            <TextBlock Text="隐私与安全" FontSize="15" FontWeight="SemiBold"
                        Foreground="#667085"/>
             <Grid Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
@@ -194,7 +194,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="通过独立密码锁定 JNest 全部工作区"
-                           FontSize="13.5" Foreground="#596273"
+                           FontSize="13" Foreground="#596273"
                            VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
                 <Button Grid.Column="1" x:Name="ChangeLockPasswordButton" Content="修改密码"
                         VerticalAlignment="Center"
