@@ -200,7 +200,7 @@
           </StackPanel>
         </ScrollViewer>
         <Grid Grid.Row="1" Margin="0,12,0,0">
-            <TextBlock Text="设置即时生效并自动保存" FontSize="11.5" Foreground="#667085" VerticalAlignment="Center"/>
+            <TextBlock Text="设置即时生效并自动保存" FontSize="13" Foreground="#667085" VerticalAlignment="Center"/>
             <Button Content="关闭" Style="{StaticResource SettingsCloseButtonStyle}" Width="104" Height="34" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
         </Grid>
     </Grid>
