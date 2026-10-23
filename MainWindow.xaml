@@ -420,7 +420,7 @@
                                                      Margin="-1,-1,0,0" Visibility="Collapsed" Panel.ZIndex="10" />
                                         </Grid>
                                         <StackPanel x:Name="AccountDetails" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold"
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="Medium"
                                                        Foreground="{StaticResource PrimaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" />
                                             <TextBlock Text="{Binding ClientLabel}" Margin="0,2,0,0" FontSize="13"
@@ -533,11 +533,11 @@
                         <Grid Margin="20,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="CurrentTitleText" Text="等待客户端" FontSize="15.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="CurrentTitleText" Text="等待客户端" FontSize="15" FontWeight="Medium"
                                            Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center" />
                                 <Ellipse x:Name="CurrentStatusDot" Width="7" Height="7" Margin="11,1,6,0"
                                          Fill="#98A2B3" VerticalAlignment="Center" />
-                                <TextBlock x:Name="CurrentStatusText" Text="尚未接入" FontSize="12.5"
+                                <TextBlock x:Name="CurrentStatusText" Text="尚未接入" FontSize="12"
                                            Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Grid.Column="1" Text="本地管理 · 不读取聊天消息正文"
