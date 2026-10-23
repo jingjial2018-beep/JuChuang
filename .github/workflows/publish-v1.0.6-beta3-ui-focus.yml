@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/publish-v1.0.6-beta2-modal-focus.yml'
+      - '.github/workflows/publish-v1.0.6-beta3-ui-focus.yml'
   workflow_dispatch:
 
 permissions:
