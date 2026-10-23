@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Interop;
 using JuChuang.Services;
 
 namespace JuChuang;
@@ -11,6 +12,11 @@ public partial class LockPasswordDialog : Window
     {
         InitializeComponent();
         _changeExisting = changeExisting;
+        SourceInitialized += (_, _) =>
+        {
+            if (PresentationSource.FromVisual(this) is HwndSource source)
+                source.AddHook(BlockWindowMove);
+        };
         if (changeExisting)
         {
             Heading.Text = "修改 JNest 锁定密码";
@@ -25,15 +31,32 @@ public partial class LockPasswordDialog : Window
         }
     }
 
+    private static IntPtr BlockWindowMove(IntPtr hwnd, int message, IntPtr wParam,
+        IntPtr lParam, ref bool handled)
+    {
+        const int wmNcLButtonDown = 0x00A1;
+        const int wmNcLButtonDblClk = 0x00A3;
+        const int wmSysCommand = 0x0112;
+        const int htCaption = 2;
+        const int scMove = 0xF010;
+        if (((message == wmNcLButtonDown || message == wmNcLButtonDblClk)
+                && wParam.ToInt64() == htCaption)
+            || (message == wmSysCommand && (wParam.ToInt64() & 0xFFF0) == scMove))
+        {
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
+
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
     private void Confirm_Click(object sender, RoutedEventArgs e)
     {
         var first = NewPasswordBox.Password;
         var second = ConfirmPasswordBox.Password;
-        if (first.Length < 8)
+        if (first.Length < 6)
         {
-            ErrorText.Text = "密码至少需要 8 个字符。";
+            ErrorText.Text = "密码至少需要 6 位。";
             return;
         }
 
