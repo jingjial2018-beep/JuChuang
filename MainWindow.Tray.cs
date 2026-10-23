@@ -187,6 +187,12 @@ public partial class MainWindow
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
         WindowHost.HandleOwnerWindowStateChanged(false);
+        if (IsJNestProtected)
+        {
+            Activate();
+            LockPasswordInput.Focus();
+            return;
+        }
         UpdateLocalClock();
         _clockTimer.Start();
         Activate();
