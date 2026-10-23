@@ -2606,6 +2606,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        // The in-window lock surface is fixed in place. Leave window-control
+        // buttons interactive, but block dragging/double-click resizing.
+        if (IsJNestProtected)
+        {
+            e.Handled = true;
+            return;
+        }
+
         _isTitleBarInteraction = true;
         try
         {
