@@ -13,6 +13,21 @@ public partial class MainWindow
     private int _lockFailedAttempts;
     private DateTime _lockRetryAfterUtc;
     private bool IsJNestProtected => _lockState.IsProtected;
+    private bool _lockHostSuspended;
+
+    private void SuspendHostedWindowsForLock()
+    {
+        if (_lockHostSuspended) return;
+        WindowHost.SuspendForModalDialog();
+        _lockHostSuspended = true;
+    }
+
+    private void ResumeHostedWindowsAfterLock()
+    {
+        if (!_lockHostSuspended) return;
+        WindowHost.ResumeAfterModalDialog();
+        _lockHostSuspended = false;
+    }
 
     private void LockJNest_Click(object sender, RoutedEventArgs e)
     {
@@ -36,7 +51,7 @@ public partial class MainWindow
         try
         {
             // Park native HWNDs before exposing the WPF lock surface.
-            WindowHost.SuspendForModalDialog();
+            SuspendHostedWindowsForLock();
             JNestLockPersistence.SaveLocked();
             ShowLockScreen();
             _lockState.LockCompleted();
@@ -56,7 +71,7 @@ public partial class MainWindow
     {
         if (!JNestLockPersistence.IsLocked) return;
         if (!_lockState.BeginLock()) return;
-        WindowHost.SuspendForModalDialog();
+        SuspendHostedWindowsForLock();
         ShowLockScreen();
         _lockState.LockCompleted();
     }
@@ -134,8 +149,7 @@ public partial class MainWindow
             // Restore the selected WPF workspace (including HwndHost visibility)
             // before allowing the parked native client to reappear.
             ShowSelectedEntry();
-            WindowHost.ResumeAfterModalDialog();
-            JNestLockPersistence.SaveUnlocked();
+            ResumeHostedWindowsAfterLock();
             _lockFailedAttempts = 0;
             _lockRetryAfterUtc = DateTime.MinValue;
 
@@ -152,6 +166,9 @@ public partial class MainWindow
             _pendingLockedToastAccount = null;
             _pendingLockedToastProcessStart = null;
             ShowSelectedEntry();
+            // Only clear the persisted lock once all restoration operations
+            // have completed; failed retries must remain locked on restart.
+            JNestLockPersistence.SaveUnlocked();
         }
         catch (Exception exception)
         {
@@ -159,7 +176,7 @@ public partial class MainWindow
             if (_lockState.Current == JNestLockState.Phase.Unlocked)
                 _lockState.BeginLock();
             _lockState.FailClosed();
-            WindowHost.SuspendForModalDialog();
+            SuspendHostedWindowsForLock();
             ShowLockScreen();
             LockErrorText.Text = "恢复工作区失败，请重试。";
             DiagnosticLogService.WriteActivityEvent("unlock-restore-failed-" + exception.GetType().Name);
