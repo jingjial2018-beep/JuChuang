@@ -5,8 +5,10 @@ on:
   push:
     branches:
       - main
+      - fix/modal-click-return-beta5
     paths:
       - JuChuang.csproj
+      - .github/workflows/publish-release.yml
 
 permissions:
   contents: write
