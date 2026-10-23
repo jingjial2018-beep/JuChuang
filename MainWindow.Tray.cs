@@ -16,6 +16,7 @@ public partial class MainWindow
     private MenuItem? _startupMenuItem;
     private TextBlock? _startupCheckmark;
     private System.Drawing.Point _trayMenuOpenClickPoint;
+    private bool _trayExitRequested;
 
     private void RefreshStartupMenuState()
     {
@@ -142,7 +143,7 @@ public partial class MainWindow
             Height = 1, Background = new SolidColorBrush(Color.FromRgb(221, 226, 233)) };
         menu.Items.Add(separator);
         var exit = new MenuItem { Header = "退出" };
-        exit.Click += (_, _) => Close();
+        exit.Click += (_, _) => ExitFromTray();
         menu.Items.Add(exit);
         _trayMenu = menu;
         RefreshStartupMenuState();
@@ -179,8 +180,32 @@ public partial class MainWindow
         _trayMenu.IsOpen = true;
     }
 
+    private void ExitFromTray()
+    {
+        if (_isClosing || _allExitInProgress || _clientExitInProgress) return;
+        if (_trayMenu is not null) _trayMenu.IsOpen = false;
+
+        // Bring the locked shell back before entering Window.Closing. WPF
+        // forbids calling Show() once the window has begun closing.
+        if (IsJNestProtected) RestoreFromTray();
+        _trayExitRequested = true;
+        try
+        {
+            Close();
+        }
+        finally
+        {
+            // Closing can be cancelled by the exit-choice dialog. Keep this
+            // flag during an asynchronous "exit all" until the final Close.
+            if (!_isClosing && !_allExitInProgress)
+                _trayExitRequested = false;
+        }
+    }
+
     private void RestoreFromTray()
     {
+        if (_isClosing || _trayExitRequested
+            || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
         if (_trayMenu is not null) _trayMenu.IsOpen = false;
         ShowInTaskbar = true;
         Show();
