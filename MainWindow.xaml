@@ -19,7 +19,7 @@
         WindowStyle="None"
         ResizeMode="CanMinimize"
         Background="{StaticResource WindowBackgroundBrush}"
-        FontFamily="./Assets/Fonts/#Source Han Sans CN"
+        FontFamily="Microsoft YaHei UI"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display"
@@ -228,7 +228,7 @@
                                     </ContextMenu.Template>
                                     <ContextMenu.Resources>
                                         <Style TargetType="MenuItem">
-                                            <Setter Property="FontFamily" Value="./Assets/Fonts/#Source Han Sans CN"/>
+                                            <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
                                             <Setter Property="FontSize" Value="13.5"/>
                                             <Setter Property="Foreground" Value="#263041"/>
                                             <Setter Property="Height" Value="39"/>
@@ -602,11 +602,11 @@
                     <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="13"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="./Assets/Fonts/#Source Han Sans CN" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
                         <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="14" Foreground="#475467"
-                                   FontWeight="SemiBold" FontFamily="./Assets/Fonts/#Source Han Sans CN" VerticalAlignment="Center" />
+                                   FontWeight="SemiBold" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
                         <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="13"
-                                   Foreground="#667085" FontFamily="./Assets/Fonts/#Source Han Sans CN" VerticalAlignment="Center" />
+                                   Foreground="#667085" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>
             </Border>

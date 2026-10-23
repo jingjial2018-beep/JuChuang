@@ -1,7 +1,7 @@
 <Window x:Class="JuChuang.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        FontFamily="./Assets/Fonts/#Source Han Sans CN"
+        FontFamily="Microsoft YaHei UI"
         Title="关于 JNest" Icon="Assets/app.ico"
         Width="550" Height="380" MinWidth="480" MinHeight="330"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
