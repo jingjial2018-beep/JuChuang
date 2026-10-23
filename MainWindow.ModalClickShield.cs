@@ -52,7 +52,7 @@ public partial class MainWindow
             {
                 ParentWindow = parent,
                 WindowStyle = unchecked((int)(NativeMethods.WS_POPUP | NativeMethods.WS_VISIBLE)),
-                ExtendedWindowStyle = NativeMethods.WS_EX_TOOLWINDOW | WsExLayered,
+                ExtendedWindowStyle = checked((int)(NativeMethods.WS_EX_TOOLWINDOW | WsExLayered)),
                 PositionX = 0,
                 PositionY = 0,
                 Width = 1,
