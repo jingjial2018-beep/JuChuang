@@ -30,12 +30,18 @@
     <None Update="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Resource Include="Assets\Fonts\SourceHanSansCN-Regular.otf" />
+    <Resource Include="Assets\Fonts\SourceHanSansCN-Medium.otf" />
+    <None Include="Assets\Fonts\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Assets\app-logo.png" />
     <Resource Include="Assets\app.ico" />
     <Resource Include="Assets\taskbar.ico" />
     <Resource Include="Assets\wechat-icon.jpg" />
     <Resource Include="Assets\whatsapp-icon.png" />
   </ItemGroup>
+  <Target Name="FetchJNestFont" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\FetchSourceHanSans.ps1&quot;" />
+  </Target>
   <Target Name="GenerateBrandAppIcon" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\GenerateAppIcon.ps1&quot;" />
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\GenerateTaskbarIcon.ps1&quot;" />
