@@ -5,7 +5,7 @@
         Title="JNest 设置" Icon="Assets/app.ico" Width="540" Height="520"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="#F7F8FA" ShowInTaskbar="False"
-        FontFamily="Microsoft YaHei UI, Segoe UI">
+        >
     <Window.Resources>
         <Style x:Key="SettingsCloseButtonStyle" TargetType="Button">
                     <Setter Property="Background" Value="#F8F9FB"/>
