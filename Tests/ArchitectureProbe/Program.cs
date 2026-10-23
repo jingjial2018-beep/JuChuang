@@ -4,6 +4,26 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("Lock states are fail closed and transitions are authenticated", () =>
+{
+    var state = new JNestLockState();
+    Assert(!state.IsProtected && state.Current == JNestLockState.Phase.Unlocked,
+        "fresh lock state must be unlocked");
+    Assert(state.BeginLock(), "cannot start lock transition");
+    Assert(state.IsProtected, "lock transition must immediately protect content");
+    state.LockCompleted();
+    Assert(!state.BeginUnlock(credentialVerified: false), "unauthenticated unlock was accepted");
+    Assert(state.IsProtected, "wrong password changed lock status");
+    Assert(state.BeginUnlock(credentialVerified: true), "authenticated unlock denied");
+    Assert(state.IsProtected, "unlock transition exposed content too early");
+    state.FailClosed();
+    Assert(state.IsProtected && state.Current == JNestLockState.Phase.Locked,
+        "failed restore must remain locked");
+    Assert(state.BeginUnlock(credentialVerified: true), "retry after failed restore denied");
+    state.UnlockCompleted();
+    Assert(!state.IsProtected, "successful restore failed to complete unlock");
+});
+
 Run("Do not disturb handles daytime and overnight boundaries", () =>
 {
     var settings = new AppSettings
