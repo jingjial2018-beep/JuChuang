@@ -1,0 +1,33 @@
+name: JNest lock repair validation (no release)
+
+on:
+  push:
+    branches:
+      - feature/v1.0.6-beta.1-lock-font
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-validation:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout current repair branch
+        uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore WPF application
+        shell: pwsh
+        run: dotnet restore .\JuChuang.csproj
+      - name: Compile WPF application (no packaging or release)
+        shell: pwsh
+        run: dotnet build .\JuChuang.csproj -c Release --no-restore
+      - name: Run architecture regression probe
+        shell: pwsh
+        run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Run badge regression probe
+        shell: pwsh
+        run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
