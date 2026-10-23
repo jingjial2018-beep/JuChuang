@@ -87,7 +87,7 @@ public partial class MainWindow
         menu.Closed += (_, _) => EndTrayMenuDismissTracking();
 
         var style = new Style(typeof(MenuItem));
-        style.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Microsoft YaHei UI")));
+        style.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily(new Uri("pack://application:,,,/"), "./Assets/Fonts/#Source Han Sans CN")));
         style.Setters.Add(new Setter(Control.FontSizeProperty, 13.5));
         style.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(38, 48, 65))));
         style.Setters.Add(new Setter(FrameworkElement.HeightProperty, 39.0));
