@@ -1,0 +1,150 @@
+name: Publish JNest v1.0.6-beta.2 modal focus repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-v1.0.6-beta2-modal-focus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-windows-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout tested beta.2 commit
+        uses: actions/checkout@v4
+        with:
+          ref: e30fa18e6af50ffed203e9bfcaa24c52cd3025d7
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Check commit and version
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sha = (git rev-parse HEAD).Trim()
+          if ($sha -ne "e30fa18e6af50ffed203e9bfcaa24c52cd3025d7") { throw "Unexpected source commit: $sha" }
+          [xml]$project = Get-Content .\JuChuang.csproj
+          $v = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          if ($v -ne "1.0.6-beta.2") { throw "Unexpected version: $v" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v" >> $env:GITHUB_OUTPUT
+
+      - name: Restore WPF application
+        shell: pwsh
+        run: |
+          dotnet restore .\JuChuang.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          dotnet build .\JuChuang.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Architecture regression
+        shell: pwsh
+        run: |
+          dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Badge regression
+        shell: pwsh
+        run: |
+          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore Win-x64 assets
+        shell: pwsh
+        run: |
+          dotnet restore .\JuChuang.csproj -r win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build framework-dependent ZIP
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:PublishReadyToRun=true `
+            -o .\artifacts\framework-dependent
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build self-contained ZIP
+        shell: pwsh
+        run: |
+          dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:PublishReadyToRun=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o .\artifacts\self-contained
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package and checksum
+        id: package
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $framework = "JNest-v$v-FrameworkDependent-win-x64.zip"
+          $selfContained = "JNest-v$v-SelfContained-win-x64.zip"
+          Compress-Archive -Path .\artifacts\framework-dependent\* -DestinationPath ".\artifacts\$framework" -Force
+          Compress-Archive -Path .\artifacts\self-contained\* -DestinationPath ".\artifacts\$selfContained" -Force
+          "framework=$framework" >> $env:GITHUB_OUTPUT
+          "self_contained=$selfContained" >> $env:GITHUB_OUTPUT
+          "framework_hash=$((Get-FileHash ".\artifacts\$framework" -Algorithm SHA256).Hash)" >> $env:GITHUB_OUTPUT
+          "self_contained_hash=$((Get-FileHash ".\artifacts\$selfContained" -Algorithm SHA256).Hash)" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $notes = Get-Content ".\RELEASE_NOTES-v1.0.6-beta.2.md" -Raw
+          $notes += "`r`n### SHA-256 checksums`r`n"
+          $notes += "- FrameworkDependent: ${{ steps.package.outputs.framework_hash }}`r`n"
+          $notes += "- SelfContained: ${{ steps.package.outputs.self_contained_hash }}`r`n"
+          Set-Content -Path .\artifacts\release-notes.md -Value $notes -Encoding utf8
+
+      - name: Publish new beta (never overwrite existing)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ steps.version.outputs.tag }}"
+          $target = "e30fa18e6af50ffed203e9bfcaa24c52cd3025d7"
+          gh release view $tag --repo "${{ github.repository }}" 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to overwrite." }
+          $framework = ".\artifacts\${{ steps.package.outputs.framework }}"
+          $selfContained = ".\artifacts\${{ steps.package.outputs.self_contained }}"
+          if (-not (Test-Path $framework) -or -not (Test-Path $selfContained)) {
+            throw "Expected ZIP packages are missing."
+          }
+          gh release create $tag $framework $selfContained `
+            --repo "${{ github.repository }}" `
+            --target $target `
+            --title "JNest v1.0.6-beta.2" `
+            --prerelease `
+            --notes-file .\artifacts\release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw "Beta publishing failed" }
+          $release = gh api "repos/${{ github.repository }}/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release.prerelease) { throw "Release verification failed" }
+          foreach ($name in @("${{ steps.package.outputs.framework }}", "${{ steps.package.outputs.self_contained }}")) {
+            $assetName = [System.IO.Path]::GetFileName($name)
+            $asset = @($release.assets | Where-Object { $_.name -eq $assetName })
+            if ($asset.Count -ne 1 -or $asset[0].size -le 0) {
+              throw "Missing uploaded asset: $assetName"
+            }
+            Write-Host "Verified $assetName ($($asset[0].size) bytes)"
+          }
