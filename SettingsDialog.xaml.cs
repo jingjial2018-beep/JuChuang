@@ -71,4 +71,16 @@ public partial class SettingsDialog : Window
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void ChangeLockPassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (!JuChuang.Services.LockCredentialService.IsConfigured)
+        {
+            MessageBox.Show(this, "请先从 JNest 主菜单执行一次锁定并创建密码。",
+                "尚未设置锁定密码", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        new LockPasswordDialog(changeExisting: true) { Owner = this }.ShowDialog();
+    }
 }
