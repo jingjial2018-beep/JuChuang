@@ -63,6 +63,10 @@ public partial class MainWindow
 
     private void ShowLockScreen()
     {
+        // HwndHost is a native child HWND. Parking hosted clients alone does
+        // not remove its airspace, so it can still cover WPF unlock controls.
+        // Hide the host itself before showing the lock surface.
+        WindowHost.Visibility = Visibility.Collapsed;
         LockOverlay.Visibility = Visibility.Visible;
         MainMenuButton.IsEnabled = false;
         LockPasswordInput.Clear();
@@ -124,9 +128,12 @@ public partial class MainWindow
         {
             // The credential has been verified. Rebuild normal UI first; native
             // windows remain parked until the layout and selection are ready.
+            _lockState.UnlockCompleted();
             LockOverlay.Visibility = Visibility.Collapsed;
             MainMenuButton.IsEnabled = true;
-            _lockState.UnlockCompleted();
+            // Restore the selected WPF workspace (including HwndHost visibility)
+            // before allowing the parked native client to reappear.
+            ShowSelectedEntry();
             WindowHost.ResumeAfterModalDialog();
             JNestLockPersistence.SaveUnlocked();
             _lockFailedAttempts = 0;
