@@ -921,7 +921,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return (Candidates: discoveredCandidates, Accounts: resolvedAccounts);
             });
 
-            if (_isClosing || _allExitInProgress)
+            if (_isClosing || _allExitInProgress || IsJNestProtected)
             {
                 return;
             }
@@ -933,6 +933,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             foreach (var discoveredCandidate in candidates)
             {
+                if (IsJNestProtected) return;
                 var candidate = discoveredCandidate;
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
                 // Current window size is not a reliable login signal after WPF
