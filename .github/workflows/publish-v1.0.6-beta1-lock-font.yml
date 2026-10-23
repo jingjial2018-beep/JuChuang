@@ -19,10 +19,11 @@ jobs:
   publish:
     runs-on: windows-latest
     steps:
-      - name: Checkout v1.0.6-beta.1 lock/font feature branch
+      - name: Checkout verified v1.0.6-beta.1 repair commit
         uses: actions/checkout@v4
         with:
-          ref: feature/v1.0.6-beta.1-lock-font
+          # Exact source revision that passed Windows compile and probes.
+          ref: e0c5897dcf4c98896261aef8a101c2f56b493e34
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -104,22 +105,52 @@ jobs:
           $releaseNotesPath = ".\RELEASE_NOTES-v$version.md"
           if (-not (Test-Path $releaseNotesPath)) { $releaseNotesPath = ".\RELEASE_NOTES.md" }
           $notes = Get-Content $releaseNotesPath -Raw
-          $notes += "`r`n`r`n### SHA-256`r`n"
+          $notes += "`r`n`r`n## Beta.1 replacement build (2026-10-23)`r`n"
+          $notes += "- Fixed blank locked UI by hiding HwndHost airspace and restoring work area before hosted clients.`r`n"
+          $notes += "- Fixed WPF Show-during-Closing exception from locked tray exit.`r`n"
+          $notes += "- Six-character password minimum, centered fields, matching dialog buttons, non-draggable lock windows.`r`n"
+          $notes += "- Outlined lock menu icon; unified Source Han Sans typography.`r`n"
+          $notes += "- Source commit e0c5897dcf4c98896261aef8a101c2f56b493e34; Windows compile, ArchitectureProbe, BadgeProbe passed. Manual UI and client restore validation required.`r`n"
+          $notes += "`r`n### SHA-256`r`n"
           $notes += "- FrameworkDependent: ${{ steps.package.outputs.framework_hash }}`r`n"
           $notes += "- SelfContained: ${{ steps.package.outputs.self_contained_hash }}`r`n"
           Set-Content -Path .\artifacts\release-notes.md -Value $notes -Encoding utf8
 
-      - name: Create GitHub Release
+      - name: Overwrite existing v1.0.6-beta.1 assets
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $tag = "${{ steps.version.outputs.tag }}"
-          $version = "${{ steps.version.outputs.version }}"
-          $framework = ".\artifacts\${{ steps.package.outputs.framework }}"
-          $selfContained = ".\artifacts\${{ steps.package.outputs.self_contained }}"
-          if (gh release view $tag --repo "${{ github.repository }}" 2>$null) {
-            throw "Release $tag already exists; refusing to overwrite its assets."
-          } else {
-            gh release create $tag $framework $selfContained --repo "${{ github.repository }}" --target "feature/v1.0.6-beta.1-lock-font" --title "JNest v$version" --prerelease --notes-file .\artifacts\release-notes.md
+          if ($tag -ne "v1.0.6-beta.1") { throw "Unexpected tag: $tag" }
+          $head = git rev-parse HEAD
+          if ($head.Trim() -ne "e0c5897dcf4c98896261aef8a101c2f56b493e34") {
+            throw "Unvalidated source commit: $head"
+          }
+          $release = gh api "repos/${{ github.repository }}/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release -or !$release.prerelease -or $release.draft) {
+            throw "Existing prerelease is missing, draft or not prerelease."
+          }
+          $frameworkName = "${{ steps.package.outputs.framework }}"
+          $selfContainedName = "${{ steps.package.outputs.self_contained }}"
+          foreach ($assetName in @($frameworkName, $selfContainedName)) {
+            if (-not ($release.assets | Where-Object { $_.name -eq $assetName })) {
+              throw "Expected existing asset missing: $assetName"
+            }
+          }
+          $framework = ".\artifacts\$frameworkName"
+          $selfContained = ".\artifacts\$selfContainedName"
+          gh release upload $tag $framework $selfContained --clobber --repo "${{ github.repository }}"
+          if ($LASTEXITCODE -ne 0) { throw "Asset replacement failed" }
+          gh release edit $tag --repo "${{ github.repository }}" --notes-file ".\artifacts\release-notes.md" --prerelease
+          if ($LASTEXITCODE -ne 0) { throw "Release notes update failed" }
+          $updated = gh api "repos/${{ github.repository }}/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Failed to verify release after upload" }
+          foreach ($assetName in @($frameworkName, $selfContainedName)) {
+            $asset = @($updated.assets | Where-Object { $_.name -eq $assetName })
+            if ($asset.Count -ne 1 -or $asset[0].size -le 0) {
+              throw "Replacement asset not verified: $assetName"
+            }
+            Write-Host "Verified asset $assetName size=$($asset[0].size) id=$($asset[0].id)"
           }
