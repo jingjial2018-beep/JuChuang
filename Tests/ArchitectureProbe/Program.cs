@@ -1,8 +1,19 @@
 using System.Diagnostics;
+using System.Windows.Input;
 using JuChuang.Models;
 using JuChuang.Services;
 
 var failures = new List<string>();
+
+Run("Account list ignores secondary click but keeps primary selection", () =>
+{
+    Assert(AccountSelectionInputPolicy.ShouldSuppress(MouseButton.Right),
+        "right mouse button must not change account selection");
+    Assert(!AccountSelectionInputPolicy.ShouldSuppress(MouseButton.Left),
+        "left-button selection must remain available");
+    Assert(!AccountSelectionInputPolicy.ShouldSuppress(MouseButton.Middle),
+        "middle-button input must not be blocked as secondary click");
+});
 
 Run("Lock states are fail closed and transitions are authenticated", () =>
 {

@@ -1282,6 +1282,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    // Right-click is not an account-selection gesture: intercept before
+    // ListBoxItem's built-in mouse handling can change SelectedItem.
+    private void AccountsList_IgnoreRightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (AccountSelectionInputPolicy.ShouldSuppress(e.ChangedButton))
+            e.Handled = true;
+    }
+
     private void AccountsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _accountDragEntry = null;
