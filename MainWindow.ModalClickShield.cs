@@ -56,10 +56,12 @@ public partial class MainWindow
             // HwndSource removes WS_EX_LAYERED during HWND creation. On beta.5
             // SetLayeredWindowAttributes therefore failed with ERROR_INVALID_PARAMETER
             // and the shield was always disposed. A native popup retains the
-            // layered style, while remaining owned by the manager window.
+            // layered style. Use BUTTON rather than STATIC: Windows hit testing
+            // skips static text windows even when they are visible and above
+            // the client, which left beta.6 clicks landing in the chat HWND.
             _modalClickShieldHwnd = NativeMethods.CreateWindowEx(
                 checked((int)(NativeMethods.WS_EX_TOOLWINDOW | WsExLayered)),
-                "STATIC", "JNest modal input shield", unchecked((int)NativeMethods.WS_POPUP),
+                "BUTTON", string.Empty, unchecked((int)NativeMethods.WS_POPUP),
                 0, 0, 1, 1, parent, IntPtr.Zero, NativeMethods.GetModuleHandle(null), IntPtr.Zero);
             if (_modalClickShieldHwnd == IntPtr.Zero)
             {
@@ -178,9 +180,16 @@ public partial class MainWindow
         var client = SelectedEntry?.Handle ?? IntPtr.Zero;
         var shield = _modalClickShieldHwnd;
         return $"shield=0x{shield.ToInt64():X} visible={NativeMethods.IsWindowVisible(shield)} enabled={IsWindowEnabled(shield)} "
+            + $"bounds={WindowRectText(shield)} "
             + $"client=0x{client.ToInt64():X} visible={NativeMethods.IsWindowVisible(client)} enabled={IsWindowEnabled(client)} "
+            + $"bounds={WindowRectText(client)} "
             + $"z={ZOrderBetween(shield, client)} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}";
     }
+
+    private static string WindowRectText(IntPtr hwnd)
+        => hwnd != IntPtr.Zero && NativeMethods.GetWindowRect(hwnd, out var rect)
+            ? $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}"
+            : "unknown";
 
     private IntPtr ModalShieldWindowProc(IntPtr hwnd, uint message, IntPtr wParam,
         IntPtr lParam)

@@ -7,6 +7,7 @@ on:
       - main
       - fix/modal-click-return-beta5
       - fix/modal-shield-native-beta6
+      - fix/modal-shield-hit-test-beta7
     paths:
       - JuChuang.csproj
       - .github/workflows/publish-release.yml
