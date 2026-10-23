@@ -21,6 +21,11 @@ internal static class LockCredentialService
 
     internal static bool IsConfigured => File.Exists(CredentialPath);
 
+    // Pure policy used by both the UI and regression tests: only a pair of
+    // empty inputs in change mode can request credential removal.
+    internal static bool IsRemovalRequest(bool changingExisting, string password, string confirmation)
+        => changingExisting && password.Length == 0 && confirmation.Length == 0;
+
     internal static void SetPassword(string password)
     {
         if (string.IsNullOrEmpty(password) || password.Length < 6)

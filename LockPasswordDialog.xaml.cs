@@ -36,7 +36,7 @@ public partial class LockPasswordDialog : Window
         var second = ConfirmPasswordBox.Password;
 
         // Both empty fields mean removal only in change-password mode.
-        if (_changeExisting && first.Length == 0 && second.Length == 0)
+        if (LockCredentialService.IsRemovalRequest(_changeExisting, first, second))
         {
             try
             {

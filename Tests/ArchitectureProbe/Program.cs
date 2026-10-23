@@ -24,6 +24,15 @@ Run("Lock states are fail closed and transitions are authenticated", () =>
     Assert(!state.IsProtected, "successful restore failed to complete unlock");
 });
 
+Run("Password removal requires change mode and two empty fields", () =>
+{
+    Assert(LockCredentialService.IsRemovalRequest(true, "", ""), "both empty fields must request removal");
+    Assert(!LockCredentialService.IsRemovalRequest(false, "", ""), "new password setup cannot remove a credential");
+    Assert(!LockCredentialService.IsRemovalRequest(true, "abc123", ""), "a partially filled form cannot remove a credential");
+    Assert(!LockCredentialService.IsRemovalRequest(true, "", "abc123"), "a partially filled confirmation cannot remove a credential");
+    Assert(!LockCredentialService.IsRemovalRequest(true, "abc123", "abc123"), "a new password must not be treated as removal");
+});
+
 Run("Do not disturb handles daytime and overnight boundaries", () =>
 {
     var settings = new AppSettings
