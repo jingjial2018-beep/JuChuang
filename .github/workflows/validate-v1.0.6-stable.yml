@@ -1,0 +1,53 @@
+name: Validate JNest v1.0.6 stable candidate
+
+on:
+  push:
+    branches:
+      - release/v1.0.6-account-right-click
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Check release version and XAML right-button handlers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml]$proj = Get-Content .\JuChuang.csproj
+          if ($proj.Project.PropertyGroup.Version -ne '1.0.6') { throw 'Unexpected version' }
+          $xaml = Get-Content .\MainWindow.xaml -Raw
+          foreach ($eventName in @('PreviewMouseRightButtonDown', 'PreviewMouseRightButtonUp')) {
+            $binding = $eventName + '="AccountsList_IgnoreRightClick"'
+            if (-not $xaml.Contains($binding)) { throw "Missing event handler binding: $binding" }
+          }
+          $code = Get-Content .\MainWindow.xaml.cs -Raw
+          if (-not $code.Contains('private void AccountsList_IgnoreRightClick')) { throw 'Missing source handler' }
+
+      - name: Restore and compile WPF Release
+        shell: pwsh
+        run: |
+          dotnet restore .\JuChuang.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build .\JuChuang.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Architecture regression probe
+        shell: pwsh
+        run: |
+          dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Badge regression probe
+        shell: pwsh
+        run: |
+          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
