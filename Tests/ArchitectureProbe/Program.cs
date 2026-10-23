@@ -24,6 +24,20 @@ Run("Lock states are fail closed and transitions are authenticated", () =>
     Assert(!state.IsProtected, "successful restore failed to complete unlock");
 });
 
+Run("Modal activation only follows an intentional hosted client press", () =>
+{
+    Assert(WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, true, true, false),
+        "a real hosted-client button press should restore the dialog");
+    Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, false, true, false),
+        "clicking another application must never steal foreground");
+    Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, true, false, false),
+        "mouse wheel and mouse-up must not refocus the dialog");
+    Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(false, true, true, false),
+        "a closed dialog must not be reactivated");
+    Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, true, true, true),
+        "a foreground dialog should not repeatedly activate");
+});
+
 Run("Password removal requires change mode and two empty fields", () =>
 {
     Assert(LockCredentialService.IsRemovalRequest(true, "", ""), "both empty fields must request removal");

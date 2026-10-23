@@ -20,6 +20,13 @@ internal static class WindowActivityPolicy
                || (currentHostedWindow != IntPtr.Zero && foregroundWindow == currentHostedWindow);
     }
 
+    // Only an intentional button-down on JNest's native client can restore a
+    // pending modal dialog. Wheel, up, injected background timers and unrelated
+    // application clicks must never steal focus.
+    internal static bool ShouldRestoreModalFromHostedClick(
+        bool modalAvailable, bool isHostedTarget, bool isButtonDown, bool isAlreadyForeground)
+        => modalAvailable && isHostedTarget && isButtonDown && !isAlreadyForeground;
+
     internal static bool ShouldPromoteHostedWindow(
         bool zOrderSuppressed,
         IntPtr foregroundWindow,
