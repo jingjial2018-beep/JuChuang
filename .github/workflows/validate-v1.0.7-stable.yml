@@ -1,0 +1,32 @@
+name: JNest v1.0.7 stable candidate validation (no release)
+
+on:
+  push:
+    branches:
+      - feature/v1.0.7-stable-typography
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Validate typography and account right-click events
+        shell: pwsh
+        run: .\Tests\ValidateSettingsTypography.ps1
+      - name: Restore WPF project
+        run: dotnet restore .\JuChuang.csproj
+      - name: Build WPF Release
+        run: dotnet build .\JuChuang.csproj -c Release --no-restore
+      - name: ArchitectureProbe
+        run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
+      - name: BadgeProbe
+        run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
