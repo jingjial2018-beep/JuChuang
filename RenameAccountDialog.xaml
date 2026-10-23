@@ -9,7 +9,7 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         Background="#F7F8FA"
-        FontFamily="Microsoft YaHei UI, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+        >
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
