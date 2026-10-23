@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Interop;
 using JuChuang.Services;
 
 namespace JuChuang;
@@ -12,17 +11,14 @@ public partial class LockPasswordDialog : Window
     {
         InitializeComponent();
         _changeExisting = changeExisting;
-        SourceInitialized += (_, _) =>
-        {
-            if (PresentationSource.FromVisual(this) is HwndSource source)
-                source.AddHook(BlockWindowMove);
-        };
+        FixedModalWindow.Attach(this);
         if (changeExisting)
         {
             Heading.Text = "修改 JNest 锁定密码";
             Title = "修改 JNest 锁定密码";
-            Height = 380;
+            Height = 410;
             OldPasswordPanel.Visibility = Visibility.Visible;
+            RemovalHint.Visibility = Visibility.Visible;
             Loaded += (_, _) => OldPasswordBox.Focus();
         }
         else
@@ -31,32 +27,51 @@ public partial class LockPasswordDialog : Window
         }
     }
 
-    private static IntPtr BlockWindowMove(IntPtr hwnd, int message, IntPtr wParam,
-        IntPtr lParam, ref bool handled)
-    {
-        const int wmNcLButtonDown = 0x00A1;
-        const int wmNcLButtonDblClk = 0x00A3;
-        const int wmSysCommand = 0x0112;
-        const int htCaption = 2;
-        const int scMove = 0xF010;
-        if (((message == wmNcLButtonDown || message == wmNcLButtonDblClk)
-                && wParam.ToInt64() == htCaption)
-            || (message == wmSysCommand && (wParam.ToInt64() & 0xFFF0) == scMove))
-        {
-            handled = true;
-        }
-        return IntPtr.Zero;
-    }
-
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
     private void Confirm_Click(object sender, RoutedEventArgs e)
     {
+        ErrorText.Text = "";
         var first = NewPasswordBox.Password;
         var second = ConfirmPasswordBox.Password;
-        if (first.Length < 6)
+
+        // Both empty fields mean removal only in change-password mode.
+        if (_changeExisting && first.Length == 0 && second.Length == 0)
         {
-            ErrorText.Text = "密码至少需要 6 位。";
+            try
+            {
+                if (!LockCredentialService.Verify(OldPasswordBox.Password))
+                {
+                    ErrorText.Text = "当前密码不正确。";
+                    OldPasswordBox.Clear();
+                    OldPasswordBox.Focus();
+                    return;
+                }
+
+                var confirm = new LockRemovalConfirmDialog { Owner = this };
+                if (confirm.ShowDialog() != true)
+                {
+                    OldPasswordBox.Focus();
+                    return;
+                }
+
+                // Check the password again at the actual point of deletion.
+                LockCredentialService.RemovePassword(OldPasswordBox.Password);
+                OldPasswordBox.Clear();
+                NewPasswordBox.Clear();
+                ConfirmPasswordBox.Clear();
+                DialogResult = true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                ErrorText.Text = "当前密码不正确。";
+                OldPasswordBox.Clear();
+                OldPasswordBox.Focus();
+            }
+            catch (Exception)
+            {
+                ErrorText.Text = "取消密码失败，请检查权限后重试。";
+            }
             return;
         }
 
@@ -64,6 +79,13 @@ public partial class LockPasswordDialog : Window
         {
             ErrorText.Text = "两次输入的密码不一致。";
             ConfirmPasswordBox.Clear();
+            ConfirmPasswordBox.Focus();
+            return;
+        }
+        if (first.Length < 6)
+        {
+            ErrorText.Text = "密码至少需要 6 位。";
+            NewPasswordBox.Focus();
             return;
         }
 
@@ -73,6 +95,7 @@ public partial class LockPasswordDialog : Window
                 LockCredentialService.ChangePassword(OldPasswordBox.Password, first);
             else
                 LockCredentialService.SetPassword(first);
+
             OldPasswordBox.Clear();
             NewPasswordBox.Clear();
             ConfirmPasswordBox.Clear();
@@ -82,6 +105,7 @@ public partial class LockPasswordDialog : Window
         {
             ErrorText.Text = "当前密码不正确。";
             OldPasswordBox.Clear();
+            OldPasswordBox.Focus();
         }
         catch (Exception)
         {

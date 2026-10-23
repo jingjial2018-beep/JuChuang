@@ -33,6 +33,7 @@ public partial class SettingsDialog : Window
         DndEndTime.SelectedValue = settings.DndEndMinutes;
         DndCheck.IsChecked = settings.DndEnabled;
         _loading = false;
+        UpdateLockPasswordButton();
     }
 
     private void StartupChanged(object sender, RoutedEventArgs e)
@@ -72,15 +73,17 @@ public partial class SettingsDialog : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void UpdateLockPasswordButton()
+    {
+        ChangeLockPasswordButton.Content = LockCredentialService.IsConfigured
+            ? "修改锁定密码" : "设置锁定密码";
+    }
+
     private void ChangeLockPassword_Click(object sender, RoutedEventArgs e)
     {
-        if (!JuChuang.Services.LockCredentialService.IsConfigured)
-        {
-            MessageBox.Show(this, "请先从 JNest 主菜单执行一次锁定并创建密码。",
-                "尚未设置锁定密码", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        new LockPasswordDialog(changeExisting: true) { Owner = this }.ShowDialog();
+        var changing = LockCredentialService.IsConfigured;
+        var dialog = new LockPasswordDialog(changeExisting: changing) { Owner = this };
+        dialog.ShowDialog();
+        UpdateLockPasswordButton();
     }
 }

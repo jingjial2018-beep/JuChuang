@@ -37,6 +37,18 @@ internal static class LockCredentialService
         WriteCredential(newPassword);
     }
 
+    // Cancellation is deliberately not represented by an empty stored password.
+    // Preserve a verified credential until the user confirms removal.
+    internal static void RemovePassword(string currentPassword)
+    {
+        // Refuse to remove the only key while a persisted lock remains active.
+        if (JNestLockPersistence.IsLocked)
+            throw new InvalidOperationException("Unlock JNest before removing its password.");
+        if (!Verify(currentPassword))
+            throw new UnauthorizedAccessException("Invalid current lock password.");
+        File.Delete(CredentialPath);
+    }
+
     internal static bool Verify(string password)
     {
         try

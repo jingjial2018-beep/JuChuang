@@ -1,0 +1,30 @@
+<Window x:Class="JuChuang.LockRemovalConfirmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="取消锁定密码" Icon="Assets/app.ico"
+        Width="470" Height="236" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="White" FontFamily="Microsoft YaHei UI">
+    <Grid Margin="28,22,28,22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="取消锁定密码？" FontSize="21" FontWeight="SemiBold"
+                   Foreground="#202939"/>
+        <TextBlock Grid.Row="1" Margin="0,14,0,0" TextWrapping="Wrap"
+                   Foreground="#475467" FontSize="13" LineHeight="23"
+                   Text="取消后，JNest 将不再使用密码保护工作区。你可以随时重新设置。"/>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,12,0,0">
+            <Button Content="保留密码" Width="112" Height="40" Margin="0,0,12,0"
+                    Style="{StaticResource JNestDialogButtonStyle}"
+                    IsDefault="True" IsCancel="True" Click="KeepPassword_Click"/>
+            <Button Content="取消锁定" Width="112" Height="40"
+                    Style="{StaticResource JNestDangerDialogButtonStyle}"
+                    Click="RemovePassword_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
