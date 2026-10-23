@@ -342,7 +342,7 @@ public partial class MainWindow
         // otherwise foreground JNest should not produce a popup.
         var isManagerInForeground = WindowState != WindowState.Minimized
             && (IsActive || WindowHost.IsManagerContextForeground);
-        if (!doNotDisturb && !isManagerInForeground && _settings.EnableToastNotifications)
+        if (!doNotDisturb && (IsJNestProtected || !isManagerInForeground) && _settings.EnableToastNotifications)
         {
             ShowAccountNotification(entry);
         }
@@ -435,6 +435,12 @@ public partial class MainWindow
                 && long.TryParse(parsed["start"], out var start) && pid > 0
                 && TryGetProcessStartUtcTicks(pid) == start)
                 match = Entries.FirstOrDefault(e => e.ProcessId == pid);
+            if (IsJNestProtected)
+            {
+                RememberLockedToastAccount(match);
+                LockPasswordInput.Focus();
+                return;
+            }
             if (match is not null)
             {
                 SelectedEntry = match;
@@ -457,15 +463,15 @@ public partial class MainWindow
         try
         {
             var toast = new ToastContentBuilder()
-                .AddText(entry.DisplayName)
-                .AddText("收到新消息")
+                .AddText(IsJNestProtected ? "JNest · 新消息" : entry.DisplayName)
+                .AddText(IsJNestProtected ? "解锁 JNest 后查看" : "收到新消息")
                 .AddArgument("account", entry.IdentityKey ?? "")
                 .AddArgument("pid", entry.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
             if (TryGetProcessStartUtcTicks(entry.ProcessId) is { } processStart)
                 toast.AddArgument("start", processStart.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             var avatar = entry.AvatarPath;
-            if (!string.IsNullOrWhiteSpace(avatar) && File.Exists(avatar))
+            if (!IsJNestProtected && !string.IsNullOrWhiteSpace(avatar) && File.Exists(avatar))
             {
                 toast.AddAppLogoOverride(new Uri(Path.GetFullPath(avatar)),
                     ToastGenericAppLogoCrop.Circle);
