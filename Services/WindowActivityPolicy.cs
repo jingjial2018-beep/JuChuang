@@ -24,8 +24,10 @@ internal static class WindowActivityPolicy
     // pending modal dialog. Wheel, up, injected background timers and unrelated
     // application clicks must never steal focus.
     internal static bool ShouldRestoreModalFromHostedClick(
-        bool modalAvailable, bool isHostedTarget, bool isButtonDown, bool isAlreadyForeground)
-        => modalAvailable && isHostedTarget && isButtonDown && !isAlreadyForeground;
+        bool modalAvailable, bool isHostedTarget, bool isButtonDown, bool isAlreadyForeground,
+        bool isManagerTarget = false)
+        => modalAvailable && (isHostedTarget || isManagerTarget)
+           && isButtonDown && !isAlreadyForeground;
 
     internal static bool ShouldPromoteHostedWindow(
         bool zOrderSuppressed,

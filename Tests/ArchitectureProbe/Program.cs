@@ -30,6 +30,10 @@ Run("Modal activation only follows an intentional hosted client press", () =>
         "a real hosted-client button press should restore the dialog");
     Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, false, true, false),
         "clicking another application must never steal foreground");
+    Assert(WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, false, true, false, isManagerTarget: true),
+        "clicking the disabled WPF owner must also restore the active dialog");
+    Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, false, false, false, isManagerTarget: true),
+        "mouse wheel over disabled modal owner must not force activation");
     Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(true, true, false, false),
         "mouse wheel and mouse-up must not refocus the dialog");
     Assert(!WindowActivityPolicy.ShouldRestoreModalFromHostedClick(false, true, true, false),
