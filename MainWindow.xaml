@@ -377,6 +377,7 @@
                                  SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
                                  SelectionChanged="AccountsList_SelectionChanged"
                                  PreviewMouseLeftButtonDown="AccountsList_PreviewMouseLeftButtonDown"
+                                 PreviewMouseRightButtonDown="AccountsList_PreviewMouseRightButtonDown"
                                  PreviewMouseMove="AccountsList_PreviewMouseMove"
                                  DragOver="AccountsList_DragOver"
                                  Drop="AccountsList_Drop"
