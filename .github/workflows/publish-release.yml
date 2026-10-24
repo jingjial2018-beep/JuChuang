@@ -160,7 +160,7 @@ jobs:
           test -s "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip"
           test -s artifacts/release-notes.md
           test -s artifacts/SHA256SUMS.txt
-          (cd artifacts && sha256sum --check SHA256SUMS.txt)
+          (cd artifacts && sed 's/\r$//' SHA256SUMS.txt | sha256sum --check -)
 
       - name: Create a new official release only
         env:
@@ -170,6 +170,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/branches/stable" --jq '.commit.sha')"
+          [[ "$current" == "$GITHUB_SHA" ]] || { echo "::error::stable changed before release creation"; exit 1; }
           gh release create "$TAG" \
             "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip" \
             "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip" \
