@@ -84,7 +84,14 @@ public sealed class ExternalWindowHost : HwndHost
                 disableMaximize,
                 centerInHost);
 
-            NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+            var ownerRoot = GetOwnerRoot();
+            // Establish ownership before a background client becomes visible.
+            // SW_RESTORE activates the window even when later positioning uses NOACTIVATE.
+            if (!makeActive && ownerRoot != IntPtr.Zero)
+                NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, ownerRoot);
+            var backgroundShowCommand = (state.Style.ToInt64() & NativeMethods.WS_MINIMIZE) != 0
+                ? NativeMethods.SW_SHOWNOACTIVATE : NativeMethods.SW_SHOWNA;
+            NativeMethods.ShowWindow(handle, makeActive ? NativeMethods.SW_RESTORE : backgroundShowCommand);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
             NativeMethods.SetWindowLongPtr(
                 handle,
@@ -94,8 +101,7 @@ public sealed class ExternalWindowHost : HwndHost
                 handle,
                 NativeMethods.GWL_EXSTYLE,
                 CreateOverlayExtendedStyle(state.ExtendedStyle));
-            var ownerRoot = GetOwnerRoot();
-            if (ownerRoot != IntPtr.Zero)
+            if (makeActive && ownerRoot != IntPtr.Zero)
             {
                 NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, ownerRoot);
             }
@@ -578,7 +584,7 @@ public sealed class ExternalWindowHost : HwndHost
         // 保留 WS_CAPTION/WS_THICKFRAME：微信 4.x 与 WhatsApp 都是自绘窗口，原生标题栏
         // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
         // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
-        style &= ~NativeMethods.WS_CHILD;
+        style &= ~(NativeMethods.WS_CHILD | NativeMethods.WS_MINIMIZE);
         if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
         else style &= ~NativeMethods.WS_VISIBLE;

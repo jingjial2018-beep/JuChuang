@@ -24,6 +24,8 @@
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
     <Compile Remove="Tests\**\*.cs" />
+    <Page Remove="Tests\**\*.xaml" />
+    <ApplicationDefinition Remove="Tests\**\*.xaml" />
     <None Remove="Tests\**\*" />
   </ItemGroup>
   <ItemGroup>

@@ -29,6 +29,7 @@ internal static class NativeMethods
     internal const long WS_CHILD = 0x40000000L;
     internal const long WS_POPUP = 0x80000000L;
     internal const long WS_VISIBLE = 0x10000000L;
+    internal const long WS_MINIMIZE = 0x20000000L;
     internal const long WS_CAPTION = 0x00C00000L;
     internal const long WS_THICKFRAME = 0x00040000L;
     internal const long WS_SYSMENU = 0x00080000L;
@@ -44,6 +45,7 @@ internal static class NativeMethods
     internal const int SW_SHOWNORMAL = 1;
     internal const int SW_SHOWNOACTIVATE = 4;
     internal const int SW_SHOW = 5;
+    internal const int SW_SHOWNA = 8;
     internal const int SW_RESTORE = 9;
 
     internal const uint SWP_NOZORDER = 0x0004;

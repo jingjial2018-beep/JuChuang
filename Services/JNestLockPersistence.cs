@@ -9,9 +9,10 @@ namespace JuChuang.Services;
 /// </summary>
 internal static class JNestLockPersistence
 {
-    private static readonly string DirectoryPath = Path.Combine(
+    internal static string? DirectoryPathOverride { get; set; }
+    private static string DirectoryPath => DirectoryPathOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JNest");
-    private static readonly string MarkerPath = Path.Combine(DirectoryPath, "lock-active.marker");
+    private static string MarkerPath => Path.Combine(DirectoryPath, "lock-active.marker");
 
     internal static bool IsLocked => File.Exists(MarkerPath);
 

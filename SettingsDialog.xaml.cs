@@ -43,7 +43,7 @@ public partial class SettingsDialog : Window
         var actual = StartupService.IsEnabled();
         _settings.LaunchAtStartup = actual;
         if (StartupCheck.IsChecked != actual) StartupCheck.IsChecked = actual;
-        _settings.Save();
+        SaveSettings();
         _startupSettingsChanged();
     }
 
@@ -53,7 +53,7 @@ public partial class SettingsDialog : Window
         _settings.EnableTaskbarFlash = FlashCheck.IsChecked == true;
         _settings.EnableToastNotifications = ToastCheck.IsChecked == true;
         _settings.EnableNotificationSound = SoundCheck.IsChecked == true;
-        _settings.Save();
+        SaveSettings();
         _notificationSettingsChanged();
     }
 
@@ -67,9 +67,21 @@ public partial class SettingsDialog : Window
         _settings.DndEnabled = DndCheck.IsChecked == true;
         if (DndStartTime.SelectedValue is int start) _settings.DndStartMinutes = start;
         if (DndEndTime.SelectedValue is int end) _settings.DndEndMinutes = end;
-        _settings.Save();
+        SaveSettings();
         _notificationSettingsChanged();
     }
+
+    private void SaveSettings()
+    {
+        var saved = _settings.Save();
+        RetrySaveButton.Visibility = saved ? Visibility.Collapsed : Visibility.Visible;
+        SaveStatusText.Text = saved ? "设置即时生效并自动保存" : "保存失败，本次修改尚未保存；请检查磁盘和权限后重试";
+        SaveStatusText.Foreground = new System.Windows.Media.SolidColorBrush(
+            saved ? System.Windows.Media.Color.FromRgb(0x66, 0x70, 0x85)
+                  : System.Windows.Media.Color.FromRgb(0xC1, 0x3C, 0x3C));
+    }
+
+    private void RetrySave_Click(object sender, RoutedEventArgs e) => SaveSettings();
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 

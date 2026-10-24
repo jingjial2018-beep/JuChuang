@@ -913,9 +913,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             var dismissedHandles = _dismissedWindowHandles.ToHashSet();
             var selfTestTargetProcessId = _selfTestTargetProcessId;
+            var managerOwner = new WindowInteropHelper(this).Handle;
+            var managedWindows = CaptureManagedDiscoveryWindows();
             var scanResult = await Task.Run(() =>
             {
-                var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(selfTestTargetProcessId)
+                var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(
+                        selfTestTargetProcessId, managerOwner, managedWindows)
                     .Where(candidate => !dismissedHandles.Contains(candidate.Handle))
                     .ToArray();
                 if (selfTestTargetProcessId.HasValue)
@@ -1692,14 +1695,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// <summary>
     /// 调用方持有扫描锁。只更新发现结果和账号状态，不嵌入或恢复客户端窗口。
     /// </summary>
+    private Dictionary<IntPtr, ClientWindowDiscovery.ManagedWindowIdentity> CaptureManagedDiscoveryWindows()
+        => Entries.Where(entry => entry.IsAttached && WindowHost.Contains(entry.Handle)
+                && entry.ProcessStartUtcTicks.HasValue && IsVerifiedClientWindow(entry))
+            .ToDictionary(entry => entry.Handle, entry => new ClientWindowDiscovery.ManagedWindowIdentity(
+                entry.ProcessId, entry.ProcessStartUtcTicks!.Value,
+                entry.SessionState == ClientSessionState.Login ? ClientWindowRole.Login
+                    : entry.SessionState == ClientSessionState.Main ? ClientWindowRole.Main : ClientWindowRole.Unknown));
+
     private async Task<(int DiscoveredCount, int NewCount)> ScanClientsCoreAsync()
     {
         if (_isClosing || _allExitInProgress) return (0, 0);
 
         var selfTestTargetProcessId = _selfTestTargetProcessId;
+        var managerOwner = new WindowInteropHelper(this).Handle;
+        var managedWindows = CaptureManagedDiscoveryWindows();
         var scanResult = await Task.Run(() =>
         {
-            var candidates = ClientWindowDiscovery.FindClientWindows(selfTestTargetProcessId);
+            var candidates = ClientWindowDiscovery.FindClientWindows(selfTestTargetProcessId, managerOwner, managedWindows);
             var accounts = ClientMetadataService.ResolveWeChatAccounts(candidates);
             return (Candidates: candidates, Accounts: accounts);
         });

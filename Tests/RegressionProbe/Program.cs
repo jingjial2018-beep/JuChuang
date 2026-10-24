@@ -1,0 +1,346 @@
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Threading;
+using System.Xml.Linq;
+using JuChuang;
+using JuChuang.Controls;
+using JuChuang.Services;
+
+internal static class Program
+{
+    private static readonly string Root = Path.Combine(Path.GetTempPath(), "jnest-regression-" + Guid.NewGuid().ToString("N"));
+    private static int _failures;
+
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        if (args.Contains("--fixture")) { RunFixture(); return 0; }
+        Directory.CreateDirectory(Root);
+        LockCredentialService.DirectoryPathOverride = Path.Combine(Root, "credentials");
+        JNestLockPersistence.DirectoryPathOverride = Path.Combine(Root, "lock");
+        AppSettings.SettingsPathOverride = Path.Combine(Root, "settings.json");
+        AppSettings.ProblemNoticeInterval = TimeSpan.Zero;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
+        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(async () =>
+        {
+            try
+            {
+                await Run("Credential corruption fails closed", Credentials);
+                await Run("Unlock gate and relock preserve the newer marker", RelockAndGate);
+                await Run("Old restore failure cannot replace a newer lock", StaleRestoreFailure);
+                await Run("Lock persistence failure remains visible and can be retried", PersistenceFailure);
+                await Run("Settings write failure reports failure and later recovers", SettingsFailure);
+                await Run("Owned primary discovery validates owner, HWND, PID and start", DiscoveryAndAttach);
+                await Run("Toast and second launch use complete tray restore", TrayRestore);
+                await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
+            }
+            finally
+            {
+                LockCredentialService.DirectoryPathOverride = null;
+                JNestLockPersistence.DirectoryPathOverride = null;
+                AppSettings.SettingsPathOverride = null;
+                AppSettings.ProblemNoticeInterval = TimeSpan.FromSeconds(60);
+                // Root is a unique probe-owned temporary directory.
+                try { Directory.Delete(Root, recursive: true); } catch (IOException) { }
+                Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+            }
+        }));
+        Dispatcher.Run();
+        return _failures == 0 ? 0 : 1;
+    }
+
+    private static Task Credentials()
+    {
+        LockCredentialService.SetPassword("abcdef");
+        var path = Path.Combine(LockCredentialService.DirectoryPathOverride!, "lock-credential.json");
+        var original = File.ReadAllText(path);
+        try
+        {
+            Assert(LockCredentialService.Verify("abcdef"), "valid credential rejected");
+            Assert(!LockCredentialService.Verify("wrong"), "wrong password accepted");
+            foreach (var field in new[] { "Salt", "Hash" })
+            {
+                foreach (var mode in new[] { "missing", "null", "invalid-base64", "short" })
+                {
+                    var record = System.Text.Json.Nodes.JsonNode.Parse(original)!.AsObject();
+                    if (mode == "missing") record.Remove(field);
+                    else record[field] = mode switch { "null" => null, "short" => "AQ==", _ => "!" };
+                    File.WriteAllText(path, record.ToJsonString());
+                    Assert(!LockCredentialService.Verify("abcdef"), $"{field}/{mode} accepted");
+                }
+            }
+            File.WriteAllText(path, "{broken");
+            Assert(!LockCredentialService.Verify("abcdef"), "invalid JSON accepted");
+        }
+        finally { File.WriteAllText(path, original); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task RelockAndGate()
+    {
+        var window = new MainWindow();
+        window.LockForReview();
+        Assert(JNestLockPersistence.IsLocked, "first marker missing");
+        window.LockPasswordInput.Password = "abcdef";
+        var first = window.UnlockForReview();
+        Assert(!window.UnlockJNestButton.IsEnabled && !window.LockPasswordInput.IsEnabled, "verification UI not gated");
+        for (var i = 0; i < 10; i++)
+            Assert(window.UnlockForReview().IsCompletedSuccessfully, "duplicate submission entered verification");
+        await window.ScanEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        window.LockForReview();
+        Assert(window.ProtectedForReview && JNestLockPersistence.IsLocked, "second lock failed");
+        window.ScanCompletion.SetResult();
+        await first;
+        Assert(window.ProtectedForReview && JNestLockPersistence.IsLocked, "old restore cleared newer lock");
+        Assert(window.WindowHost.Suspensions == 1, "relock suspension is unbalanced");
+        window.LockPasswordInput.Password = "abcdef";
+        await window.UnlockForReview();
+        Assert(!window.ProtectedForReview && !JNestLockPersistence.IsLocked, "fresh unlock failed");
+        Assert(window.WindowHost.Suspensions == 0, "final suspension is unbalanced");
+    }
+
+    private static async Task StaleRestoreFailure()
+    {
+        var window = new MainWindow();
+        window.LockForReview();
+        window.LockPasswordInput.Password = "abcdef";
+        var first = window.UnlockForReview();
+        await window.ScanEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        window.LockForReview();
+        window.ScanCompletion.SetException(new IOException("old scan failed"));
+        await first;
+        Assert(window.ProtectedForReview && JNestLockPersistence.IsLocked, "old failure damaged new lock");
+        Assert(window.LockErrorText.Text == "", "old failure overwrote newer UI");
+        Assert(window.WindowHost.Suspensions == 1, "old failure duplicated suspension");
+        JNestLockPersistence.SaveUnlocked();
+    }
+
+    private static Task PersistenceFailure()
+    {
+        var normal = JNestLockPersistence.DirectoryPathOverride;
+        var blocked = Path.Combine(Root, "blocked-lock-directory");
+        File.WriteAllText(blocked, "not a directory");
+        JNestLockPersistence.DirectoryPathOverride = blocked;
+        try
+        {
+            var window = new MainWindow();
+            window.LockForReview();
+            Assert(window.ProtectedForReview && !JNestLockPersistence.IsLocked, "unexpected lock failure state");
+            Assert(window.LockPersistenceWarning.Visibility == Visibility.Visible
+                && window.RetryLockPersistenceButton.Visibility == Visibility.Visible, "failure hidden from user");
+            File.Delete(blocked);
+            window.RetryPersistenceForReview();
+            Assert(JNestLockPersistence.IsLocked, "retry did not persist marker");
+            Assert(window.LockPersistenceWarning.Visibility == Visibility.Collapsed, "successful retry left warning");
+            JNestLockPersistence.SaveUnlocked();
+        }
+        finally { JNestLockPersistence.DirectoryPathOverride = normal; }
+        return Task.CompletedTask;
+    }
+
+    private static Task SettingsFailure()
+    {
+        var normal = AppSettings.SettingsPathOverride;
+        var blocked = Path.Combine(Root, "blocked-settings-directory");
+        File.WriteAllText(blocked, "not a directory");
+        AppSettings.SettingsPathOverride = Path.Combine(blocked, "settings.json");
+        var notices = new List<string>();
+        void Notice(string message) => notices.Add(message);
+        AppSettings.SaveProblem += Notice;
+        try
+        {
+            var settings = new AppSettings { DndEnabled = true };
+            Assert(!settings.Save(), "write failure reported success");
+            Assert(notices.Count == 1 && notices[0].Contains("保存失败"), "failure notification missing");
+            File.Delete(blocked);
+            Assert(settings.Save() && AppSettings.Load().DndEnabled, "retry lost settings");
+        }
+        finally { AppSettings.SaveProblem -= Notice; AppSettings.SettingsPathOverride = normal; }
+        return Task.CompletedTask;
+    }
+
+    private static async Task DiscoveryAndAttach()
+    {
+        using var fixture = StartFixture();
+        var hwnd = new IntPtr(long.Parse((await fixture.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)))!));
+        NativeMethods.GetWindowThreadProcessId(hwnd, out var pid);
+        Assert(pid == fixture.Id, "unexpected fixture owner");
+        try
+        {
+            using var source = new HwndSource(new HwndSourceParameters("JNest regression owner")
+                { Width = 1, Height = 1, PositionX = -32000, PositionY = -32000, WindowStyle = unchecked((int)0x80000000) });
+            using var host = new ExternalWindowHost();
+            source.RootVisual = host;
+            Assert(host.IsReady, "host not initialized");
+            var start = fixture.StartTime.ToUniversalTime().Ticks;
+            var known = new Dictionary<IntPtr, ClientWindowDiscovery.ManagedWindowIdentity>
+                { [hwnd] = new(fixture.Id, start) };
+            Assert(ClientWindowDiscovery.FindClientWindows(fixture.Id).Any(c => c.Handle == hwnd), "fixture not discoverable");
+            var foreground = NativeMethods.GetForegroundWindow();
+            Assert(host.AttachWindow(hwnd, false), "background attach failed");
+            Assert(NativeMethods.GetForegroundWindow() == foreground, "background attach stole foreground");
+            Assert(NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) == source.Handle, "manager owner missing");
+            Assert(!ClientWindowDiscovery.FindClientWindows(fixture.Id).Any(c => c.Handle == hwnd), "ordinary discovery admitted owned window");
+            Assert(Find(known, source.Handle), "verified managed primary excluded");
+            Assert(Find(known, source.Handle), "managed primary lost on subsequent scan");
+            Assert(!Find(known, IntPtr.Zero), "unknown manager owner accepted");
+            Assert(!Find(new(), source.Handle), "unregistered owned popup accepted");
+            Assert(!Find(new() { [hwnd] = new(fixture.Id, start + 1) }, source.Handle), "stale process start accepted");
+            Assert(!Find(new() { [hwnd] = new(fixture.Id + 1, start) }, source.Handle), "wrong PID accepted");
+            host.ForgetWindow(hwnd);
+            NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
+            NativeMethods.ShowWindow(hwnd, 7); // SW_SHOWMINNOACTIVE: minimize the fixture only.
+            var minimizedForeground = NativeMethods.GetForegroundWindow();
+            Assert(host.AttachWindow(hwnd, false), "minimized background attach failed");
+            Assert((NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64() & NativeMethods.WS_MINIMIZE) == 0,
+                "minimized client was not restored");
+            var afterMinimizedAttach = NativeMethods.GetForegroundWindow();
+            Assert(afterMinimizedAttach == minimizedForeground,
+                $"minimized attach changed foreground: before=0x{minimizedForeground:X}, after=0x{afterMinimizedAttach:X}, fixture=0x{hwnd:X}, manager=0x{source.Handle:X}");
+            host.ForgetWindow(hwnd);
+
+            bool Find(Dictionary<IntPtr, ClientWindowDiscovery.ManagedWindowIdentity> identities, IntPtr owner)
+                => ClientWindowDiscovery.FindClientWindows(fixture.Id, owner, identities).Any(c => c.Handle == hwnd);
+        }
+        finally
+        {
+            NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
+            await fixture.StandardInput.WriteLineAsync("quit");
+            await fixture.StandardInput.FlushAsync();
+            await fixture.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    private static Task TrayRestore()
+    {
+        EnsureResources();
+        // Instantiate the application type, not the linked lock coordinator harness.
+        var type = typeof(App).Assembly.GetType("JuChuang.MainWindow")!;
+        var window = (Window)Activator.CreateInstance(type)!;
+        try
+        {
+            // Never show/load the actual main window: that would start client discovery.
+            window.Loaded -= (RoutedEventHandler)Delegate.CreateDelegate(typeof(RoutedEventHandler), window,
+                type.GetMethod("Window_Loaded", BindingFlags.Instance | BindingFlags.NonPublic)!);
+            window.SourceInitialized -= (EventHandler)Delegate.CreateDelegate(typeof(EventHandler), window,
+                type.GetMethod("Window_SourceInitialized", BindingFlags.Instance | BindingFlags.NonPublic)!);
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -32000; window.Top = -32000; window.ShowActivated = false;
+            var host = (ExternalWindowHost)type.GetField("WindowHost", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
+            foreach (var state in new[] { WindowState.Normal, WindowState.Minimized })
+            {
+                window.WindowState = state;
+                Call(window, "HideToTray");
+                Call(window, "ActivateFromToast", "activate");
+                Assert(window.ShowInTaskbar && window.IsVisible && window.WindowState != WindowState.Minimized, "second-launch restore incomplete");
+                Assert(!(bool)Field(host, "_ownerMinimized")!, "native host left parked");
+                Assert(((DispatcherTimer)Field(window, "_clockTimer")!).IsEnabled, "clock not restarted");
+            }
+            Call(window, "HideToTray");
+            Call(window, "ActivateFromToast", "account=missing&pid=0");
+            Assert(window.ShowInTaskbar && !(bool)Field(host, "_ownerMinimized")!, "toast restore incomplete");
+            Call(window, "LockJNest_Click", window, new RoutedEventArgs());
+            Call(window, "HideToTray");
+            Call(window, "ActivateFromToast", "account=missing&pid=0");
+            Assert(((System.Windows.Controls.Border)Field(window, "LockOverlay")!).Visibility == Visibility.Visible,
+                "locked toast restore exposed workspace");
+            Assert((int)Field(host, "_modalDialogSuppressionCount")! == 1, "locked restore resumed hosted clients");
+            Assert(((DispatcherTimer)Field(window, "_clockTimer")!).IsEnabled, "locked restore left clock stopped for later unlock");
+            var lockState = (JNestLockState)Field(window, "_lockState")!;
+            Assert(lockState.BeginUnlock(true), "locked restore lost lock state");
+            lockState.UnlockCompleted(); // Avoid actual workspace scanning in this isolated UI test.
+            JNestLockPersistence.SaveUnlocked();
+        }
+        finally
+        {
+            var lockState = (JNestLockState)Field(window, "_lockState")!;
+            if (lockState.Current == JNestLockState.Phase.Locked)
+            { lockState.BeginUnlock(true); lockState.UnlockCompleted(); }
+            CloseWithoutPrompt(window);
+        }
+        return Task.CompletedTask;
+    }
+
+    private static Task SettingsDialogFailure()
+    {
+        EnsureResources();
+        var normal = AppSettings.SettingsPathOverride;
+        var blocked = Path.Combine(Root, "blocked-settings-ui-directory");
+        File.WriteAllText(blocked, "not a directory");
+        AppSettings.SettingsPathOverride = Path.Combine(blocked, "settings.json");
+        var dialog = new SettingsDialog(new AppSettings(), () => { }, () => { });
+        try
+        {
+            Call(dialog, "SaveSettings");
+            var status = (TextBlock)Field(dialog, "SaveStatusText")!;
+            var retry = (Button)Field(dialog, "RetrySaveButton")!;
+            Assert(status.Text.Contains("保存失败") && retry.Visibility == Visibility.Visible, "save failure UI missing");
+            File.Delete(blocked);
+            Call(dialog, "RetrySave_Click", dialog, new RoutedEventArgs());
+            Assert(!status.Text.Contains("失败") && retry.Visibility == Visibility.Collapsed, "retry did not clear failure UI");
+        }
+        finally { dialog.Close(); AppSettings.SettingsPathOverride = normal; }
+        return Task.CompletedTask;
+    }
+
+    private static void EnsureResources()
+    {
+        if (Application.Current is not null) return;
+        // Load styles only. Constructing App would schedule its real startup and
+        // could launch window discovery when the dispatcher pumps again.
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "ProbeAppResources.xaml"));
+        XNamespace ns = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        var resources = new XElement(ns + "ResourceDictionary",
+            new XAttribute(XNamespace.Xmlns + "x", "http://schemas.microsoft.com/winfx/2006/xaml"),
+            document.Root!.Element(ns + "Application.Resources")!.Nodes());
+        app.Resources = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(resources.ToString());
+    }
+
+    private static object? Field(object target, string name)
+        => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target);
+    private static object? Call(object target, string name, params object[] args)
+        => target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
+    private static void CloseWithoutPrompt(Window window)
+    {
+        window.GetType().GetField("_exitAllCompleted", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, true);
+        window.GetType().GetField("_trayExitRequested", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, true);
+        window.Close();
+    }
+
+    private static Process StartFixture()
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!)
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true };
+        if (string.Equals(Path.GetFileNameWithoutExtension(Environment.ProcessPath), "dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(typeof(Program).Assembly.Location);
+        start.ArgumentList.Add("--fixture");
+        return Process.Start(start) ?? throw new InvalidOperationException("Cannot start fixture");
+    }
+    private static void RunFixture()
+    {
+        using var source = new HwndSource(new HwndSourceParameters("聚窗窗口托管测试")
+            { Width = 1200, Height = 1000, PositionX = -32000, PositionY = -32000, WindowStyle = unchecked((int)0x90000000) });
+        source.RootVisual = new Border();
+        SetWindowText(source.Handle, "聚窗窗口托管测试");
+        Console.WriteLine(source.Handle.ToInt64()); Console.Out.Flush();
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        _ = Task.Run(() => { Console.ReadLine(); dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); });
+        Dispatcher.Run();
+    }
+    private static async Task Run(string name, Func<Task> action)
+    {
+        try { await action(); Console.WriteLine($"PASS: {name}"); }
+        catch (Exception exception) { _failures++; Console.Error.WriteLine($"FAIL: {name}: {exception}"); }
+    }
+    private static void Assert(bool condition, string message)
+    { if (!condition) throw new InvalidOperationException(message); }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool SetWindowText(IntPtr hwnd, string title);
+}
