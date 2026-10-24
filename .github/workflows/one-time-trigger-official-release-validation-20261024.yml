@@ -1,0 +1,30 @@
+name: JNest one-time validation trigger (no publish)
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-time-trigger-official-release-validation-20261024.yml
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch-validate:
+    if: github.repository == 'jingjial2018-beep/JuChuang' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch validate-only workflow on protected stable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          default="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          [[ "$default" == "stable" ]] || { echo "::error::Default branch must be stable"; exit 1; }
+          source_sha="$(gh api "repos/$GITHUB_REPOSITORY/branches/stable" --jq '.commit.sha')"
+          [[ "$source_sha" == "ebd10f170b4141c3f5ce35898b557859731a056a" ]] || { echo "::error::Unexpected stable SHA"; exit 1; }
+          latest_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          [[ "$latest_tag" == "v1.0.7" ]] || { echo "::error::Latest published version changed"; exit 1; }
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/publish-release.yml/dispatches" \
+            -f ref=stable -f inputs[operation]=validate -f inputs[confirm_version]=
+          echo "SUCCESS: requested validate only, with an empty publish confirmation."
