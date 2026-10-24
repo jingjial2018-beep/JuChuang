@@ -14,9 +14,10 @@ internal static class LockCredentialService
     private const int Iterations = 600_000;
     private const int SaltBytes = 32;
     private const int HashBytes = 32;
-    private static readonly string DirectoryPath = Path.Combine(
+    internal static string? DirectoryPathOverride { get; set; }
+    private static string DirectoryPath => DirectoryPathOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JNest");
-    private static readonly string CredentialPath = Path.Combine(DirectoryPath, "lock-credential.json");
+    private static string CredentialPath => Path.Combine(DirectoryPath, "lock-credential.json");
     private sealed record Record(int Version, int Iterations, string Salt, string Hash);
 
     internal static bool IsConfigured => File.Exists(CredentialPath);
@@ -60,7 +61,8 @@ internal static class LockCredentialService
         {
             if (!IsConfigured) return false;
             var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(CredentialPath));
-            if (record is null || record.Version != 1 || record.Iterations != Iterations) return false;
+            if (record is null || record.Version != 1 || record.Iterations != Iterations
+                || string.IsNullOrWhiteSpace(record.Salt) || string.IsNullOrWhiteSpace(record.Hash)) return false;
             var salt = Convert.FromBase64String(record.Salt);
             var expected = Convert.FromBase64String(record.Hash);
             if (salt.Length != SaltBytes || expected.Length != HashBytes) return false;

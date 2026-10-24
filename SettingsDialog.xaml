@@ -205,8 +205,16 @@
         </ScrollViewer>
         <!-- 12-DIP scrollbar and 8-DIP content inset place this edge at the switch edge. -->
         <Grid Grid.Row="1" Margin="0,12,20,0">
-            <TextBlock Text="设置即时生效并自动保存" FontSize="13" Foreground="#667085" VerticalAlignment="Center"/>
-            <Button Content="关闭" Style="{StaticResource SettingsCloseButtonStyle}" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="SaveStatusText" Text="设置即时生效并自动保存" FontSize="13" Foreground="#667085"
+                       Margin="0,0,12,0" TextWrapping="Wrap" VerticalAlignment="Center"/>
+            <Button x:Name="RetrySaveButton" Grid.Column="1" Visibility="Collapsed" Content="重试"
+                    Style="{StaticResource SettingsCloseButtonStyle}" Width="64" Margin="0,0,8,0" Click="RetrySave_Click"/>
+            <Button Grid.Column="2" Content="关闭" Style="{StaticResource SettingsCloseButtonStyle}" HorizontalAlignment="Right" IsDefault="True" Click="Close_Click"/>
         </Grid>
     </Grid>
 </Window>

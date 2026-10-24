@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("JuChuang.BadgeProbe")]
 [assembly: InternalsVisibleTo("JuChuang.ArchitectureProbe")]
+[assembly: InternalsVisibleTo("JuChuang.RegressionProbe")]
 
 [assembly:ThemeInfo(
     ResourceDictionaryLocation.None,            //where theme specific resource dictionaries are located

@@ -19,6 +19,8 @@ public sealed record WindowCandidate(
 
 public static class ClientWindowDiscovery
 {
+    internal sealed record ManagedWindowIdentity(
+        int ProcessId, long ProcessStartUtcTicks, ClientWindowRole Role = ClientWindowRole.Unknown);
     private static readonly string[] WeChatProcessHints = ["wechat", "weixin"];
     private static readonly ConcurrentDictionary<int, VersionCacheEntry> VersionCache = [];
 
@@ -30,6 +32,11 @@ public static class ClientWindowDiscovery
     public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null)
         => FindClientWindowsCore(selfTestTargetProcessId, includeHiddenProcessId: null);
 
+    internal static IReadOnlyList<WindowCandidate> FindClientWindows(
+        int? selfTestTargetProcessId, IntPtr managerOwner,
+        IReadOnlyDictionary<IntPtr, ManagedWindowIdentity> managedWindows)
+        => FindClientWindowsCore(selfTestTargetProcessId, null, managerOwner, managedWindows);
+
     // Explicit recovery and the manual hidden-window check may inspect invisible
     // windows for one known PID. Background discovery remains visible-only.
     public static IReadOnlyList<WindowCandidate> FindRecoverableMainWindows(int processId)
@@ -38,7 +45,9 @@ public static class ClientWindowDiscovery
             .ToArray();
 
     private static IReadOnlyList<WindowCandidate> FindClientWindowsCore(
-        int? selfTestTargetProcessId, int? includeHiddenProcessId)
+        int? selfTestTargetProcessId, int? includeHiddenProcessId,
+        IntPtr managerOwner = default,
+        IReadOnlyDictionary<IntPtr, ManagedWindowIdentity>? managedWindows = null)
     {
         var candidates = new List<WindowCandidate>();
         var ownProcessId = Environment.ProcessId;
@@ -72,17 +81,27 @@ public static class ClientWindowDiscovery
                     return true;
                 }
 
-                if (!NativeMethods.GetWindowRect(handle, out var rect) || rect.Width < 280 || rect.Height < 200)
+                // WeChat media viewers and other transient windows are normally owned by
+                // the main chat window. They must remain regular desktop popups.
+                // A known primary window owned by this JNest instance must continue
+                // through discovery for role changes and deferred profile retries.
+                // HWND, PID and process start must all match the UI-thread snapshot.
+                var owner = NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER);
+                ManagedWindowIdentity? identity = null;
+                var isManagedWindow = owner != IntPtr.Zero && owner == managerOwner
+                    && managedWindows is not null && managedWindows.TryGetValue(handle, out identity)
+                    && identity.ProcessId == processId
+                    && TryReadProcessStartUtcTicks(processId) == identity.ProcessStartUtcTicks;
+                if (owner != IntPtr.Zero && !isManagedWindow)
                 {
                     return true;
                 }
 
-                // WeChat media viewers and other transient windows are normally owned by
-                // the main chat window. They must remain regular desktop popups.
-                if (NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != IntPtr.Zero)
-                {
+                // Attach parks nonselected clients after initially sizing them to 1x1.
+                // New-window size heuristics cannot exclude an already verified primary.
+                if (!NativeMethods.GetWindowRect(handle, out var rect)
+                    || (!isManagedWindow && (rect.Width < 280 || rect.Height < 200)))
                     return true;
-                }
 
                 var style = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE).ToInt64();
                 if ((style & NativeMethods.WS_EX_TOOLWINDOW) != 0)
@@ -104,6 +123,10 @@ public static class ClientWindowDiscovery
                     kind = ClientKind.WeChat;
                 }
 
+                var role = ResolveWindowRole(kind, title, windowClass, rect.Width, rect.Height);
+                if (isManagedWindow && identity is not null && identity.Role != ClientWindowRole.Unknown
+                    && (rect.Width < 280 || rect.Height < 200) && role != ClientWindowRole.Login)
+                    role = identity.Role; // Parking dimensions cannot establish a login-to-main transition.
                 candidates.Add(new WindowCandidate(
                     handle,
                     processId,
@@ -111,7 +134,7 @@ public static class ClientWindowDiscovery
                     title.Trim(),
                     windowClass,
                     kind,
-                    ResolveWindowRole(kind, title, windowClass, rect.Width, rect.Height),
+                    role,
                     (long)rect.Width * rect.Height,
                     TryReadClientVersion(processId, kind),
                     TryReadProcessStartUtcTicks(processId)));

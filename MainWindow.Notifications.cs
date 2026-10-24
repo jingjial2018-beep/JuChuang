@@ -414,12 +414,9 @@ public partial class MainWindow
     {
         try
         {
-            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-            Show();
-            Activate();
-            Topmost = true;
-            Topmost = false;
-            Focus();
+            if (_isClosing || _trayExitRequested
+                || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+            RestoreFromTray();
             if (string.IsNullOrWhiteSpace(argument) || argument == "activate") return;
             var parsed = ToastArguments.Parse(argument);
             var account = parsed.Contains("account") ? parsed["account"] : null;

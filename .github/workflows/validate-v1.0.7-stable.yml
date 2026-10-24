@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feature/v1.0.7-stable-typography
+      - fix/v1.0.7-review
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -30,3 +32,5 @@ jobs:
         run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
       - name: BadgeProbe
         run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+      - name: RegressionProbe (lock, persistence, discovery and tray restore)
+        run: dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release

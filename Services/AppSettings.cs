@@ -213,34 +213,38 @@ public sealed class AppSettings
         }
     }
 
-    public void Save()
+    public bool Save()
     {
         string? notice = null;
+        var saved = false;
         try
         {
             lock (SaveLock)
             {
-                notice = SaveCore();
+                notice = SaveCore(out saved);
             }
         }
         catch (Exception exception)
         {
             // A read-only profile should not stop the window manager from working.
             DiagnosticLogService.WriteActivityEvent($"settings-save-failed:{exception.GetType().Name}");
+            notice = "设置保存失败，本次修改仅在当前运行期间生效，请检查磁盘空间和目录权限后重试";
         }
 
         if (notice is not null)
         {
             RaiseSaveProblem(notice);
         }
+        return saved;
     }
 
     // 保存前先复核磁盘上的版本，而不是直接用内存里的旧配置覆盖：
     //  - 磁盘文件暂时读不了：不写入，提示用户（原文件原封不动）。
     //  - 磁盘版本自上次读写后被别的进程改过：按属性做三方合并，不覆盖对方的新设置。
     //  - 磁盘文件已损坏：隔离后写入当前内存设置。
-    private string? SaveCore()
+    private string? SaveCore(out bool saved)
     {
+        saved = false;
         string? notice = null;
         var state = ReadDisk(out var disk);
         switch (state)
@@ -259,6 +263,7 @@ public sealed class AppSettings
 
         WriteAtomically();
         _baseSnapshot = ToNode();
+        saved = true;
         return notice;
     }
 
