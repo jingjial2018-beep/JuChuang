@@ -532,6 +532,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private bool TrySaveSettings()
+    {
+        if (_settings.Save()) return true;
+        // Do not rely only on the throttled SaveProblem event: every explicit
+        // action must observe failure, including a second attempt within a minute.
+        ShowTemporaryStatus("设置保存失败，本次修改仅在当前运行中生效；请打开设置重试。",
+            TimeSpan.FromSeconds(10));
+        return false;
+    }
+
     private void OnSettingsSaveProblem(string message)
     {
         // 保存可能发生在任意调用线程；状态栏只能在 UI 线程更新。
@@ -1160,7 +1170,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 executablePath = dialog.FileName;
                 _settings.WeChatExecutablePath = executablePath;
-                _settings.Save();
+                TrySaveSettings();
             }
 
             _dismissedWindowHandles.Clear();
@@ -1381,8 +1391,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (oldIndex != insertionIndex)
         {
             Entries.Move(oldIndex, insertionIndex);
-            SaveAccountOrder();
-            ShowTemporaryStatus("账号顺序已保存。");
+            if (SaveAccountOrder())
+                ShowTemporaryStatus("账号顺序已保存。");
         }
 
         if (_selectionBeforeAccountDrag is not null && Entries.Contains(_selectionBeforeAccountDrag))
@@ -1431,11 +1441,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return null;
     }
 
-    private void SaveAccountOrder()
+    private bool SaveAccountOrder()
     {
         if (_isPreviewMode)
         {
-            return;
+            return false;
         }
 
         var visibleKeys = Entries
@@ -1458,7 +1468,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _settings.AccountOrder = visibleKeys;
-        _settings.Save();
+        return TrySaveSettings();
     }
 
     private void ApplySavedAccountOrder()
@@ -2477,10 +2487,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         entry.DisplayName = dialog.AccountName;
         entry.HasCustomName = true;
+        var saved = false;
         if (!string.IsNullOrWhiteSpace(entry.IdentityKey))
         {
             _settings.AccountNamesByIdentity[entry.IdentityKey] = entry.DisplayName;
-            _settings.Save();
+            saved = TrySaveSettings();
         }
 
         if (ReferenceEquals(entry, SelectedEntry))
@@ -2488,7 +2499,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CurrentTitleText.Text = entry.DisplayName;
         }
 
-        ShowTemporaryStatus($"账号名称已更新为“{entry.DisplayName}”。");
+        if (saved)
+            ShowTemporaryStatus($"账号名称已更新为“{entry.DisplayName}”。");
+        else
+            ShowTemporaryStatus("账号名称仅在本次运行中生效，尚未保存；请打开设置重试。", TimeSpan.FromSeconds(10));
     }
 
     private bool _clientExitInProgress;

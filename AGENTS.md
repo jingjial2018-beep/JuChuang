@@ -1,6 +1,6 @@
 # JNest 开发基线与安全规则
 
-本仓库当前已确认的最新正式版基线：**v1.0.7**，Git Tag `v1.0.7`，源码提交 `02bee252d9eb1b6fca5bb0fffd3f38379f10a9ec`。2026-10-24 创建 `stable` 分支作为后续开发唯一可信起点。
+当前版本：**v1.0.8**。本版基于 v1.0.7 正式标签（`02bee252d9eb1b6fca5bb0fffd3f38379f10a9ec`）及 `stable` 后续维护提交，纳入已实机验收的 PR #49 和设置保存结果处理。正式发布使用 `v1.0.8` 固定标签；发布状态以 GitHub 最新正式 Release 为准。
 
 ## 任何修改源码之前
 1. 先读取 GitHub 最新**正式版** Release（`draft=false`, `prerelease=false`）及对应 Git Tag，核实 `stable` 基于该正式版，当前工程版本不得退回旧版；版本变化时更新此文档。
@@ -10,7 +10,7 @@
 
 ## 修改与发布
 - 不直接修改或强推 `stable`；开发分支独立提交并创建针对 `stable` 的 PR。
-- 合并前运行 Windows WPF Release 编译、ArchitectureProbe、BadgeProbe 和与改动对应的回归测试；原生窗口交互需要用户实机验收。
+- 合并前运行 Windows WPF Release 编译、ArchitectureProbe、BadgeProbe、RegressionProbe、设置字体检查和与改动对应的回归测试；原生窗口交互需要用户实机验收。
 - 用户未批准发布时，不创建正式 Tag、Release、安装包，亦不把未经验收的功能合入稳定源码。
 - 正式版发布通过且经用户验收后，同步 `stable` 到该正式版源码，保持 `stable` 与最新正式版本一致或仅有不影响程序的文档/CI 后续提交。禁止破坏正式版可追溯性。
 - `stable` 是未来开发基线，不代表每次功能修改都可直接发布正式版。
@@ -21,5 +21,5 @@
 - 清理 GitHub Release、Tag、分支应作为独立维护任务，不与功能版本同时处理。
 
 ## 版本策略
-- 当前正式版：v1.0.7；下一开发版本建议使用 v1.0.8-beta.n。
+- 当前工程版本：v1.0.8；下一开发版本按用户确认的范围确定。
 - 未来每次正式发布后，检查 README、开发基线文档、构建工作流和 `stable` 与最新 Release 的一致性。

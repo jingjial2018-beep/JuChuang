@@ -39,6 +39,7 @@ internal static class Program
                 await Run("Owned primary discovery validates owner, HWND, PID and start", DiscoveryAndAttach);
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
+                await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
             }
             finally
             {
@@ -286,6 +287,46 @@ internal static class Program
             Assert(!status.Text.Contains("失败") && retry.Visibility == Visibility.Collapsed, "retry did not clear failure UI");
         }
         finally { dialog.Close(); AppSettings.SettingsPathOverride = normal; }
+        return Task.CompletedTask;
+    }
+
+    private static Task MainWindowSettingsFailure()
+    {
+        EnsureResources();
+        var normal = AppSettings.SettingsPathOverride;
+        var blocked = Path.Combine(Root, "blocked-main-settings");
+        File.WriteAllText(blocked, "not a directory");
+        AppSettings.SettingsPathOverride = Path.Combine(blocked, "settings.json");
+        var type = typeof(App).Assembly.GetType("JuChuang.MainWindow")!;
+        var window = (Window)Activator.CreateInstance(type)!;
+        var interval = AppSettings.ProblemNoticeInterval;
+        AppSettings.ProblemNoticeInterval = TimeSpan.FromDays(1);
+        try
+        {
+            var settings = (AppSettings)Field(window, "_settings")!;
+            settings.WeChatExecutablePath = "pending-wechat.exe";
+            settings.AccountNamesByIdentity["test-account"] = "Pending name";
+            Assert(!(bool)Call(window, "TrySaveSettings")!, "failed main-window save reported success");
+            Assert(!(bool)Call(window, "SaveAccountOrder")!, "failed order save reported success");
+            var status = (TextBlock)Field(window, "StatusMessageText")!;
+            Assert(status.Text.Contains("保存失败") && status.Text.Contains("重试"),
+                "repeated failure was hidden by notification throttling");
+            File.Delete(blocked);
+            var dialog = new SettingsDialog(settings, () => { }, () => { });
+            try { Call(dialog, "RetrySave_Click", dialog, new RoutedEventArgs()); }
+            finally { dialog.Close(); }
+            var loaded = AppSettings.Load();
+            Assert(loaded.WeChatExecutablePath == "pending-wechat.exe"
+                && loaded.AccountNamesByIdentity["test-account"] == "Pending name",
+                "settings-page retry lost pending main-window changes");
+            Assert((bool)Call(window, "SaveAccountOrder")!, "order save did not recover");
+        }
+        finally
+        {
+            CloseWithoutPrompt(window);
+            AppSettings.SettingsPathOverride = normal;
+            AppSettings.ProblemNoticeInterval = interval;
+        }
         return Task.CompletedTask;
     }
 

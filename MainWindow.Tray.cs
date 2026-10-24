@@ -132,7 +132,7 @@ public partial class MainWindow
         {
             StartupService.SetEnabled(startup.IsChecked);
             _settings.LaunchAtStartup = StartupService.IsEnabled();
-            _settings.Save();
+            TrySaveSettings();
             startup.IsChecked = _settings.LaunchAtStartup;
             checkmark.Visibility = startup.IsChecked ? Visibility.Visible : Visibility.Hidden;
         };
