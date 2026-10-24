@@ -1,8 +1,8 @@
 # JNest 发布记录索引
 
-**当前正式版：** [v1.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.3)。当前功能、下载包名称与退出交互请参阅 [README](README.md) 及 [v1.0.3 发布说明](RELEASE-NOTES-v1.0.3.md)。
+**当前正式版：** [v1.0.7](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.7)。当前功能、下载与安装说明请参阅 [README](README.md)，本版变更参阅 [v1.0.7 发布说明](RELEASE_NOTES-v1.0.7.md)。[最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest)可直接查看今后的新版本。
 
-下方内容是历史版本与实验记录，记录各版本当时的设计和限制；其中已取消的圆角实验、右键菜单及旧测试方案**不代表 v1.0.3 仍提供相应功能**。
+**说明：** 本文档保留早期 Beta / RC 和 v0.3.x 的历史开发记录，并非当前功能清单。历史实验可能已取消或重做；旧测试版 Release 和测试 Tag 已归档清理，当前对外仅发布正式版本。具体能力以当前 [README](README.md)、v1.0.7 Release 和实际源码为准。
 
 ## v1.0.4-beta.3 — 退出范围、状态反馈与窄屏弹窗
 
