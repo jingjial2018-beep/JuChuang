@@ -24,7 +24,7 @@ jobs:
       - name: Audit and optionally prune only redundant branches
         uses: actions/github-script@v7
         env:
-          PRUNE_MODE: dry-run
+          PRUNE_MODE: execute
         with:
           script: |
             const {owner, repo} = context.repo;
