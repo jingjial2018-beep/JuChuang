@@ -1,3 +1,13 @@
+# JNest 发布说明索引
+
+**当前正式版：** [v1.0.7](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.7)。新版本请查看 [GitHub 最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest)。
+
+v1.0.7 的完整说明位于[该版本源码](https://github.com/jingjial2018-beep/JuChuang/blob/v1.0.7/RELEASE_NOTES-v1.0.7.md)。v1.0.4–v1.0.6 的说明请分别查看 [v1.0.4](https://github.com/jingjial2018-beep/JuChuang/blob/v1.0.7/RELEASE_NOTES-v1.0.4.md)、[v1.0.5](https://github.com/jingjial2018-beep/JuChuang/blob/v1.0.7/RELEASE_NOTES-v1.0.5.md)、[v1.0.6](https://github.com/jingjial2018-beep/JuChuang/blob/v1.0.7/RELEASE_NOTES-v1.0.6.md)。
+
+以下是默认分支保留的早期开发记录，从 v0.3.33 开始按当时版本记载；其中的界面、测试状态和限制不代表 v1.0.7 正式版现状。
+
+---
+
 ## v0.3.33 — 窗口按钮保护、300 DIP 侧栏与状态栏字号优化
 
 - 固定左侧栏 300 DIP，继续保留不可拖动的 1 DIP 分隔线。
