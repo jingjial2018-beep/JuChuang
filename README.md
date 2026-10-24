@@ -45,6 +45,12 @@ JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端�
 
 ![JNest WhatsApp 桌面客户端接入界面](docs/images/whatsapp-window-management.png)
 
+### 工作区密码锁
+
+使用独立密码锁定 JNest 工作区；微信和 WhatsApp 客户端仍在后台运行。
+
+![JNest 工作区密码锁界面](docs/images/jnest-lock-screen.png)
+
 ## 主要功能
 
 - 同时管理多个微信 4.x 窗口和 WhatsApp 桌面客户端。
