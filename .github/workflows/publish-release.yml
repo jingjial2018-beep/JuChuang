@@ -1,132 +1,191 @@
-name: Publish Windows Release
+name: JNest official release - manual only
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - fix/modal-click-return-beta5
-      - fix/modal-shield-native-beta6
-      - fix/modal-shield-hit-test-beta7
-    paths:
-      - JuChuang.csproj
-      - .github/workflows/publish-release.yml
+    inputs:
+      operation:
+        description: "Validate without publishing (default), or publish new approved release"
+        required: true
+        type: choice
+        default: validate
+        options:
+          - validate
+          - publish
+      confirm_version:
+        description: "For publish: type exact new tag, e.g. v1.0.8"
+        required: false
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: publish-windows-release
+  group: jnest-official-release
   cancel-in-progress: false
 
 jobs:
-  publish:
+  build-and-test:
+    if: github.repository == 'jingjial2018-beep/JuChuang' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/stable'
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: Read version
+      - name: Verify manual mode, source version and optional publish confirmation
         id: version
         shell: pwsh
+        env:
+          MODE: ${{ inputs.operation }}
+          CONFIRM: ${{ inputs.confirm_version }}
         run: |
-          [xml]$project = Get-Content .\JuChuang.csproj
-          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
-          if ([string]::IsNullOrWhiteSpace($version)) { throw "Version is missing from JuChuang.csproj" }
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "tag=v$version" >> $env:GITHUB_OUTPUT
+          $ErrorActionPreference = 'Stop'
+          if ($env:MODE -notin @('validate','publish')) { throw 'Invalid release mode' }
+          [xml]$p = Get-Content -Raw .\JuChuang.csproj
+          $v = [string]$p.Project.PropertyGroup.Version
+          if ($v -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "Not an official stable version: $v" }
+          if ([version]$v -lt [version]'1.0.7') { throw 'Source is older than v1.0.7' }
+          if ([string]$p.Project.PropertyGroup.AssemblyName -cne 'JNest') { throw 'Wrong application' }
+          $tag = "v$v"
+          if ($env:MODE -eq 'publish' -and $env:CONFIRM -cne $tag) { throw "Enter '$tag' in confirm_version" }
+          if (-not (Test-Path -LiteralPath ('.\RELEASE_NOTES-{0}.md' -f $tag))) {
+            throw "Missing version-specific release notes: RELEASE_NOTES-$tag.md"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
 
-      - name: Restore
-        run: dotnet restore .\JuChuang.csproj
-
-      - name: Run ArchitectureProbe
-        shell: pwsh
-        run: |
-          dotnet restore .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj
-          dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
-          dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
-
-      - name: Run BadgeProbe
-        shell: pwsh
-        run: |
-          dotnet restore .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release --no-restore
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release --no-build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Restore win-x64 publish assets
+      - name: Restore main app
         run: dotnet restore .\JuChuang.csproj -r win-x64
+      - name: Build WPF Release
+        run: dotnet build .\JuChuang.csproj -c Release --no-restore
+      - name: Architecture regression
+        run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Badge regression
+        run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
 
-      - name: Publish framework-dependent
+      - name: Build framework-dependent ZIP source
+        run: dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:PublishReadyToRun=true -o .\artifacts\framework
+      - name: Build self-contained ZIP source
+        run: dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\artifacts\selfcontained
+
+      - name: Package ZIPs, SHA-256 and version-specific notes
         shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
-            --self-contained false `
-            -p:PublishSingleFile=true `
-            -p:PublishReadyToRun=true `
-            -o .\artifacts\framework-dependent
+          $ErrorActionPreference = 'Stop'
+          $fw = 'JNest-v{0}-FrameworkDependent-win-x64.zip' -f $env:VERSION
+          $sc = 'JNest-v{0}-SelfContained-win-x64.zip' -f $env:VERSION
+          Compress-Archive -Path .\artifacts\framework\* -DestinationPath ".\artifacts\$fw" -Force
+          Compress-Archive -Path .\artifacts\selfcontained\* -DestinationPath ".\artifacts\$sc" -Force
+          $fwh = (Get-FileHash ".\artifacts\$fw" -Algorithm SHA256).Hash
+          $sch = (Get-FileHash ".\artifacts\$sc" -Algorithm SHA256).Hash
+          $notes = Get-Content -Raw -LiteralPath ('.\RELEASE_NOTES-{0}.md' -f $env:TAG)
+          $nl = [Environment]::NewLine
+          $notes += "$nl$nl### SHA-256 checksums$nl"
+          $notes += "- FrameworkDependent: $fwh$nl"
+          $notes += "- SelfContained: $sch$nl"
+          Set-Content -LiteralPath .\artifacts\release-notes.md -Value $notes -Encoding utf8
+          @("$fwh  $fw", "$sch  $sc") | Set-Content .\artifacts\SHA256SUMS.txt -Encoding ascii
 
-      - name: Publish self-contained
-        shell: pwsh
-        run: |
-          dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:PublishReadyToRun=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -o .\artifacts\self-contained
+      - name: Save tested candidate without publishing a Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: jnest-tested-candidate
+          path: |
+            artifacts/JNest-v*.zip
+            artifacts/release-notes.md
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Package ZIP files
-        id: package
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $framework = "JNest-v$version-FrameworkDependent-win-x64.zip"
-          $selfContained = "JNest-v$version-SelfContained-win-x64.zip"
-          Compress-Archive -Path .\artifacts\framework-dependent\* -DestinationPath ".\artifacts\$framework" -Force
-          Compress-Archive -Path .\artifacts\self-contained\* -DestinationPath ".\artifacts\$selfContained" -Force
-          $frameworkHash = (Get-FileHash ".\artifacts\$framework" -Algorithm SHA256).Hash
-          $selfContainedHash = (Get-FileHash ".\artifacts\$selfContained" -Algorithm SHA256).Hash
-          "framework=$framework" >> $env:GITHUB_OUTPUT
-          "self_contained=$selfContained" >> $env:GITHUB_OUTPUT
-          "framework_hash=$frameworkHash" >> $env:GITHUB_OUTPUT
-          "self_contained_hash=$selfContainedHash" >> $env:GITHUB_OUTPUT
+  publish-official:
+    needs: build-and-test
+    if: github.repository == 'jingjial2018-beep/JuChuang' && github.ref == 'refs/heads/stable' && inputs.operation == 'publish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      checks: read
+    steps:
+      - name: Download tested candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: jnest-tested-candidate
+          path: ./artifacts
 
-      - name: Prepare release notes
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $releaseNotesPath = ".\RELEASE_NOTES-v$version.md"
-          if (-not (Test-Path $releaseNotesPath)) { $releaseNotesPath = ".\RELEASE_NOTES.md" }
-          $notes = Get-Content $releaseNotesPath -Raw
-          $notes += "`r`n`r`n### SHA-256`r`n"
-          $notes += "- FrameworkDependent: ${{ steps.package.outputs.framework_hash }}`r`n"
-          $notes += "- SelfContained: ${{ steps.package.outputs.self_contained_hash }}`r`n"
-          Set-Content -Path .\artifacts\release-notes.md -Value $notes -Encoding utf8
-
-      - name: Create GitHub Release
+      - name: Refuse stale branches, duplicate versions and failing CI
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: pwsh
+          VERSION: ${{ needs.build-and-test.outputs.version }}
+          TAG: ${{ needs.build-and-test.outputs.tag }}
+          CONFIRM: ${{ inputs.confirm_version }}
         run: |
-          $tag = "${{ steps.version.outputs.tag }}"
-          $version = "${{ steps.version.outputs.version }}"
-          $framework = ".\artifacts\${{ steps.package.outputs.framework }}"
-          $selfContained = ".\artifacts\${{ steps.package.outputs.self_contained }}"
-          if (gh release view $tag --repo "${{ github.repository }}" 2>$null) {
-            gh release upload $tag $framework $selfContained --clobber --repo "${{ github.repository }}"
-          } else {
-            gh release create $tag $framework $selfContained `
-              --repo "${{ github.repository }}" `
-              --target "${{ github.sha }}" `
-              --title "JNest v$version" `
-              $(if ($version -match '-') { '--prerelease' }) `
-              --notes-file .\artifacts\release-notes.md
-          }
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/stable" ]] || exit 1
+          [[ "$CONFIRM" == "$TAG" ]] || exit 1
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+
+          headsha="$(gh api "repos/$GITHUB_REPOSITORY/branches/stable" --jq '.commit.sha')"
+          [[ "$headsha" == "$GITHUB_SHA" ]] || { echo "::error::stable has advanced; restart validation"; exit 1; }
+
+          passed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --jq '[.check_runs[] | select(.name == "verify-stable-baseline" and .conclusion == "success")] | length')"
+          [[ "$passed" -ge 1 ]] || { echo "::error::stable baseline CI has not passed"; exit 1; }
+
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          newest="$(printf '%s\n' "$latest" "$TAG" | sort -V | tail -n 1)"
+          [[ "$TAG" != "$latest" && "$newest" == "$TAG" ]] || { echo "::error::Version must be newer than $latest"; exit 1; }
+
+          relation="$(gh api "repos/$GITHUB_REPOSITORY/compare/$latest...$GITHUB_SHA" --jq '.status')"
+          [[ "$relation" == "ahead" ]] || { echo "::error::Source must descend from latest release"; exit 1; }
+
+          refs="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$TAG" --jq '.[].ref')"
+          if grep -Fxq "refs/tags/$TAG" <<< "$refs"; then
+            echo "::error::Tag exists; never overwrite a release"; exit 1
+          fi
+          oldreleases="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')"
+          if grep -Fxq "$TAG" <<< "$oldreleases"; then
+            echo "::error::Release already exists"; exit 1
+          fi
+
+          test -s "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip"
+          test -s "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip"
+          test -s artifacts/release-notes.md
+          test -s artifacts/SHA256SUMS.txt
+          (cd artifacts && sha256sum --check SHA256SUMS.txt)
+
+      - name: Create a new official release only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build-and-test.outputs.version }}
+          TAG: ${{ needs.build-and-test.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip" \
+            "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "JNest $TAG" \
+            --notes-file artifacts/release-notes.md
+
+      - name: Confirm newly published files and target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build-and-test.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets \
+            --jq 'if (.isDraft == false and .isPrerelease == false and (.assets | length) == 2) then "PASS" else error("Unexpected release state") end'
+          released_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+          [[ "$released_sha" == "$GITHUB_SHA" ]] || { echo "::error::Unexpected release source"; exit 1; }
