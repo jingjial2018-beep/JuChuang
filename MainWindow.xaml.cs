@@ -39,6 +39,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isClosing;
     private bool _isPreviewMode;
     private bool _isTitleBarInteraction;
+    private bool _isSidebarCollapsed;
+    private bool _sidebarCollapsedBeforeMaximize;
+    private bool _wasMaximized;
+    public bool IsSidebarCollapsed
+    {
+        get => _isSidebarCollapsed;
+        private set
+        {
+            if (_isSidebarCollapsed == value) return;
+            _isSidebarCollapsed = value;
+            OnPropertyChanged();
+        }
+    }
+
     private bool _isClientLaunchInProgress;
     private readonly bool _isClientSelfTestMode;
     private readonly int? _selfTestTargetProcessId;
@@ -191,8 +205,53 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }));
     }
 
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) return;
+        SetSidebarCollapsed(!IsSidebarCollapsed, resizeNormalWindow: true);
+    }
+
+    private void SetSidebarCollapsed(bool collapsed, bool resizeNormalWindow)
+    {
+        if (IsSidebarCollapsed == collapsed) return;
+        const double difference = 236; // 300 DIP account list to 64 DIP avatar rail.
+        IsSidebarCollapsed = collapsed;
+        SidebarColumn.Width = new GridLength(collapsed ? 64 : 300);
+        SidebarHeading.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        // No tooltip: it could overflow the window when the sidebar is collapsed.
+        SidebarToggleButton.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Right;
+        SidebarToggleButton.Margin = collapsed ? new Thickness(0) : new Thickness(0, 0, 10, 0);
+        if (resizeNormalWindow && WindowState == WindowState.Normal)
+        {
+            var delta = collapsed ? -difference : difference;
+            Width += delta;
+            // Preserve the window's right edge and the hosted client's screen coordinates.
+            Left -= delta;
+        }
+        QueueOverlayBoundsUpdate();
+    }
+
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        if (WindowState == WindowState.Maximized)
+        {
+            if (!_wasMaximized)
+                _sidebarCollapsedBeforeMaximize = IsSidebarCollapsed;
+            _wasMaximized = true;
+            SetSidebarCollapsed(false, resizeNormalWindow: false);
+            SidebarToggleButton.IsEnabled = false;
+            SidebarToggleButton.Visibility = Visibility.Collapsed;
+        }
+        else if (WindowState == WindowState.Normal)
+        {
+            SidebarToggleButton.IsEnabled = true;
+            SidebarToggleButton.Visibility = Visibility.Visible;
+            if (_wasMaximized)
+            {
+                _wasMaximized = false;
+                SetSidebarCollapsed(_sidebarCollapsedBeforeMaximize, resizeNormalWindow: false);
+            }
+        }
         UpdateMaximizeGlyph();
         var isMinimized = WindowState == WindowState.Minimized;
         WindowHost.HandleOwnerWindowStateChanged(isMinimized);
@@ -274,7 +333,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
-        RestoreWindowPlacement();
+        // Fixed startup size and centered position come from MainWindow.xaml.
         _isPreviewMode = Environment.GetCommandLineArgs()
             .Any(argument => argument.Equals("--preview", StringComparison.OrdinalIgnoreCase));
 
@@ -331,7 +390,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _isClosing = true;
         StopNativeCaptionGuard();
-        SaveWindowPlacement();
+        // Fixed window sizing: do not remember prior position, size or maximized state.
         _scanTimer.Stop();
         _statusResetTimer.Stop();
         _clockTimer.Stop();
@@ -474,8 +533,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // 自定义名称和未读状态串到下一账号。
         if (candidate.Kind == ClientKind.WeChat
             && candidate.Role == ClientWindowRole.Login
-            && entry.SessionState != ClientSessionState.Login
-            && !string.IsNullOrWhiteSpace(entry.IdentityKey))
+            && entry.SessionState != ClientSessionState.Login)
         {
             ResetWeChatAccountBinding(entry);
         }
@@ -487,6 +545,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var processId = entry.ProcessId;
         DiagnosticLogService.WriteAccountEvent(entry, "account-generation-reset");
+        // A transient Main/Login role oscillation must not erase the identity
+        // being excluded from this login transition.
+        if (!string.IsNullOrWhiteSpace(entry.IdentityKey))
+            entry.PreviousLoginIdentityKey = entry.IdentityKey;
+        entry.LoginTransitionUtc ??= DateTime.UtcNow;
         entry.AccountGeneration++;
         _resolvedWeChatAccounts.Remove(processId);
         _resolvedAccountProcessStarts.Remove(processId);
@@ -549,6 +612,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
+        // Login UI can expose stale login directories belonging to older accounts.
+        // Do not bind an account identity from process start time alone; wait for
+        // an exact profile read matching the running process.
+        if (candidate.Role == ClientWindowRole.Login)
+            return;
         accounts.TryGetValue(candidate.ProcessId, out var preferredAccount);
         QueueWeChatAccountResolution(entry, preferredAccount);
     }
@@ -700,13 +768,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 .ToArray();
             var weChatAccounts = scanResult.Accounts;
 
-            foreach (var candidate in candidates)
+            foreach (var discoveredCandidate in candidates)
             {
+                var candidate = discoveredCandidate;
                 var existingEntry = Entries.FirstOrDefault(entry => entry.Handle == candidate.Handle);
+                // Current window size is not a reliable login signal after WPF
+                // hosting resized a previously confirmed chat window.
+                if (existingEntry is not null
+                    && candidate.Kind == ClientKind.WeChat
+                    && candidate.Role == ClientWindowRole.Login
+                    && existingEntry.SessionState == ClientSessionState.Main
+                    && !candidate.WindowTitle.Contains("登录", StringComparison.OrdinalIgnoreCase)
+                    && !candidate.WindowClass.Contains("WeChatLoginWndForPC", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidate = candidate with { Role = ClientWindowRole.Main };
+                }
                 if (existingEntry is not null)
                 {
+                    if (candidate.Kind == ClientKind.WeChat
+                        && existingEntry.SessionState != MapSessionState(candidate.Role))
+                        DiagnosticLogService.WriteActivityEvent(
+                            $"wechat-role-transition {existingEntry.SessionState}->{candidate.Role} class={candidate.WindowClass} area={candidate.PixelArea}",
+                            candidate.ProcessId);
+                    var resumedFromLogin = existingEntry.SessionState == ClientSessionState.Login
+                        && candidate.Role == ClientWindowRole.Main;
                     PrepareEntryForCandidate(existingEntry, candidate);
                     QueueOrApplyWeChatIdentity(existingEntry, candidate, weChatAccounts);
+                    if (resumedFromLogin)
+                    {
+                        _lastClientActivityScan.Remove(existingEntry);
+                        _activityRetryGeneration.Remove(existingEntry);
+                        QueueClientActivityScan(existingEntry, "login-to-main");
+                        DiagnosticLogService.WriteAccountEvent(existingEntry, "badge-monitor-rearmed");
+                    }
 
                     // 自动扫描只重试“接入失败”的窗口。用户主动“弹出窗口”会把句柄
                     // 放进 _dismissedWindowHandles，因此不会被后台扫描重新抓回容器。
@@ -716,10 +810,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     {
                         existingEntry.IsAttached = WindowHost.AttachWindow(
                             existingEntry.Handle,
-                            makeActive: false);
+                            makeActive: false,
+                            disableMaximize: existingEntry.Kind == ClientKind.WhatsApp,
+                            centerInHost: candidate.Kind == ClientKind.WeChat && candidate.Role == ClientWindowRole.Login);
                         existingEntry.Status = existingEntry.IsAttached ? "已接入" : "接入失败";
                     }
 
+                    if (existingEntry.IsAttached && candidate.Kind == ClientKind.WeChat)
+                        WindowHost.SetCenterInHost(existingEntry.Handle, candidate.Role == ClientWindowRole.Login);
                     TryCompletePendingLaunch(candidate, existingEntry);
                     continue;
                 }
@@ -735,6 +833,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 if (rebindingEntry is not null)
                 {
+                    var rebindingIntoMain = candidate.Kind == ClientKind.WeChat
+                        && candidate.Role == ClientWindowRole.Main;
                     PrepareEntryForCandidate(rebindingEntry, candidate);
                     QueueOrApplyWeChatIdentity(rebindingEntry, candidate, weChatAccounts);
                     if (rebindingEntry.IsManuallyDetached)
@@ -747,7 +847,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         var makeActive = ReferenceEquals(rebindingEntry, SelectedEntry);
                         rebindingEntry.IsAttached = WindowHost.AttachWindow(
                             candidate.Handle,
-                            makeActive);
+                            makeActive,
+                            disableMaximize: rebindingEntry.Kind == ClientKind.WhatsApp,
+                            centerInHost: candidate.Kind == ClientKind.WeChat && candidate.Role == ClientWindowRole.Login);
                         rebindingEntry.Status = rebindingEntry.IsAttached ? "已接入" : "接入失败";
                         if (makeActive && rebindingEntry.IsAttached)
                         {
@@ -755,7 +857,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         }
                     }
 
+                    if (rebindingIntoMain && rebindingEntry.IsAttached)
+                    {
+                        _lastClientActivityScan.Remove(rebindingEntry);
+                        _activityRetryGeneration.Remove(rebindingEntry);
+                        QueueClientActivityScan(rebindingEntry, "window-rebound-main");
+                    }
                     DiagnosticLogService.WriteAccountEvent(rebindingEntry, "window-rebound");
+                    if (rebindingEntry.IsAttached && candidate.Kind == ClientKind.WeChat)
+                        WindowHost.SetCenterInHost(rebindingEntry.Handle, candidate.Role == ClientWindowRole.Login);
                     TryCompletePendingLaunch(candidate, rebindingEntry);
                     if (ReferenceEquals(rebindingEntry, SelectedEntry))
                     {
@@ -775,13 +885,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     continue;
                 }
 
+                if (candidate.Kind == ClientKind.WeChat)
+                    DiagnosticLogService.WriteActivityEvent(
+                        $"wechat-discovered role={candidate.Role} class={candidate.WindowClass} title={candidate.WindowTitle} area={candidate.PixelArea} center={candidate.Role == ClientWindowRole.Login}",
+                        candidate.ProcessId);
                 var entry = CreateEntry(candidate);
                 Entries.Add(entry);
                 QueueOrApplyWeChatIdentity(entry, candidate, weChatAccounts);
                 ApplySavedAccountOrder();
 
-                entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false);
+                entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false,
+                    disableMaximize: entry.Kind == ClientKind.WhatsApp,
+                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
                 entry.Status = entry.IsAttached ? "已接入" : "接入失败";
+                if (entry.IsAttached && candidate.Kind == ClientKind.WeChat)
+                    WindowHost.SetCenterInHost(entry.Handle, candidate.Role == ClientWindowRole.Login);
                 TryCompletePendingLaunch(candidate, entry);
             }
 
@@ -1191,13 +1309,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private string BuildCurrentStatusText(ClientWindowEntry entry, string baseText)
     {
-        if (entry.Kind != ClientKind.WeChat
+        if (entry.Kind != ClientKind.WeChat || baseText != "已接入")
+            return baseText;
+        if (entry.SessionState == ClientSessionState.Login)
+            return "已接入 · 等待登录";
+        if (entry.SessionState != ClientSessionState.Main
             || entry.ProfileState == AccountProfileState.NotApplicable
             || string.IsNullOrWhiteSpace(entry.ProfileStatusText))
-        {
             return baseText;
-        }
-
         return $"{baseText} · {entry.ProfileStatusText}";
     }
 
@@ -1292,7 +1411,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;
-            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true);
+            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
+                disableMaximize: entry.Kind == ClientKind.WhatsApp,
+                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
@@ -1359,8 +1480,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         foreach (var entry in Entries.Where(entry =>
                      entry.Handle != IntPtr.Zero && NativeMethods.IsWindow(entry.Handle)))
         {
-            // “扫描客户端/全部接入”是用户显式重新接入动作，因此解除账号级弹出保护。
-            entry.IsManuallyDetached = false;
+            // Ordinary scanning must not undo a user's explicit pop-out choice.
+            // Only “全部接入” clears this protection above.
+            if (!clearDismissed
+                && (entry.IsManuallyDetached || _dismissedWindowHandles.Contains(entry.Handle)))
+            {
+                continue;
+            }
 
             if (entry.IsAttached)
             {
@@ -1370,7 +1496,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 continue;
             }
 
-            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false);
+            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false,
+                disableMaximize: entry.Kind == ClientKind.WhatsApp,
+                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             if (entry.IsAttached)
             {
@@ -1542,10 +1670,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var identityChanged = !string.Equals(previousIdentity, account.Key, StringComparison.OrdinalIgnoreCase);
         entry.IdentityKey = account.Key;
         entry.AccountId = account.AccountId;
+        entry.PreviousLoginIdentityKey = null;
+        entry.LoginTransitionUtc = null;
 
         // 同一 PID 退出旧账号再登录新账号时，HWND/进程可能复用。
         // 身份已经变化就先清掉旧头像，避免新资料尚未解析完成时显示上一个账号。
-        if (identityChanged && previousIdentity is not null)
+        if (identityChanged)
         {
             entry.AvatarPath = null;
             entry.MessageAlertCount = 0;
@@ -1564,19 +1694,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else if (identityChanged)
         {
-            if (entry.HasCustomName && previousIdentity is null)
-            {
-                _settings.AccountNamesByIdentity[account.Key] = entry.DisplayName;
-                _settings.Save();
-            }
-            else
-            {
-            // A recycled window can previously have displayed another account.
-            // Always reset its name when the resolved identity changes so a stale
-            // nickname never leaks into the next login slot.
-                entry.HasCustomName = false;
-                entry.DisplayName = account.DisplayName;
-            }
+            // An unbound login slot is not evidence that its displayed name
+            // belongs to this account. Do not save a stale/custom slot label
+            // under a newly discovered identity.
+            entry.HasCustomName = false;
+            entry.DisplayName = account.DisplayName;
         }
         else if (!entry.HasCustomName)
         {
@@ -1680,6 +1802,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var accountGeneration = entry.AccountGeneration;
         var windowHandle = entry.Handle;
         var processStartTicks = TryGetProcessStartUtcTicks(processId);
+        var previousLoginIdentityKey = entry.PreviousLoginIdentityKey;
+        var loginTransitionUtc = entry.LoginTransitionUtc;
         if (_resolvedWeChatAccounts.TryGetValue(processId, out var resolvedAccount))
         {
             // The discovery path validates process lifetime before scheduling this read.
@@ -1696,11 +1820,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var resolutionToken = ++_accountResolutionSequence;
         _accountResolutionLoads[processId] = resolutionToken;
-        if (entry.ProfileState is not AccountProfileState.Ready
-            and not AccountProfileState.ReadyFromCache
-            and not AccountProfileState.ReadyWithoutAvatar)
+        // Preserve a completed failure state during automatic retries; only the
+        // first attempt should show the transient '资料读取中' label.
+        if (entry.ProfileState == AccountProfileState.Pending
+            && _accountResolutionFailures.GetValueOrDefault(processId) == 0)
         {
-            entry.ProfileState = AccountProfileState.Pending;
             entry.ProfileDiagnosticCode = null;
             entry.ProfileDiagnosticDetail = null;
         }
@@ -1738,9 +1862,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         .Where(account => !unavailableAccountKeys.Contains(account.Key))
                         .ToArray();
 
+                    var newAccountCandidates = WeChatLoginIdentityPolicy.NewAccountCandidates(
+                        candidates, previousLoginIdentityKey, loginTransitionUtc);
                     var readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
                         processId,
-                        candidates.Select(account => account.AccountId));
+                        newAccountCandidates.Select(account => account.AccountId));
+                    if (readResult.Profile is null)
+                    {
+                        var sameAccount = WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+                            candidates, previousLoginIdentityKey, loginTransitionUtc, DateTime.UtcNow);
+                        if (sameAccount is not null)
+                        {
+                            readResult = WeChatProfileService.TryReadMatchingProfileDetailed(
+                                processId, [sameAccount.AccountId]);
+                        }
+                    }
                     var profile = readResult.Profile;
                     var account = profile is null
                         ? null
@@ -1812,11 +1948,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             RefreshSelectedProfileStatus(entry);
             DiagnosticLogService.WriteAccountEvent(entry, "profile-live-resolved");
         }
-        catch
+        catch (Exception ex)
         {
             if (IsCurrentAccountResolution(entry, processId, accountGeneration,
                     windowHandle, processStartTicks, resolutionToken))
             {
+                entry.ProfileState = AccountProfileState.Error;
+                entry.ProfileDiagnosticCode = "ProfileReadException";
+                entry.ProfileDiagnosticDetail = ex.GetType().Name + ": " + ex.Message;
+                RefreshSelectedProfileStatus(entry);
+                DiagnosticLogService.WriteAccountEvent(entry, "profile-read-exception");
                 ScheduleAccountResolutionRetry(processId);
             }
         }

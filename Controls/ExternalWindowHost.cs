@@ -40,6 +40,13 @@ public sealed class ExternalWindowHost : HwndHost
     public bool IsReady => _hostHandle != IntPtr.Zero;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
 
+    public void SetCenterInHost(IntPtr handle, bool centerInHost)
+    {
+        if (!_hostedWindows.TryGetValue(handle, out var state) || state.CenterInHost == centerInHost) return;
+        _hostedWindows[handle] = state with { CenterInHost = centerInHost };
+        if (_currentHandle == handle) ResizeCurrentWindow();
+    }
+
     /// <summary>
     /// True only while the manager itself or its displayed native client owns
     /// the foreground. Background overlays must not compete with Chrome or
@@ -51,7 +58,7 @@ public sealed class ExternalWindowHost : HwndHost
             GetOwnerRoot(),
             _currentHandle);
 
-    public bool AttachWindow(IntPtr handle, bool makeActive)
+    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
     {
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
         {
@@ -68,14 +75,16 @@ public sealed class ExternalWindowHost : HwndHost
                 NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE),
                 originalRect,
                 CalculateHostInsets(handle, originalRect),
-                nativeChrome);
+                nativeChrome,
+                disableMaximize,
+                centerInHost);
 
             NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
             NativeMethods.ApplyNativeChromeState(handle, nativeChrome);
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_STYLE,
-                CreateOverlayStyle(state.Style, isVisible: true));
+                CreateOverlayStyle(state.Style, isVisible: true, disableMaximize: state.DisableMaximize));
             NativeMethods.SetWindowLongPtr(
                 handle,
                 NativeMethods.GWL_EXSTYLE,
@@ -329,26 +338,29 @@ public sealed class ExternalWindowHost : HwndHost
 
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
-        // 边界对齐（旧版基线）：窗口矩形 = 容器客户区 + 四周 insets，位置 = 容器原点 - insets。
-        // 顶层窗口带 WS_THICKFRAME 时，GetWindowRect 比可见客户区多出一圈不可见的 DWM 缩放
-        // 边框（Extended Frame Bounds），insets 即这圈边框的宽度。放大并反向偏移后，客户端
-        // 的可见内容才能精确填满容器，否则会出现悬浮间隙或内容越界。
+        var target = CalculateHostedBounds(state, hostRect, origin);
+        var zOrderFlags = ShouldPromoteCurrentWindow() ? 0u : NativeMethods.SWP_NOZORDER;
+        if (state.CenterInHost)
+        {
+            // Compact WeChat login windows have native size constraints.
+            // Never request workspace-sized dimensions or crop this dialog.
+            NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
+                target.Left, target.Top, target.Width, target.Height,
+                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
+                | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
+            NativeMethods.SetWindowRgn(_currentHandle, IntPtr.Zero, true);
+            return;
+        }
+
+        // Original v0.3.34 full-workspace layout for chat and WhatsApp.
         var insets = state.Insets;
         var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
         var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
-        var dpi = VisualTreeHelper.GetDpi(this);
-        // 通铺式嵌入：不做圆角裁剪（cornerRadius=0 → CreateRoundRectRgn 退化为矩形），
-        // 原生窗口以直角原样铺满工作区，左右紧贴侧栏与外壳，视觉上是界面的一部分。
-        // 但仍用 SetWindowRgn 裁掉超出客户区的不可见缩放边框与 DWM 阴影，避免溢出。
-        var cornerRadius = 0;
-        var zOrderFlags = ShouldPromoteCurrentWindow()
-            ? 0u
-            : NativeMethods.SWP_NOZORDER;
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
             origin.X - insets.Left, origin.Y - insets.Top, width, height,
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
-        ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, cornerRadius);
+        ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, 0);
     }
 
     /// <summary>
@@ -404,7 +416,7 @@ public sealed class ExternalWindowHost : HwndHost
         // 托管窗口统一保持 WS_VISIBLE：选中的在容器内显示，非选中的停靠到屏幕外。
         // 若按 selected 清除 WS_VISIBLE，非选中窗口会被"隐藏"，其标题栏无法闪烁，
         // FlashWindowEx/HSHELL_FLASH 来消息通知会失效。真正的显隐区分交给停靠位置。
-        var expectedStyle = CreateOverlayStyle(state.Style, isVisible: true);
+        var expectedStyle = CreateOverlayStyle(state.Style, isVisible: true, disableMaximize: state.DisableMaximize);
         if (NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE) != expectedStyle)
             NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, expectedStyle);
         var expectedExStyle = CreateOverlayExtendedStyle(state.ExtendedStyle);
@@ -433,20 +445,26 @@ public sealed class ExternalWindowHost : HwndHost
         }
     }
 
+    private static NativeMethods.RECT CalculateHostedBounds(
+        HostedWindowState state, NativeMethods.RECT host, NativeMethods.POINT origin)
+    {
+        var insets = state.Insets;
+        var winW = state.CenterInHost ? Math.Max(1, state.Rect.Width) :
+            Math.Max(1, host.Width + insets.Left + insets.Right);
+        var winH = state.CenterInHost ? Math.Max(1, state.Rect.Height) :
+            Math.Max(1, host.Height + insets.Top + insets.Bottom);
+        var x = state.CenterInHost ? origin.X + Math.Max(0, (host.Width - winW) / 2) : origin.X - insets.Left;
+        var y = state.CenterInHost ? origin.Y + Math.Max(0, (host.Height - winH) / 2) : origin.Y - insets.Top;
+        return new NativeMethods.RECT { Left = x, Top = y, Right = x + winW, Bottom = y + winH };
+    }
+
     private bool TryGetExpectedBounds(HostedWindowState state, out NativeMethods.RECT bounds)
     {
         bounds = default;
         if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)) return false;
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return false;
-        // 期望矩形 = 容器客户区向外扩展 insets（与 ResizeCurrentWindow 一致）。
-        bounds = new NativeMethods.RECT
-        {
-            Left = origin.X - state.Insets.Left,
-            Top = origin.Y - state.Insets.Top,
-            Right = origin.X + hostRect.Width + state.Insets.Right,
-            Bottom = origin.Y + hostRect.Height + state.Insets.Bottom
-        };
+        bounds = CalculateHostedBounds(state, hostRect, origin);
         return true;
     }
 
@@ -495,13 +513,14 @@ public sealed class ExternalWindowHost : HwndHost
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => EnforceHostedWindow(window)));
     }
 
-    private static IntPtr CreateOverlayStyle(IntPtr originalStyle, bool isVisible)
+    private static IntPtr CreateOverlayStyle(IntPtr originalStyle, bool isVisible, bool disableMaximize)
     {
         var style = unchecked((long)(uint)originalStyle.ToInt64());
         // 保留 WS_CAPTION/WS_THICKFRAME：微信 4.x 与 WhatsApp 都是自绘窗口，原生标题栏
         // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
         // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
         style &= ~NativeMethods.WS_CHILD;
+        if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
         else style &= ~NativeMethods.WS_VISIBLE;
         return new IntPtr(style);
@@ -590,5 +609,7 @@ public sealed class ExternalWindowHost : HwndHost
         IntPtr ExtendedStyle,
         NativeMethods.RECT Rect,
         HostInsets Insets,
-        NativeMethods.DwmChromeState ChromeState);
+        NativeMethods.DwmChromeState ChromeState,
+        bool DisableMaximize,
+        bool CenterInHost = false);
 }

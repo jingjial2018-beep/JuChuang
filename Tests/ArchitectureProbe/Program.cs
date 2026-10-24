@@ -52,26 +52,82 @@ Run("ClientLaunchContext honors exact CreateProcess PID", () =>
     Assert(context.ClaimedProcessId == 43210, "exact PID was not stored after claim");
 });
 
-Run("Account profile status is independent from HWND", () =>
+Run("WeChat relogin cannot reuse a stale previous identity", () =>
+{
+    var transition = new DateTime(2026, 10, 16, 5, 0, 0, DateTimeKind.Utc);
+    var oldAccount = new WeChatAccountIdentity(
+        "wechat-login:old", "old", "Old", transition.AddHours(-1));
+    var newAccount = new WeChatAccountIdentity(
+        "wechat-login:new", "new", "New", transition.AddSeconds(3));
+    WeChatAccountIdentity[] candidates = [oldAccount, newAccount];
+
+    var firstPass = WeChatLoginIdentityPolicy.NewAccountCandidates(
+        candidates, oldAccount.Key, transition);
+    Assert(firstPass.Count == 1 && firstPass[0].Key == newAccount.Key,
+        "a reused process must read the new account before an old key left in memory");
+    var unrelatedOldAccount = new WeChatAccountIdentity(
+        "wechat-login:unrelated", "unrelated", "Unrelated", transition.AddDays(-1));
+    Assert(WeChatLoginIdentityPolicy.NewAccountCandidates(
+        [oldAccount, unrelatedOldAccount], oldAccount.Key, transition).Count == 0,
+        "other historical login records must not be mistaken for a new login");
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        candidates, oldAccount.Key, transition, transition.AddMinutes(2)) is null,
+        "a stale old login record must never restore the previous account");
+
+    var refreshedOld = oldAccount with { LastLoginUtc = transition.AddSeconds(4) };
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        [refreshedOld, newAccount], oldAccount.Key, transition, transition.AddMinutes(2)) is null,
+        "a fresh different login must block same-account fallback");
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        [refreshedOld], oldAccount.Key, transition, transition.AddSeconds(20)) is null,
+        "same-account fallback must wait for the new session to settle");
+    Assert(WeChatLoginIdentityPolicy.ConfirmedSameAccountCandidate(
+        [refreshedOld], oldAccount.Key, transition, transition.AddMinutes(1))?.Key == oldAccount.Key,
+        "a refreshed login record should permit signing back into the same account");
+});
+
+Run("WeChat profile status respects window role and keeps account identity on rebind", () =>
 {
     var entry = NewWeChatEntry();
-    entry.Status = "已嵌入";
+    entry.Status = "已接入";
     entry.AccountId = "wxid_arch_probe";
-    entry.ProfileState = AccountProfileState.Ready;
+    entry.ProfileState = AccountProfileState.Pending;
     entry.Handle = new IntPtr(0x2222);
 
-    Assert(entry.StatusSummary == "已嵌入",
-        "fully ready profile state should stay hidden in the compact status summary");
+    entry.SessionState = ClientSessionState.Login;
+    Assert(entry.StatusSummary == "已接入 · 等待登录",
+        "QR login window must display waiting for login instead of local profile status");
+
+    entry.ProfileState = AccountProfileState.WaitingForLocalData;
+    Assert(entry.StatusSummary == "已接入 · 等待登录",
+        "profile reading failures must not mask the login window state");
+
+    entry.SessionState = ClientSessionState.Main;
+    entry.ProfileState = AccountProfileState.Pending;
+    Assert(entry.StatusSummary == "已接入 · 资料读取中",
+        "logged-in main window should show profile reading progress");
 
     entry.ProfileState = AccountProfileState.ReadyWithoutAvatar;
-    Assert(entry.StatusSummary.Contains("头像待更新", StringComparison.Ordinal),
-        "incomplete profile state should remain visible in the status summary");
+    Assert(entry.StatusSummary == "已接入 · 资料待更新",
+        "incomplete avatar data should use the unified profile status");
+
+    entry.ProfileState = AccountProfileState.CompatibilityIssue;
+    Assert(entry.StatusSummary == "已接入 · 资料待更新",
+        "profile compatibility errors must use the same concise status");
+
+    entry.ProfileState = AccountProfileState.ReadyFromCache;
+    Assert(entry.StatusSummary == "已接入 · 使用缓存资料",
+        "cached identity must be labeled as cached");
 
     entry.ProfileState = AccountProfileState.Ready;
+    Assert(entry.StatusSummary == "已接入",
+        "fully ready profile state should not add a suffix");
+
     var previousAccountId = entry.AccountId;
     entry.Handle = new IntPtr(0x3333);
     entry.SessionState = ClientSessionState.Rebinding;
-
+    Assert(entry.StatusSummary == "已接入",
+        "unknown/rebinding role should not guess login or profile progress");
     Assert(entry.AccountId == previousAccountId,
         "changing/rebinding HWND must not clear account identity");
 });
