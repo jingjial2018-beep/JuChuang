@@ -1,0 +1,36 @@
+# One-time execution of the user's explicit v1.0.8 publish instruction.
+# Does not publish or alter stable; invokes the existing guarded publisher.
+name: Dispatch approved JNest v1.0.8 release once
+on:
+  push:
+    branches:
+      - ops/dispatch-approved-v1.0.8
+    paths:
+      - .github/workflows/dispatch-approved-v1.0.8.yml
+permissions:
+  contents: read
+  actions: write
+  checks: read
+jobs:
+  dispatch:
+    if: github.repository == 'jingjial2018-beep/JuChuang' && github.ref == 'refs/heads/ops/dispatch-approved-v1.0.8'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check approved source and dispatch existing official publisher
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const expected = '751c581a0cf4471fe2ba987b446fbbe50414da45';
+            const repo = context.repo;
+            const branch = await github.rest.repos.getBranch({...repo, branch: 'stable'});
+            if (branch.data.commit.sha !== expected) throw new Error('Approved stable source has changed');
+            const latest = await github.rest.repos.getLatestRelease(repo);
+            if (latest.data.tag_name !== 'v1.0.7') throw new Error('Unexpected latest release; stop without publishing');
+            const checks = await github.rest.checks.listForRef({...repo, ref: expected});
+            if (!checks.data.check_runs.some(c => c.name === 'verify-stable-baseline' && c.conclusion === 'success'))
+              throw new Error('Required stable regression check has not passed');
+            await github.rest.actions.createWorkflowDispatch({
+              ...repo, workflow_id: 'publish-release.yml', ref: 'stable',
+              inputs: {operation: 'publish', confirm_version: 'v1.0.8'}
+            });
+            core.info('Dispatched existing official publisher for approved v1.0.8 source ' + expected);
