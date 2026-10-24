@@ -38,6 +38,10 @@ jobs:
             throw "Unexpected project AssemblyName"
           }
           Write-Host "PASS: JNest source $v meets v1.0.7 baseline minimum"
+      - name: Validate release workflow safety policy
+        shell: pwsh
+        run: .\Tests\ValidateReleaseWorkflowPolicy.ps1
+
       - name: Restore WPF project
         run: dotnet restore .\JuChuang.csproj
       - name: Build WPF Release

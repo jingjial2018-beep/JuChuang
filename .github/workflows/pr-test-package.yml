@@ -1,9 +1,13 @@
-name: PR Test Package
+name: JNest PR test package (no release)
 
 on:
   pull_request:
     branches:
-      - main
+      - stable
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/**'
 
 permissions:
   contents: read
@@ -69,8 +73,8 @@ jobs:
       - name: Add preview test guide
         shell: pwsh
         run: |
-          Copy-Item .\TESTING_V0.3.18_PREVIEW.md .\artifacts\FrameworkDependent\TESTING_V0.3.18_PREVIEW.md
-          Copy-Item .\TESTING_V0.3.18_PREVIEW.md .\artifacts\SelfContained\TESTING_V0.3.18_PREVIEW.md
+          Copy-Item .\docs/PR_TESTING.md .\artifacts\FrameworkDependent\PR_TESTING.md
+          Copy-Item .\docs/PR_TESTING.md .\artifacts\SelfContained\PR_TESTING.md
 
       - name: Package ZIP files and hashes
         shell: pwsh
@@ -88,7 +92,7 @@ jobs:
             $lines += "$hash  $name"
           }
           $lines | Set-Content .\packages\SHA256SUMS.txt -Encoding ascii
-          Copy-Item .\TESTING_V0.3.18_PREVIEW.md .\packages\TESTING_V0.3.18_PREVIEW.md
+          Copy-Item .\docs/PR_TESTING.md .\packages\PR_TESTING.md
 
       - name: Upload preview package
         uses: actions/upload-artifact@v4
