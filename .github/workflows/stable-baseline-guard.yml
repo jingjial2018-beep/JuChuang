@@ -50,3 +50,8 @@ jobs:
         run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
       - name: Run notification regression probes
         run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+      - name: Lock, persistence, discovery and tray regression
+        run: dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
+      - name: Settings typography and right-click validation
+        shell: pwsh
+        run: .\Tests\ValidateSettingsTypography.ps1

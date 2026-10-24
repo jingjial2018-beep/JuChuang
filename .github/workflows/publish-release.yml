@@ -68,6 +68,11 @@ jobs:
         run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
       - name: Badge regression
         run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+      - name: Lock, persistence, discovery and tray regression
+        run: dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
+      - name: Settings typography and right-click validation
+        shell: pwsh
+        run: .\Tests\ValidateSettingsTypography.ps1
 
       - name: Build framework-dependent ZIP source
         run: dotnet publish .\JuChuang.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:PublishReadyToRun=true -o .\artifacts\framework
