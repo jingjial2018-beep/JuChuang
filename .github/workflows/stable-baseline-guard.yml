@@ -1,0 +1,48 @@
+name: JNest stable baseline guard
+
+on:
+  push:
+    branches:
+      - stable
+  pull_request:
+    branches:
+      - stable
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-stable-baseline:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Reject obsolete JNest source versions
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content -Raw '.\JuChuang.csproj'
+          $v = [string]$project.Project.PropertyGroup.Version
+          if ($v -notmatch '^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$') {
+            throw "Unrecognized JNest version: $v"
+          }
+          $numeric = [version]("$($Matches[1]).$($Matches[2]).$($Matches[3])")
+          if ($numeric -lt [version]'1.0.7') {
+            throw "This branch is older than the latest accepted stable baseline v1.0.7: $v"
+          }
+          if ($project.Project.PropertyGroup.AssemblyName -ne 'JNest') {
+            throw "Unexpected project AssemblyName"
+          }
+          Write-Host "PASS: JNest source $v meets v1.0.7 baseline minimum"
+      - name: Restore WPF project
+        run: dotnet restore .\JuChuang.csproj
+      - name: Build WPF Release
+        run: dotnet build .\JuChuang.csproj -c Release --no-restore
+      - name: Run architecture regression probes
+        run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
+      - name: Run notification regression probes
+        run: dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
