@@ -642,7 +642,7 @@
                     <TextBlock Text="微信和 WhatsApp 仍在后台运行"
                                Foreground="#7A8391" FontSize="14"
                                HorizontalAlignment="Center" Margin="0,24,0,0"/>
-                    <TextBlock Text="密码仅在本次运行期间有效，退出 JNest 后本次锁屏密码将失效。"
+                    <TextBlock Text="密码仅在本次运行期间有效"
                                Foreground="#7A8391" FontSize="13"
                                TextWrapping="NoWrap"
                                HorizontalAlignment="Center" TextAlignment="Center"
