@@ -72,7 +72,7 @@ foreach ($gesture in @('PreviewMouseRightButtonDown', 'PreviewMouseRightButtonUp
 if ($mainCode -notmatch '(?s)void\s+AccountsList_IgnoreRightClick\s*\([^)]*\)\s*\{\s*if\s*\(AccountSelectionInputPolicy\.ShouldSuppress\(e\.ChangedButton\)\)\s*e\.Handled\s*=\s*true;\s*\}') {
     throw 'Stable account right-click handler no longer applies input policy'
 }
-if ($project.Project.PropertyGroup.Version -ne '1.0.8') {
-    throw 'Project must identify stable v1.0.8'
+if ($project.Project.PropertyGroup.Version -ne '1.0.9') {
+    throw 'Project must identify stable v1.0.9'
 }
-Write-Host 'PASS: v1.0.8 typography, button dimensions, account right-click guard and version'
+Write-Host 'PASS: v1.0.9 typography, button dimensions, account right-click guard and version'

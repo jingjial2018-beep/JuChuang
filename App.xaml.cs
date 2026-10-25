@@ -129,6 +129,12 @@ public partial class App : Application
             return;
         }
         base.OnStartup(e);
+        // The old disk credential and marker have no meaning in a new session.
+        // Remove only these two known files; a failed cleanup cannot relock startup.
+        try { LockCredentialService.DeleteLegacyCredential(); }
+        catch (Exception exception) { DiagnosticLogService.WriteActivityEvent("legacy-lock-credential-cleanup-" + exception.GetType().Name); }
+        try { JNestLockPersistence.DeleteLegacyMarker(); }
+        catch (Exception exception) { DiagnosticLogService.WriteActivityEvent("legacy-lock-marker-cleanup-" + exception.GetType().Name); }
         if (GetActivationArgument(e.Args) is { } initialArgument)
             _pendingActivations.Enqueue(initialArgument);
         try

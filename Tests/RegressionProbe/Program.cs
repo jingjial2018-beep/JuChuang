@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -21,6 +20,9 @@ internal static class Program
     public static int Main(string[] args)
     {
         if (args.Contains("--fixture")) { RunFixture(); return 0; }
+        if (args.Contains("--session-probe"))
+            return !LockCredentialService.IsConfigured && !JNestLockPersistence.IsLocked
+                && !LockCredentialService.Verify("abcdef") ? 0 : 1;
         Directory.CreateDirectory(Root);
         LockCredentialService.DirectoryPathOverride = Path.Combine(Root, "credentials");
         JNestLockPersistence.DirectoryPathOverride = Path.Combine(Root, "lock");
@@ -31,10 +33,9 @@ internal static class Program
         {
             try
             {
-                await Run("Credential corruption fails closed", Credentials);
-                await Run("Unlock gate and relock preserve the newer marker", RelockAndGate);
+                await Run("Session credential and legacy file cleanup", Credentials);
+                await Run("Unlock gate and relock preserve the newer session lock", RelockAndGate);
                 await Run("Old restore failure cannot replace a newer lock", StaleRestoreFailure);
-                await Run("Lock persistence failure remains visible and can be retried", PersistenceFailure);
                 await Run("Settings write failure reports failure and later recovers", SettingsFailure);
                 await Run("Owned primary discovery validates owner, HWND, PID and start", DiscoveryAndAttach);
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
@@ -59,27 +60,42 @@ internal static class Program
     private static Task Credentials()
     {
         LockCredentialService.SetPassword("abcdef");
-        var path = Path.Combine(LockCredentialService.DirectoryPathOverride!, "lock-credential.json");
-        var original = File.ReadAllText(path);
-        try
+        Assert(!Directory.Exists(LockCredentialService.DirectoryPathOverride!), "credential wrote to disk");
+        Assert(LockCredentialService.Verify("abcdef"), "valid credential rejected");
+        Assert(!LockCredentialService.Verify("wrong"), "wrong password accepted");
+        Assert(LockCredentialService.IsRemovalRequest(true, "", ""), "removal request rejected");
+        Assert(!LockCredentialService.IsRemovalRequest(false, "", ""), "setup treated as removal");
+        AssertThrows<InvalidOperationException>(() => LockCredentialService.SetPassword("another"));
+        AssertThrows<UnauthorizedAccessException>(() => LockCredentialService.ChangePassword("wrong", "ghijkl"));
+        LockCredentialService.ChangePassword("abcdef", "ghijkl");
+        Assert(!LockCredentialService.Verify("abcdef") && LockCredentialService.Verify("ghijkl"), "password change failed");
+        JNestLockPersistence.SaveLocked();
+        AssertThrows<InvalidOperationException>(() => LockCredentialService.RemovePassword("ghijkl"));
+        JNestLockPersistence.SaveUnlocked();
+        AssertThrows<UnauthorizedAccessException>(() => LockCredentialService.RemovePassword("wrong"));
+        LockCredentialService.RemovePassword("ghijkl");
+        Assert(!LockCredentialService.IsConfigured && !LockCredentialService.Verify("ghijkl"), "removal failed");
+        LockCredentialService.SetPassword("abcdef");
+
+        var credentialDirectory = LockCredentialService.DirectoryPathOverride!;
+        var markerDirectory = JNestLockPersistence.DirectoryPathOverride!;
+        Directory.CreateDirectory(credentialDirectory);
+        Directory.CreateDirectory(markerDirectory);
+        var credentialPath = Path.Combine(credentialDirectory, "lock-credential.json");
+        var markerPath = Path.Combine(markerDirectory, "lock-active.marker");
+        File.WriteAllText(credentialPath, "{broken");
+        File.WriteAllText(markerPath, "locked-v1");
+        JNestLockPersistence.SaveLocked();
+        using (var probe = StartChild("--session-probe"))
         {
-            Assert(LockCredentialService.Verify("abcdef"), "valid credential rejected");
-            Assert(!LockCredentialService.Verify("wrong"), "wrong password accepted");
-            foreach (var field in new[] { "Salt", "Hash" })
-            {
-                foreach (var mode in new[] { "missing", "null", "invalid-base64", "short" })
-                {
-                    var record = System.Text.Json.Nodes.JsonNode.Parse(original)!.AsObject();
-                    if (mode == "missing") record.Remove(field);
-                    else record[field] = mode switch { "null" => null, "short" => "AQ==", _ => "!" };
-                    File.WriteAllText(path, record.ToJsonString());
-                    Assert(!LockCredentialService.Verify("abcdef"), $"{field}/{mode} accepted");
-                }
-            }
-            File.WriteAllText(path, "{broken");
-            Assert(!LockCredentialService.Verify("abcdef"), "invalid JSON accepted");
+            Assert(probe.WaitForExit(10000) && probe.ExitCode == 0, "new process retained session lock");
         }
-        finally { File.WriteAllText(path, original); }
+        Assert(LockCredentialService.Verify("abcdef") && JNestLockPersistence.IsLocked, "legacy files replaced current session");
+        LockCredentialService.DeleteLegacyCredential();
+        JNestLockPersistence.DeleteLegacyMarker();
+        Assert(!File.Exists(credentialPath) && !File.Exists(markerPath), "legacy files not removed");
+        Assert(LockCredentialService.Verify("abcdef") && JNestLockPersistence.IsLocked, "cleanup altered current session");
+        JNestLockPersistence.SaveUnlocked();
         return Task.CompletedTask;
     }
 
@@ -87,7 +103,7 @@ internal static class Program
     {
         var window = new MainWindow();
         window.LockForReview();
-        Assert(JNestLockPersistence.IsLocked, "first marker missing");
+        Assert(JNestLockPersistence.IsLocked, "first session lock missing");
         window.LockPasswordInput.Password = "abcdef";
         var first = window.UnlockForReview();
         Assert(!window.UnlockJNestButton.IsEnabled && !window.LockPasswordInput.IsEnabled, "verification UI not gated");
@@ -120,29 +136,6 @@ internal static class Program
         Assert(window.LockErrorText.Text == "", "old failure overwrote newer UI");
         Assert(window.WindowHost.Suspensions == 1, "old failure duplicated suspension");
         JNestLockPersistence.SaveUnlocked();
-    }
-
-    private static Task PersistenceFailure()
-    {
-        var normal = JNestLockPersistence.DirectoryPathOverride;
-        var blocked = Path.Combine(Root, "blocked-lock-directory");
-        File.WriteAllText(blocked, "not a directory");
-        JNestLockPersistence.DirectoryPathOverride = blocked;
-        try
-        {
-            var window = new MainWindow();
-            window.LockForReview();
-            Assert(window.ProtectedForReview && !JNestLockPersistence.IsLocked, "unexpected lock failure state");
-            Assert(window.LockPersistenceWarning.Visibility == Visibility.Visible
-                && window.RetryLockPersistenceButton.Visibility == Visibility.Visible, "failure hidden from user");
-            File.Delete(blocked);
-            window.RetryPersistenceForReview();
-            Assert(JNestLockPersistence.IsLocked, "retry did not persist marker");
-            Assert(window.LockPersistenceWarning.Visibility == Visibility.Collapsed, "successful retry left warning");
-            JNestLockPersistence.SaveUnlocked();
-        }
-        finally { JNestLockPersistence.DirectoryPathOverride = normal; }
-        return Task.CompletedTask;
     }
 
     private static Task SettingsFailure()
@@ -355,15 +348,16 @@ internal static class Program
         window.Close();
     }
 
-    private static Process StartFixture()
+    private static Process StartChild(string argument)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!)
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true };
         if (string.Equals(Path.GetFileNameWithoutExtension(Environment.ProcessPath), "dotnet", StringComparison.OrdinalIgnoreCase))
             start.ArgumentList.Add(typeof(Program).Assembly.Location);
-        start.ArgumentList.Add("--fixture");
+        start.ArgumentList.Add(argument);
         return Process.Start(start) ?? throw new InvalidOperationException("Cannot start fixture");
     }
+    private static Process StartFixture() => StartChild("--fixture");
     private static void RunFixture()
     {
         using var source = new HwndSource(new HwndSourceParameters("聚窗窗口托管测试")
@@ -382,6 +376,12 @@ internal static class Program
     }
     private static void Assert(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
+    private static void AssertThrows<TException>(Action action) where TException : Exception
+    {
+        try { action(); }
+        catch (TException) { return; }
+        throw new InvalidOperationException($"Expected {typeof(TException).Name}");
+    }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool SetWindowText(IntPtr hwnd, string title);
 }

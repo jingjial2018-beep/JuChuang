@@ -48,14 +48,11 @@ public partial class MainWindow
 
         if (!_lockState.BeginLock()) return;
         _lockGeneration++;
-        var markerSaved = false;
         try
         {
             // Park native HWNDs before exposing the WPF lock surface.
             SuspendHostedWindowsForLock();
             JNestLockPersistence.SaveLocked();
-            markerSaved = true;
-            SetLockPersistenceWarning(false);
             ShowLockScreen();
             _lockState.LockCompleted();
             foreach (var entry in Entries.ToArray())
@@ -66,13 +63,12 @@ public partial class MainWindow
             // A failed lock must never pretend protection is active.
             _lockState.FailClosed();
             ShowLockScreen();
-            if (!markerSaved) SetLockPersistenceWarning(true);
-            else LockErrorText.Text = "锁定工作区时出现异常，当前保持锁定，请解锁后重试。";
+            LockErrorText.Text = "锁定工作区时出现异常，当前保持锁定，请解锁后重试。";
             DiagnosticLogService.WriteActivityEvent("lock-failed-" + ex.GetType().Name);
         }
     }
 
-    private void RestorePersistedLockIfNeeded()
+    private void RestoreSessionLockIfNeeded()
     {
         if (!JNestLockPersistence.IsLocked) return;
         if (!_lockState.BeginLock()) return;
@@ -182,7 +178,7 @@ public partial class MainWindow
             _lockRetryAfterUtc = DateTime.MinValue;
 
             await TryScanAndAttachAsync();
-            // The menu is available while scanning. A later lock owns its own marker
+            // The menu is available while scanning. A later lock owns its own state
             // and UI; an older restore must not clear or overwrite either of them.
             if (generation != _lockGeneration || IsJNestProtected) return;
             if (_pendingLockedToastAccount is { } requested
@@ -197,10 +193,8 @@ public partial class MainWindow
             _pendingLockedToastAccount = null;
             _pendingLockedToastProcessStart = null;
             ShowSelectedEntry();
-            // Only clear the persisted lock once all restoration operations
-            // have completed; failed retries must remain locked on restart.
+            // Only clear this session's lock after restoration is complete.
             JNestLockPersistence.SaveUnlocked();
-            SetLockPersistenceWarning(false);
         }
         catch (Exception exception)
         {
@@ -213,27 +207,6 @@ public partial class MainWindow
             ShowLockScreen();
             LockErrorText.Text = "恢复工作区失败，请重试。";
             DiagnosticLogService.WriteActivityEvent("unlock-restore-failed-" + exception.GetType().Name);
-        }
-    }
-
-    private void SetLockPersistenceWarning(bool failed)
-    {
-        LockPersistenceWarning.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
-        RetryLockPersistenceButton.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void RetryLockPersistence_Click(object sender, RoutedEventArgs e)
-    {
-        if (!IsJNestProtected) return;
-        try
-        {
-            JNestLockPersistence.SaveLocked();
-            SetLockPersistenceWarning(false);
-        }
-        catch (Exception exception)
-        {
-            SetLockPersistenceWarning(true);
-            DiagnosticLogService.WriteActivityEvent("lock-persist-retry-failed-" + exception.GetType().Name);
         }
     }
 

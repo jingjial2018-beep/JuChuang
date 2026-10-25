@@ -1,13 +1,11 @@
-using System.IO;
 using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
+using System.IO;
 
 namespace JuChuang.Services;
 
 /// <summary>
-/// Per-user, non-plaintext lock credential. UI and client hiding must be
-/// integrated before this service is exposed as a product feature.
+/// A lock credential belongs only to the current JNest process. Restarting
+/// JNest intentionally starts a new, unlocked session.
 /// </summary>
 internal static class LockCredentialService
 {
@@ -17,79 +15,91 @@ internal static class LockCredentialService
     internal static string? DirectoryPathOverride { get; set; }
     private static string DirectoryPath => DirectoryPathOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JNest");
-    private static string CredentialPath => Path.Combine(DirectoryPath, "lock-credential.json");
-    private sealed record Record(int Version, int Iterations, string Salt, string Hash);
+    private static readonly object Gate = new();
+    private static byte[]? _salt;
+    private static byte[]? _hash;
 
-    internal static bool IsConfigured => File.Exists(CredentialPath);
+    internal static bool IsConfigured
+    {
+        get { lock (Gate) return _hash is not null; }
+    }
 
-    // Pure policy used by both the UI and regression tests: only a pair of
-    // empty inputs in change mode can request credential removal.
     internal static bool IsRemovalRequest(bool changingExisting, string password, string confirmation)
         => changingExisting && password.Length == 0 && confirmation.Length == 0;
 
+    internal static void DeleteLegacyCredential()
+    {
+        var path = Path.Combine(DirectoryPath, "lock-credential.json");
+        if (File.Exists(path)) File.Delete(path);
+    }
+
     internal static void SetPassword(string password)
     {
-        if (string.IsNullOrEmpty(password) || password.Length < 6)
-            throw new ArgumentException("Lock password must contain at least six characters.", nameof(password));
-        if (IsConfigured) throw new InvalidOperationException("Credential exists; verify the old password before replacing it.");
-        WriteCredential(password);
+        Validate(password);
+        lock (Gate)
+        {
+            if (_hash is not null)
+                throw new InvalidOperationException("Credential exists; verify the old password before replacing it.");
+            WriteCredential(password);
+        }
     }
 
     internal static void ChangePassword(string oldPassword, string newPassword)
     {
-        if (!Verify(oldPassword)) throw new UnauthorizedAccessException("Invalid current lock password.");
-        if (string.IsNullOrEmpty(newPassword) || newPassword.Length < 6)
-            throw new ArgumentException("Lock password must contain at least six characters.", nameof(newPassword));
-        WriteCredential(newPassword);
+        Validate(newPassword);
+        lock (Gate)
+        {
+            if (!VerifyCore(oldPassword))
+                throw new UnauthorizedAccessException("Invalid current lock password.");
+            WriteCredential(newPassword);
+        }
     }
 
-    // Cancellation is deliberately not represented by an empty stored password.
-    // Preserve a verified credential until the user confirms removal.
     internal static void RemovePassword(string currentPassword)
     {
-        // Refuse to remove the only key while a persisted lock remains active.
-        if (JNestLockPersistence.IsLocked)
-            throw new InvalidOperationException("Unlock JNest before removing its password.");
-        if (!Verify(currentPassword))
-            throw new UnauthorizedAccessException("Invalid current lock password.");
-        File.Delete(CredentialPath);
+        lock (Gate)
+        {
+            if (JNestLockPersistence.IsLocked)
+                throw new InvalidOperationException("Unlock JNest before removing its password.");
+            if (!VerifyCore(currentPassword))
+                throw new UnauthorizedAccessException("Invalid current lock password.");
+            ClearCredential();
+        }
     }
 
     internal static bool Verify(string password)
     {
-        try
-        {
-            if (!IsConfigured) return false;
-            var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(CredentialPath));
-            if (record is null || record.Version != 1 || record.Iterations != Iterations
-                || string.IsNullOrWhiteSpace(record.Salt) || string.IsNullOrWhiteSpace(record.Hash)) return false;
-            var salt = Convert.FromBase64String(record.Salt);
-            var expected = Convert.FromBase64String(record.Hash);
-            if (salt.Length != SaltBytes || expected.Length != HashBytes) return false;
-            byte[] actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, HashBytes);
-            return CryptographicOperations.FixedTimeEquals(actual, expected);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or FormatException or CryptographicException)
-        {
-            return false; // Fail closed.
-        }
+        lock (Gate) return VerifyCore(password);
+    }
+
+    private static bool VerifyCore(string password)
+    {
+        if (_salt is null || _hash is null) return false;
+        var actual = Rfc2898DeriveBytes.Pbkdf2(password, _salt, Iterations, HashAlgorithmName.SHA256, HashBytes);
+        try { return CryptographicOperations.FixedTimeEquals(actual, _hash); }
+        finally { CryptographicOperations.ZeroMemory(actual); }
+    }
+
+    private static void Validate(string password)
+    {
+        if (string.IsNullOrEmpty(password) || password.Length < 6)
+            throw new ArgumentException("Lock password must contain at least six characters.", nameof(password));
     }
 
     private static void WriteCredential(string password)
     {
-        Directory.CreateDirectory(DirectoryPath);
         var salt = RandomNumberGenerator.GetBytes(SaltBytes);
         var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, HashBytes);
-        var record = new Record(1, Iterations, Convert.ToBase64String(salt), Convert.ToBase64String(hash));
-        var temp = CredentialPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            File.WriteAllText(temp, JsonSerializer.Serialize(record), Encoding.UTF8);
-            File.Move(temp, CredentialPath, overwrite: true);
-        }
-        finally
-        {
-            try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { }
-        }
+        ClearCredential();
+        _salt = salt;
+        _hash = hash;
+    }
+
+    private static void ClearCredential()
+    {
+        if (_salt is not null) CryptographicOperations.ZeroMemory(_salt);
+        if (_hash is not null) CryptographicOperations.ZeroMemory(_hash);
+        _salt = null;
+        _hash = null;
     }
 }
