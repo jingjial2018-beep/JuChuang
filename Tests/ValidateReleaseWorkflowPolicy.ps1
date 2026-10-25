@@ -23,8 +23,15 @@ if ($text -notmatch [regex]::Escape("inputs.operation == 'publish'")) { throw 'M
 if ($text -notmatch 'confirm_version') { throw 'Missing explicit release tag confirmation' }
 if ($text -notmatch 'verify-stable-baseline') { throw 'Missing required passing stable CI check' }
 if ($text -notmatch 'sha256sum --check') { throw 'Missing package hash verification' }
-if ($text -match '(?i)--clobber|\bgh\s+release\s+upload\b|git\s+push\s+(?:-f|--force)') {
-    throw 'Overwriting official releases is not permitted'
+if ($text -match '(?i)git\s+push\s+(?:-f|--force)') {
+    throw 'Unreviewed force-push is not permitted'
+}
+if ($text -match '(?i)--clobber|\bgh\s+release\s+upload\b') {
+    if ($text -notmatch "inputs.operation == 'republish'" -or
+        $text -notmatch 'Only latest release can be republished' -or
+        $text -notmatch 'Republish source must advance existing tag') {
+        throw 'Release asset replacement requires explicit republish safeguards'
+    }
 }
 foreach ($old in @(
     'beta-release.yml',
