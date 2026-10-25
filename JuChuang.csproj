@@ -44,4 +44,3 @@
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\GenerateTaskbarIcon.ps1&quot;" />
   </Target>
 </Project>
-

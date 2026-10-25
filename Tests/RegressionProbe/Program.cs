@@ -385,4 +385,3 @@ internal static class Program
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool SetWindowText(IntPtr hwnd, string title);
 }
-

@@ -15,4 +15,3 @@
 - FrameworkDependent：需安装 .NET 8 Desktop Runtime x64。
 
 此前正式版和标签保留。SHA-256 校验值由正式发布流程计算并追加到本说明。
-

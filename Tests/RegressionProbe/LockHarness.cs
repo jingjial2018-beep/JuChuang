@@ -36,4 +36,3 @@ public sealed class ReviewHost
     public void SuspendForModalDialog() => Suspensions++;
     public void ResumeAfterModalDialog() => Suspensions--;
 }
-

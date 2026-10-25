@@ -103,4 +103,3 @@ internal static class LockCredentialService
         _hash = null;
     }
 }
-

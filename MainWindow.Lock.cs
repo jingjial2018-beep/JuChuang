@@ -222,4 +222,3 @@ public partial class MainWindow
         _pendingLockedToastProcessStart = start;
     }
 }
-

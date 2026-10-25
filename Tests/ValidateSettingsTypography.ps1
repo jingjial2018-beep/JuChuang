@@ -76,4 +76,3 @@ if ($project.Project.PropertyGroup.Version -ne '1.0.9') {
     throw 'Project must identify stable v1.0.9'
 }
 Write-Host 'PASS: v1.0.9 typography, button dimensions, account right-click guard and version'
-
