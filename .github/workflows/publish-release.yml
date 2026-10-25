@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Validate without publishing (default), or publish new approved release"
+        description: "Validate, publish new, or explicitly republish existing release"
         required: true
         type: choice
         default: validate
         options:
           - validate
           - publish
+          - republish
       confirm_version:
         description: "For publish: type exact new tag, e.g. v1.0.8"
         required: false
@@ -46,14 +47,14 @@ jobs:
           CONFIRM: ${{ inputs.confirm_version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:MODE -notin @('validate','publish')) { throw 'Invalid release mode' }
+          if ($env:MODE -notin @('validate','publish','republish')) { throw 'Invalid release mode' }
           [xml]$p = Get-Content -Raw .\JuChuang.csproj
           $v = [string]$p.Project.PropertyGroup.Version
           if ($v -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "Not an official stable version: $v" }
           if ([version]$v -lt [version]'1.0.7') { throw 'Source is older than v1.0.7' }
           if ([string]$p.Project.PropertyGroup.AssemblyName -cne 'JNest') { throw 'Wrong application' }
           $tag = "v$v"
-          if ($env:MODE -eq 'publish' -and $env:CONFIRM -cne $tag) { throw "Enter '$tag' in confirm_version" }
+          if ($env:MODE -in @('publish','republish') -and $env:CONFIRM -cne $tag) { throw "Enter '$tag' in confirm_version" }
           if (-not (Test-Path -LiteralPath ('.\RELEASE_NOTES-{0}.md' -f $tag))) {
             throw "Missing version-specific release notes: RELEASE_NOTES-$tag.md"
           }
@@ -113,7 +114,7 @@ jobs:
 
   publish-official:
     needs: build-and-test
-    if: github.repository == 'jingjial2018-beep/JuChuang' && github.ref == 'refs/heads/stable' && inputs.operation == 'publish'
+    if: github.repository == 'jingjial2018-beep/JuChuang' && github.ref == 'refs/heads/stable' && (inputs.operation == 'publish' || inputs.operation == 'republish')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -132,6 +133,7 @@ jobs:
           VERSION: ${{ needs.build-and-test.outputs.version }}
           TAG: ${{ needs.build-and-test.outputs.tag }}
           CONFIRM: ${{ inputs.confirm_version }}
+          MODE: ${{ inputs.operation }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/stable" ]] || exit 1
@@ -147,18 +149,17 @@ jobs:
           latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
           [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           newest="$(printf '%s\n' "$latest" "$TAG" | sort -V | tail -n 1)"
-          [[ "$TAG" != "$latest" && "$newest" == "$TAG" ]] || { echo "::error::Version must be newer than $latest"; exit 1; }
-
-          relation="$(gh api "repos/$GITHUB_REPOSITORY/compare/$latest...$GITHUB_SHA" --jq '.status')"
-          [[ "$relation" == "ahead" ]] || { echo "::error::Source must descend from latest release"; exit 1; }
-
-          refs="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$TAG" --jq '.[].ref')"
-          if grep -Fxq "refs/tags/$TAG" <<< "$refs"; then
-            echo "::error::Tag exists; never overwrite a release"; exit 1
-          fi
-          oldreleases="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')"
-          if grep -Fxq "$TAG" <<< "$oldreleases"; then
-            echo "::error::Release already exists"; exit 1
+          if [[ "$MODE" == "publish" ]]; then
+            [[ "$TAG" != "$latest" && "$newest" == "$TAG" ]] || { echo "::error::New release version must exceed $latest"; exit 1; }
+            relation="$(gh api "repos/$GITHUB_REPOSITORY/compare/$latest...$GITHUB_SHA" --jq '.status')"
+            [[ "$relation" == "ahead" ]] || { echo "::error::Source must descend from latest release"; exit 1; }
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" >/dev/null 2>&1 && { echo "::error::Release already exists; use republish"; exit 1; }
+          else
+            [[ "$MODE" == "republish" && "$TAG" == "$latest" ]] || { echo "::error::Only latest release can be republished"; exit 1; }
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" >/dev/null || { echo "::error::Release does not exist"; exit 1; }
+            oldsha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+            relation="$(gh api "repos/$GITHUB_REPOSITORY/compare/$oldsha...$GITHUB_SHA" --jq '.status')"
+            [[ "$relation" == "ahead" ]] || { echo "::error::Republish source must advance existing tag"; exit 1; }
           fi
 
           test -s "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip"
@@ -167,23 +168,33 @@ jobs:
           test -s artifacts/SHA256SUMS.txt
           (cd artifacts && sed 's/\r$//' SHA256SUMS.txt | sha256sum --check -)
 
-      - name: Create a new official release only
+      - name: Create or explicitly republish official release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build-and-test.outputs.version }}
           TAG: ${{ needs.build-and-test.outputs.tag }}
+          MODE: ${{ inputs.operation }}
         shell: bash
         run: |
           set -euo pipefail
           current="$(gh api "repos/$GITHUB_REPOSITORY/branches/stable" --jq '.commit.sha')"
           [[ "$current" == "$GITHUB_SHA" ]] || { echo "::error::stable changed before release creation"; exit 1; }
-          gh release create "$TAG" \
-            "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip" \
-            "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "JNest $TAG" \
-            --notes-file artifacts/release-notes.md
+          if [[ "$MODE" == "republish" ]]; then
+            gh release upload "$TAG" \
+              "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip" \
+              "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip" \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file artifacts/release-notes.md
+          else
+            gh release create "$TAG" \
+              "artifacts/JNest-v$VERSION-FrameworkDependent-win-x64.zip" \
+              "artifacts/JNest-v$VERSION-SelfContained-win-x64.zip" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "JNest $TAG" \
+              --notes-file artifacts/release-notes.md
+          fi
 
       - name: Confirm newly published files and target
         env:
