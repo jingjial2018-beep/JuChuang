@@ -13,8 +13,6 @@ public partial class MainWindow
     public readonly Button MainMenuButton = new();
     public readonly PasswordBox LockPasswordInput = new();
     public readonly TextBlock LockErrorText = new();
-    public readonly TextBlock LockPersistenceWarning = new() { Visibility = Visibility.Collapsed };
-    public readonly Button RetryLockPersistenceButton = new() { Visibility = Visibility.Collapsed };
     public readonly Button UnlockJNestButton = new();
     public readonly ListBox AccountsList = new();
     public readonly List<ClientWindowEntry> Entries = [];
@@ -24,7 +22,6 @@ public partial class MainWindow
     public bool ProtectedForReview => IsJNestProtected;
     public void LockForReview() => LockJNest_Click(this, new RoutedEventArgs());
     public Task UnlockForReview() => TryUnlockAsync();
-    public void RetryPersistenceForReview() => RetryLockPersistence_Click(this, new RoutedEventArgs());
     private void ShowHostedModalDialog(Window dialog) => throw new InvalidOperationException("Unexpected password setup dialog");
     private void DismissAccountToast(ClientWindowEntry entry) { }
     private void ShowSelectedEntry() { }
@@ -39,3 +36,4 @@ public sealed class ReviewHost
     public void SuspendForModalDialog() => Suspensions++;
     public void ResumeAfterModalDialog() => Suspensions--;
 }
+

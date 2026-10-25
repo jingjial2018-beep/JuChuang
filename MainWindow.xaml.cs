@@ -309,7 +309,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
-        RestorePersistedLockIfNeeded();
+        RestoreSessionLockIfNeeded();
         // Fixed startup size and centered position come from MainWindow.xaml.
         _isPreviewMode = Environment.GetCommandLineArgs()
             .Any(argument => argument.Equals("--preview", StringComparison.OrdinalIgnoreCase));
@@ -2713,4 +2713,5 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
 

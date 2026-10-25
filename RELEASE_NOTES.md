@@ -1,8 +1,8 @@
 # JNest 发布记录索引
 
-**当前正式版：** [v1.0.8](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.8)。当前功能、下载与安装说明请参阅 [README](README.md)，本版变更参阅 [v1.0.8 发布说明](RELEASE_NOTES-v1.0.8.md)。[最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest)可直接查看今后的新版本。
+**当前正式版：** [v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9)。当前功能、下载与安装说明请参阅 [README](README.md)，本版变更参阅 [v1.0.9 发布说明](RELEASE_NOTES-v1.0.9.md)。[最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest)可直接查看今后的新版本。
 
-**说明：** 本文档保留早期 Beta / RC 和 v0.3.x 的历史开发记录，并非当前功能清单。历史实验可能已取消或重做；旧测试版 Release 和测试 Tag 已归档清理，当前对外仅发布正式版本。具体能力以当前 [README](README.md)、v1.0.8 Release 和实际源码为准。
+**说明：** 本文档保留早期 Beta / RC 和 v0.3.x 的历史开发记录，并非当前功能清单。历史实验可能已取消或重做；旧测试版 Release 和测试 Tag 已归档清理，当前对外仅发布正式版本。具体能力以当前 [README](README.md)、v1.0.9 Release 和实际源码为准。
 
 ## v1.0.4-beta.3 — 退出范围、状态反馈与窄屏弹窗
 
@@ -201,3 +201,4 @@
 ### 注意
 
 这是 Windows 11 x64 测试版，原生通知是否显示、账号头像裁剪与图标缓存效果需要安装实机确认。应用未进行商业代码签名。
+

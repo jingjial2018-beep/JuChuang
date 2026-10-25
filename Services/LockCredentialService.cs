@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.IO;
 
 namespace JuChuang.Services;
 
@@ -11,8 +12,9 @@ internal static class LockCredentialService
     private const int Iterations = 600_000;
     private const int SaltBytes = 32;
     private const int HashBytes = 32;
-    // Kept for compatibility with existing probes that configure test paths.
     internal static string? DirectoryPathOverride { get; set; }
+    private static string DirectoryPath => DirectoryPathOverride ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JNest");
     private static readonly object Gate = new();
     private static byte[]? _salt;
     private static byte[]? _hash;
@@ -24,6 +26,12 @@ internal static class LockCredentialService
 
     internal static bool IsRemovalRequest(bool changingExisting, string password, string confirmation)
         => changingExisting && password.Length == 0 && confirmation.Length == 0;
+
+    internal static void DeleteLegacyCredential()
+    {
+        var path = Path.Combine(DirectoryPath, "lock-credential.json");
+        if (File.Exists(path)) File.Delete(path);
+    }
 
     internal static void SetPassword(string password)
     {
@@ -95,3 +103,4 @@ internal static class LockCredentialService
         _hash = null;
     }
 }
+

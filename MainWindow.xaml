@@ -639,13 +639,6 @@
                     <Button x:Name="UnlockJNestButton" Content="解锁" FontSize="15" Width="122" Height="42"
                             Style="{StaticResource JNestDialogButtonStyle}" Margin="0,12,0,0"
                             HorizontalAlignment="Center" Click="UnlockJNest_Click"/>
-                    <TextBlock x:Name="LockPersistenceWarning" Visibility="Collapsed"
-                               Text="锁定状态保存失败：当前仍已锁定，但重启后可能无法保持锁定。请检查磁盘和目录权限后重试。"
-                               Foreground="#C13C3C" FontSize="12" TextWrapping="Wrap"
-                               TextAlignment="Center" Margin="0,12,0,0"/>
-                    <Button x:Name="RetryLockPersistenceButton" Visibility="Collapsed" Content="重新保存锁定状态"
-                            Style="{StaticResource JNestDialogButtonStyle}" Margin="0,8,0,0"
-                            HorizontalAlignment="Center" Click="RetryLockPersistence_Click"/>
                     <TextBlock Text="微信和 WhatsApp 仍在后台运行"
                                Foreground="#7A8391" FontSize="14"
                                HorizontalAlignment="Center" Margin="0,24,0,0"/>
@@ -658,3 +651,4 @@
         </Grid>
     </Border>
 </Window>
+
