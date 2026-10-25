@@ -643,9 +643,10 @@
                                Foreground="#7A8391" FontSize="14"
                                HorizontalAlignment="Center" Margin="0,24,0,0"/>
                     <TextBlock Text="密码仅在本次运行期间有效，退出 JNest 后本次锁屏密码将失效。"
-                               Foreground="#7A8391" FontSize="12"
+                               Foreground="#7A8391" FontSize="13"
+                               TextWrapping="Wrap" MaxWidth="420"
                                HorizontalAlignment="Center" TextAlignment="Center"
-                               Margin="0,9,0,0"/>
+                               Margin="16,9,16,0"/>
                 </StackPanel>
             </Border>
         </Grid>
