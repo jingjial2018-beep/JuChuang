@@ -1,39 +1,14 @@
-using System.IO;
-
 namespace JuChuang.Services;
 
 /// <summary>
-/// Lock marker persists the locked state across ordinary application restarts.
-/// The marker contains no secret or account data. Failure to persist the marker
-/// must fail the lock operation rather than silently producing a nonpersistent lock.
+/// Lock state is session-scoped. No on-disk lock marker is created or read.
+/// The existing lock UI calls remain unchanged.
 /// </summary>
 internal static class JNestLockPersistence
 {
     internal static string? DirectoryPathOverride { get; set; }
-    private static string DirectoryPath => DirectoryPathOverride ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JNest");
-    private static string MarkerPath => Path.Combine(DirectoryPath, "lock-active.marker");
-
-    internal static bool IsLocked => File.Exists(MarkerPath);
-
-    internal static void SaveLocked()
-    {
-        Directory.CreateDirectory(DirectoryPath);
-        var temporary = MarkerPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            File.WriteAllText(temporary, "locked-v1");
-            File.Move(temporary, MarkerPath, overwrite: true);
-        }
-        finally
-        {
-            try { if (File.Exists(temporary)) File.Delete(temporary); } catch (IOException) {}
-        }
-    }
-
-    internal static void SaveUnlocked()
-    {
-        if (File.Exists(MarkerPath))
-            File.Delete(MarkerPath);
-    }
+    private static bool _locked;
+    internal static bool IsLocked => _locked;
+    internal static void SaveLocked() => _locked = true;
+    internal static void SaveUnlocked() => _locked = false;
 }
