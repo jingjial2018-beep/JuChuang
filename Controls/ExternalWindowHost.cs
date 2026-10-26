@@ -501,18 +501,17 @@ public sealed class ExternalWindowHost : HwndHost
         }
     }
 
-    // WeChat 4.x can paint a narrow shadow-like strip inside its own
-    // frame bounds, which is unaffected by DWMWA_NCRENDERING_POLICY.
-    // Trim only the leftmost 8 DIP while moving/resizing the native HWND
-    // accordingly; unlike an overlay, this does not block client input.
-    // WhatsApp and compact WeChat login windows retain their original geometry.
+    // WeChat's native top-level window paints outside its WPF host when
+    // positioned at origin - native left-frame inset. The previous attempt
+    // ADDED an 8-DIP inset, pushing the whole native HWND farther into the
+    // account sidebar (the regression is visible in the 2026-10-26 screenshots).
+    // For the full-size WeChat window, keep the HWND left edge at the host
+    // boundary instead. Never enlarge or shift it outside the sidebar.
+    // WhatsApp and compact WeChat login retain their original geometry.
     private static HostInsets GetHostedInsets(HostedWindowState state, IntPtr handle)
     {
         if (!state.IsWeChat || state.CenterInHost) return state.Insets;
-        var dpi = NativeMethods.GetDpiForWindow(handle);
-        var scale = dpi == 0 ? 1d : dpi / 96d;
-        var extra = Math.Clamp((int)Math.Round(8d * scale), 8, 24);
-        return state.Insets with { Left = state.Insets.Left + extra };
+        return state.Insets with { Left = 0 };
     }
 
     private static NativeMethods.RECT CalculateHostedBounds(
