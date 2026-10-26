@@ -473,33 +473,54 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task CompleteExitAllAsync()
     {
+        // Keep termination and shell shutdown as separate phases. A WPF Close()
+        // exception must never turn successfully terminated clients back into
+        // an apparent client-exit failure or re-open the exit-choice workflow.
+        var phase = "client-confirmation";
         try
         {
-            if (await TryExitAllHostedClientsAsync())
+            var allExited = await TryExitAllHostedClientsAsync();
+            if (!allExited)
             {
-                _exitAllCompleted = true;
-                _exitAllClients = false;
-                _allExitInProgress = false;
-                Close();
-            }
-            else
-            {
+                phase = "refresh-after-unconfirmed-exit";
                 _exitChoiceApproved = false;
                 _exitAllClients = false;
                 _allExitInProgress = false;
                 _trayExitRequested = false;
                 await TryScanAndAttachAsync();
+                return;
             }
+
+            _exitAllCompleted = true;
+            _exitAllClients = false;
+            _allExitInProgress = false;
+            phase = "jnest-close";
+            DiagnosticLogService.WriteActivityEvent("exit-all-clients-confirmed");
+            Close();
         }
         catch (Exception exception)
         {
-            ReconnectDiagnostics.Write($"exit all unexpected error={exception.GetType().Name} {exception.Message}");
+            DiagnosticLogService.WriteErrorEvent($"exit-all-{phase}", exception);
+            _allExitInProgress = false;
+            if (phase == "jnest-close")
+            {
+                // The clients are already gone. Preserve the confirmed state
+                // even if WPF/native-window cleanup raises an exception.
+                _exitAllCompleted = true;
+                _exitAllClients = false;
+                if (!_isClosing && !Dispatcher.HasShutdownStarted)
+                    ShowTemporaryStatus("客户端均已退出，但 JNest 自身关闭出现异常，请检查诊断日志。",
+                        TimeSpan.FromSeconds(12));
+                return;
+            }
+
             _exitChoiceApproved = false;
             _exitAllClients = false;
             _exitAllCompleted = false;
             _trayExitRequested = false;
-            ShowOwnedMessageBox("全部退出未完成。JNest 将保持运行，请检查客户端状态。",
-                "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!_isClosing && !Dispatcher.HasShutdownStarted)
+                ShowOwnedMessageBox("全部退出未完成。JNest 将保持运行，请检查客户端状态。",
+                    "全部退出未完成", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
