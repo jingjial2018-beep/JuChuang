@@ -82,7 +82,9 @@ public sealed class ExternalWindowHost : HwndHost
                 CalculateHostInsets(handle, originalRect),
                 nativeChrome,
                 disableMaximize,
-                centerInHost);
+                centerInHost,
+                NativeMethods.GetDpiForWindow(_hostHandle),
+                NativeMethods.GetDpiForWindow(handle));
 
             var ownerRoot = GetOwnerRoot();
             // Establish ownership before a background client becomes visible.
@@ -367,6 +369,29 @@ public sealed class ExternalWindowHost : HwndHost
             || !NativeMethods.GetClientRect(_hostHandle, out var hostRect)
             || !_hostedWindows.TryGetValue(_currentHandle, out var state)) return;
 
+        // Re-measure native frame insets only on a real DPI transition.
+        // Re-measuring every tick would feed our own SetWindowRgn clip back into
+        // DWM_EXTENDED_FRAME_BOUNDS and can cause geometrical drift.
+        var hostDpi = NativeMethods.GetDpiForWindow(_hostHandle);
+        var clientDpi = NativeMethods.GetDpiForWindow(_currentHandle);
+        if (hostDpi != 0 && clientDpi != 0
+            && (hostDpi != state.HostDpi || clientDpi != state.ClientDpi))
+        {
+            if (NativeMethods.GetWindowRect(_currentHandle, out var currentRect))
+            {
+                var freshInsets = CalculateHostInsets(_currentHandle, currentRect);
+                state = state with
+                {
+                    Insets = freshInsets,
+                    HostDpi = hostDpi,
+                    ClientDpi = clientDpi
+                };
+                _hostedWindows[_currentHandle] = state;
+                DiagnosticLogService.WriteActivityEvent(
+                    $"host-dpi-refresh hwnd=0x{_currentHandle.ToInt64():X} dpi={hostDpi}/{clientDpi} insets={freshInsets.Left},{freshInsets.Top},{freshInsets.Right},{freshInsets.Bottom}");
+            }
+        }
+
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
         var target = CalculateHostedBounds(state, hostRect, origin);
@@ -485,14 +510,41 @@ public sealed class ExternalWindowHost : HwndHost
             return;
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
-        // 仅在窗口位置/尺寸偏离期望时强制归位（防微信自绘或拖拽破坏布局）；
-        // ResizeCurrentWindow 内部会同步重算 insets 并重设圆角裁剪区域。
-        if (!TryGetExpectedBounds(state, out var expected) || !NativeMethods.GetWindowRect(handle, out var actual)
+        // A change in monitor/client DPI must invalidate the attach-time
+        // frame measurement even if the HWND rectangle appears unchanged.
+        var hostDpi = NativeMethods.GetDpiForWindow(_hostHandle);
+        var clientDpi = NativeMethods.GetDpiForWindow(handle);
+        if (hostDpi != 0 && clientDpi != 0
+            && (hostDpi != state.HostDpi || clientDpi != state.ClientDpi))
+        {
+            ResizeCurrentWindow();
+            return;
+        }
+
+        // The client may clear our region without moving its HWND. Check the
+        // actual Win32 region against the same insets used by layout and clip.
+        // Compact login windows have independent clipping rules; skip those.
+        if (!TryGetExpectedBounds(state, out var expected)
+            || !NativeMethods.GetWindowRect(handle, out var actual)
             || actual.Left != expected.Left || actual.Top != expected.Top
-            || actual.Width != expected.Width || actual.Height != expected.Height)
+            || actual.Width != expected.Width || actual.Height != expected.Height
+            || (!state.CenterInHost && !ClipRegionMatches(handle, expected, state.Insets)))
         {
             ResizeCurrentWindow();
         }
+    }
+
+    private static bool ClipRegionMatches(IntPtr handle, NativeMethods.RECT bounds, HostInsets insets)
+    {
+        // GetWindowRgnBox reads the region directly; it requires no temporary
+        // GDI region allocation on the one-second guard path.
+        const int SimpleRegion = 2;
+        var kind = NativeMethods.GetWindowRgnBox(handle, out var actualRegion);
+        return kind == SimpleRegion
+            && actualRegion.Left == insets.Left
+            && actualRegion.Top == insets.Top
+            && actualRegion.Right == Math.Max(insets.Left + 1, bounds.Width - insets.Right)
+            && actualRegion.Bottom == Math.Max(insets.Top + 1, bounds.Height - insets.Bottom);
     }
 
     private static NativeMethods.RECT CalculateHostedBounds(
@@ -855,5 +907,7 @@ public sealed class ExternalWindowHost : HwndHost
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
         bool DisableMaximize,
-        bool CenterInHost = false);
+        bool CenterInHost,
+        uint HostDpi,
+        uint ClientDpi);
 }

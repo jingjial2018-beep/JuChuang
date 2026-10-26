@@ -7,7 +7,6 @@ $mainCode = Get-Content (Join-Path $root 'MainWindow.xaml.cs') -Raw
 $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
 
 $fontSizes = @{
-    '设置' = '21'
     '常规' = '15'
     '消息通知' = '15'
     '开机自动启动' = '14'
@@ -69,6 +68,17 @@ foreach ($gesture in @('PreviewMouseRightButtonDown', 'PreviewMouseRightButtonUp
 }
 if ($mainCode -notmatch '(?s)void\s+AccountsList_IgnoreRightClick\s*\([^)]*\)\s*\{\s*if\s*\(AccountSelectionInputPolicy\.ShouldSuppress\(e\.ChangedButton\)\)\s*e\.Handled\s*=\s*true;\s*\}') {
     throw 'Stable account right-click handler no longer applies input policy'
+}
+# Settings must size to its natural content without forcing a vertical scrollbar.
+$window = $settings.DocumentElement
+if ($window.GetAttribute('SizeToContent') -ne 'Height') { throw 'Settings must auto-size its height' }
+$scroll = @($settings.SelectNodes("//*[local-name()='ScrollViewer']"))
+if ($scroll.Count -ne 1 -or $scroll[0].GetAttribute('VerticalScrollBarVisibility') -ne 'Disabled') {
+    throw 'Settings must not show a vertical scrollbar'
+}
+$rows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[local-name()='RowDefinition']"))
+if ($rows.Count -lt 2 -or $rows[0].GetAttribute('Height') -ne 'Auto') {
+    throw 'Settings content row must size to content'
 }
 if ($project.Project.PropertyGroup.Version -ne '1.0.10') {
     throw 'Project must identify v1.0.10'

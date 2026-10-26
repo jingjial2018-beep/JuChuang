@@ -316,6 +316,11 @@ internal static class NativeMethods
         int right,
         int bottom);
 
+    // Window-region coordinates are relative to the native HWND, not its client area.
+    // ERROR=0 also means the client has cleared our region.
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int GetWindowRgnBox(IntPtr hWnd, out RECT rect);
+
     [DllImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool DeleteObject(IntPtr hObject);
