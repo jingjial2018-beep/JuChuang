@@ -104,6 +104,25 @@ Run("Window rebind requires matching client process identity", () =>
         "different client kind must not share an account");
 });
 
+Run("Exit completion reconciles bounded timeouts with observed original process", () =>
+{
+    var requestTimedOut = new ExitProcessResult(701, false, false, "RequestTimeout");
+    var confirmationTimedOut = new ExitProcessResult(702, true, false, "Timeout");
+    var denied = new ExitProcessResult(703, false, false, "AccessDenied");
+    Assert(!ExitCompletionPolicy.Reconcile(requestTimedOut, false).Confirmed,
+        "request timeout cannot claim a running original process exited");
+    var requestNowExited = ExitCompletionPolicy.Reconcile(requestTimedOut, true);
+    Assert(requestNowExited.Confirmed && requestNowExited.Error is null
+        && !requestNowExited.Requested,
+        "a verified exited process must supersede a stale request timeout");
+    Assert(ExitResultPresentation.Status(requestNowExited) == "已退出",
+        "reconciled completion should show the confirmed status");
+    Assert(ExitCompletionPolicy.Reconcile(confirmationTimedOut, true).Confirmed,
+        "a verified exited process must supersede a stale wait timeout");
+    Assert(!ExitCompletionPolicy.Reconcile(denied, false).Confirmed,
+        "a request failure without observed exit must remain unconfirmed");
+});
+
 Run("Exit batch reports timeout without claiming completion", () =>
 {
     var target = new FakeExitTarget(101, () => { }, () => Task.FromResult(false));

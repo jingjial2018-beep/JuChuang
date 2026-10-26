@@ -7,7 +7,6 @@ $mainCode = Get-Content (Join-Path $root 'MainWindow.xaml.cs') -Raw
 $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
 
 $fontSizes = @{
-    '设置' = '21'
     '常规' = '15'
     '消息通知' = '15'
     '开机自动启动' = '14'
@@ -70,9 +69,19 @@ foreach ($gesture in @('PreviewMouseRightButtonDown', 'PreviewMouseRightButtonUp
 if ($mainCode -notmatch '(?s)void\s+AccountsList_IgnoreRightClick\s*\([^)]*\)\s*\{\s*if\s*\(AccountSelectionInputPolicy\.ShouldSuppress\(e\.ChangedButton\)\)\s*e\.Handled\s*=\s*true;\s*\}') {
     throw 'Stable account right-click handler no longer applies input policy'
 }
+# Settings is a single natural-height page: no hidden overflow or nested scroll bars.
+if ($settings.DocumentElement.GetAttribute('SizeToContent') -ne 'Height') { throw 'Settings window must fit its content' }
+if ($settings.OuterXml -match '<ScrollViewer|<ScrollBar|JNestSettingsScroll') { throw 'Settings must not contain a scrollbar' }
+if (@($textBlocks | Where-Object { $_.GetAttribute('Text') -eq '设置' }).Count -ne 0) {
+    throw 'Redundant Settings heading remains'
+}
+$gridRows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[local-name()='RowDefinition']"))
+if ($gridRows.Count -lt 2 -or $gridRows[0].GetAttribute('Height') -ne 'Auto') {
+    throw 'Settings content must use natural height'
+}
 if ($project.Project.PropertyGroup.Version -ne '1.0.10') {
     throw 'Project must identify v1.0.10'
 }
 if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
 if ($settings.OuterXml -notmatch 'DndAllDayHint') { throw 'Missing all-day DND hint' }
-Write-Host 'PASS: v1.0.10 typography, DND hint, button dimensions, account right-click guard and version'
+Write-Host 'PASS: v1.0.10 Final natural-height settings layout, typography, DND hint, right-click guard and version'
