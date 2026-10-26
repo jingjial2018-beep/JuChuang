@@ -1019,7 +1019,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             existingEntry.Handle,
                             makeActive: false,
                             disableMaximize: existingEntry.Kind == ClientKind.WhatsApp,
-                            centerInHost: candidate.Kind == ClientKind.WeChat && candidate.Role == ClientWindowRole.Login);
+                            centerInHost: candidate.Kind == ClientKind.WeChat && candidate.Role == ClientWindowRole.Login,
+                    isWeChat: candidate.Kind == ClientKind.WeChat);
                         existingEntry.Status = existingEntry.IsAttached ? "已接入" : "接入失败";
                     }
 
@@ -1058,7 +1059,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             candidate.Handle,
                             makeActive,
                             disableMaximize: rebindingEntry.Kind == ClientKind.WhatsApp,
-                            centerInHost: candidate.Kind == ClientKind.WeChat && candidate.Role == ClientWindowRole.Login);
+                            centerInHost: candidate.Kind == ClientKind.WeChat && candidate.Role == ClientWindowRole.Login,
+                    isWeChat: candidate.Kind == ClientKind.WeChat);
                         rebindingEntry.Status = rebindingEntry.IsAttached ? "已接入" : "接入失败";
                         if (makeActive && rebindingEntry.IsAttached)
                         {
@@ -1105,7 +1107,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 entry.IsAttached = WindowHost.AttachWindow(candidate.Handle, makeActive: false,
                     disableMaximize: entry.Kind == ClientKind.WhatsApp,
-                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
+                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login,
+                    isWeChat: entry.Kind == ClientKind.WeChat);
                 ReconnectDiagnostics.Write($"attach result kind={entry.Kind} hwnd=0x{entry.Handle.ToInt64():X} attached={entry.IsAttached} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
                 if (entry.IsAttached && candidate.Kind == ClientKind.WeChat)
@@ -1642,7 +1645,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             entry.IsManuallyDetached = false;
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
                 disableMaximize: entry.Kind == ClientKind.WhatsApp,
-                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
+                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login,
+                    isWeChat: entry.Kind == ClientKind.WeChat);
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
@@ -1873,7 +1877,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReconnectDiagnostics.Write($"attach attempt kind={entry.Kind} pid={entry.ProcessId} hwnd=0x{entry.Handle.ToInt64():X} foreground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: false,
                 disableMaximize: entry.Kind == ClientKind.WhatsApp,
-                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
+                    centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login,
+                    isWeChat: entry.Kind == ClientKind.WeChat);
             entry.Status = entry.IsAttached ? "已接入" : "接入失败";
             if (entry.IsAttached)
             {

@@ -63,7 +63,7 @@ public sealed class ExternalWindowHost : HwndHost
             GetOwnerRoot(),
             _currentHandle);
 
-    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
+    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false, bool isWeChat = false)
     {
         if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"host attach request hwnd=0x{handle.ToInt64():X} ready={IsReady} makeActive={makeActive} valid={NativeMethods.IsWindow(handle)}");
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
@@ -83,7 +83,8 @@ public sealed class ExternalWindowHost : HwndHost
                 CalculateHostInsets(handle, originalRect),
                 nativeChrome,
                 disableMaximize,
-                centerInHost);
+                centerInHost,
+                isWeChat);
 
             var ownerRoot = GetOwnerRoot();
             // Establish ownership before a background client becomes visible.
@@ -374,7 +375,7 @@ public sealed class ExternalWindowHost : HwndHost
 
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
-        var target = CalculateHostedBounds(state, hostRect, origin);
+        var target = CalculateHostedBounds(state, _currentHandle, hostRect, origin);
         var zOrderFlags = ShouldPromoteCurrentWindow() ? 0u : NativeMethods.SWP_NOZORDER;
         if (state.CenterInHost)
         {
@@ -408,7 +409,7 @@ public sealed class ExternalWindowHost : HwndHost
         }
 
         // Original v0.3.34 full-workspace layout for chat and WhatsApp.
-        var insets = state.Insets;
+        var insets = GetHostedInsets(state, _currentHandle);
         var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
         var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
@@ -500,10 +501,24 @@ public sealed class ExternalWindowHost : HwndHost
         }
     }
 
-    private static NativeMethods.RECT CalculateHostedBounds(
-        HostedWindowState state, NativeMethods.RECT host, NativeMethods.POINT origin)
+    // WeChat 4.x can paint a narrow shadow-like strip inside its own
+    // frame bounds, which is unaffected by DWMWA_NCRENDERING_POLICY.
+    // Trim only the leftmost 8 DIP while moving/resizing the native HWND
+    // accordingly; unlike an overlay, this does not block client input.
+    // WhatsApp and compact WeChat login windows retain their original geometry.
+    private static HostInsets GetHostedInsets(HostedWindowState state, IntPtr handle)
     {
-        var insets = state.Insets;
+        if (!state.IsWeChat || state.CenterInHost) return state.Insets;
+        var dpi = NativeMethods.GetDpiForWindow(handle);
+        var scale = dpi == 0 ? 1d : dpi / 96d;
+        var extra = Math.Clamp((int)Math.Round(8d * scale), 8, 24);
+        return state.Insets with { Left = state.Insets.Left + extra };
+    }
+
+    private static NativeMethods.RECT CalculateHostedBounds(
+        HostedWindowState state, IntPtr handle, NativeMethods.RECT host, NativeMethods.POINT origin)
+    {
+        var insets = GetHostedInsets(state, handle);
         var winW = state.CenterInHost ? Math.Max(1, state.Rect.Width) :
             Math.Max(1, host.Width + insets.Left + insets.Right);
         var winH = state.CenterInHost ? Math.Max(1, state.Rect.Height) :
@@ -519,7 +534,7 @@ public sealed class ExternalWindowHost : HwndHost
         if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)) return false;
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return false;
-        bounds = CalculateHostedBounds(state, hostRect, origin);
+        bounds = CalculateHostedBounds(state, _currentHandle, hostRect, origin);
         return true;
     }
 
@@ -860,5 +875,6 @@ public sealed class ExternalWindowHost : HwndHost
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
         bool DisableMaximize,
-        bool CenterInHost = false);
+        bool CenterInHost = false,
+        bool IsWeChat = false);
 }
