@@ -33,7 +33,7 @@ public partial class SettingsDialog : Window
         DndEndTime.SelectedValue = settings.DndEndMinutes;
         DndCheck.IsChecked = settings.DndEnabled;
         _loading = false;
-        UpdateLockPasswordButton();
+        UpdateDndAllDayHint();
     }
 
     private void StartupChanged(object sender, RoutedEventArgs e)
@@ -64,6 +64,7 @@ public partial class SettingsDialog : Window
     private void SaveDoNotDisturb()
     {
         if (_loading) return;
+        UpdateDndAllDayHint();
         _settings.DndEnabled = DndCheck.IsChecked == true;
         if (DndStartTime.SelectedValue is int start) _settings.DndStartMinutes = start;
         if (DndEndTime.SelectedValue is int end) _settings.DndEndMinutes = end;
@@ -85,17 +86,12 @@ public partial class SettingsDialog : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void UpdateLockPasswordButton()
+    private void UpdateDndAllDayHint()
     {
-        ChangeLockPasswordButton.Content = LockCredentialService.IsConfigured
-            ? "修改密码" : "设置密码";
-    }
-
-    private void ChangeLockPassword_Click(object sender, RoutedEventArgs e)
-    {
-        var changing = LockCredentialService.IsConfigured;
-        var dialog = new LockPasswordDialog(changeExisting: changing) { Owner = this };
-        dialog.ShowDialog();
-        UpdateLockPasswordButton();
+        var allDay = DndCheck.IsChecked == true
+            && DndStartTime.SelectedValue is int start
+            && DndEndTime.SelectedValue is int end
+            && start == end;
+        DndAllDayHint.Visibility = allDay ? Visibility.Visible : Visibility.Collapsed;
     }
 }

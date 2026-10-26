@@ -10,7 +10,6 @@ $fontSizes = @{
     '设置' = '21'
     '常规' = '15'
     '消息通知' = '15'
-    '隐私与安全' = '15'
     '开机自动启动' = '14'
     '任务栏闪烁' = '14'
     'Windows Toast 通知' = '14'
@@ -23,7 +22,6 @@ $fontSizes = @{
     '在设定时段内不弹出 Toast 通知和提示音' = '13'
     '开始' = '13'
     '结束' = '13'
-    '通过独立密码锁定 JNest 全部工作区' = '13'
     '设置即时生效并自动保存' = '13'
 }
 $descriptionNames = @(
@@ -72,7 +70,9 @@ foreach ($gesture in @('PreviewMouseRightButtonDown', 'PreviewMouseRightButtonUp
 if ($mainCode -notmatch '(?s)void\s+AccountsList_IgnoreRightClick\s*\([^)]*\)\s*\{\s*if\s*\(AccountSelectionInputPolicy\.ShouldSuppress\(e\.ChangedButton\)\)\s*e\.Handled\s*=\s*true;\s*\}') {
     throw 'Stable account right-click handler no longer applies input policy'
 }
-if ($project.Project.PropertyGroup.Version -ne '1.0.9') {
-    throw 'Project must identify stable v1.0.9'
+if ($project.Project.PropertyGroup.Version -ne '1.0.10') {
+    throw 'Project must identify v1.0.10'
 }
-Write-Host 'PASS: v1.0.9 typography, button dimensions, account right-click guard and version'
+if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
+if ($settings.OuterXml -notmatch 'DndAllDayHint') { throw 'Missing all-day DND hint' }
+Write-Host 'PASS: v1.0.10 typography, DND hint, button dimensions, account right-click guard and version'
