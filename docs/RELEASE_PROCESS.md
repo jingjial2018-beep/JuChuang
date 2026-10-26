@@ -1,6 +1,6 @@
 # JNest 正式版安全发布流程
 
-当前唯一可信的后续开发与发布基线是 [stable](https://github.com/jingjial2018-beep/JuChuang/tree/stable)；截至 2026-10-26 已发布正式版为 [v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9)。
+当前唯一可信的后续开发与发布基线是 [stable](https://github.com/jingjial2018-beep/JuChuang/tree/stable)；正式版以 [最新 Release](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 为准，历史回滚基线保留 [v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9)。
 
 > 此文档说明以后如何发布。修改 CI 文档或执行验证，不等于用户批准发布新正式版。不得从旧 `main`、历史 `archive/*`、RC 分支或旧 Tag 发布。
 
@@ -29,7 +29,7 @@
 4. 工作流重新构建并检测：当前仍是 `stable` 最新提交、CI 已通过、版本号高于最新正式版、源码包含上一正式版、待发布 Tag 与 Release 均不存在、两份 ZIP 的 SHA-256 一致。
 5. 检查全部成功后，工作流才会创建**新** GitHub Release 与 Tag；不会覆盖已有 Tag 或 ZIP。
 
-> 当前 v1.0.9 已正式发布；发布新版本不得覆盖已有 Tag 或 Release。`republish` 是专门的显式更新路径，不应用于日常升级。
+> 发布新版本不得覆盖已有 Tag 或 Release。`republish` 是专门的显式更新路径，不应用于日常升级。
 
 ## 四、失败或测试版处理
 
