@@ -11,6 +11,17 @@ public interface IExitProcessTarget
 
 public sealed record ExitProcessResult(int ProcessId, bool Requested, bool Confirmed, string? Error);
 
+// A batch may time out immediately before a terminated client is observed.
+// The original Process wrapper, rather than a new PID lookup, is used as
+// evidence: it still identifies the process generation validated before Kill.
+public static class ExitCompletionPolicy
+{
+    public static ExitProcessResult Reconcile(ExitProcessResult result, bool originalProcessExited)
+        => originalProcessExited && !result.Confirmed
+            ? result with { Confirmed = true, Error = null }
+            : result;
+}
+
 public static class ExitBatchService
 {
     public static async Task<IReadOnlyList<ExitProcessResult>> RunAsync(

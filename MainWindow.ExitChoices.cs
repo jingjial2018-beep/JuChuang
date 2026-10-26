@@ -218,14 +218,35 @@ public partial class MainWindow
                 validated.Select(process => (IExitProcessTarget)new SystemExitProcessTarget(process)).ToArray(),
                 TimeSpan.FromSeconds(3));
             // ExitBatchService now bounds both the native request and confirmation phases.
-            var results = await exitTask;
+            // Native Kill and OS exit-confirmation can finish just after their
+            // bounded timeout. Reconcile with the Process wrappers captured and
+            // identity-verified above (never treat a reused PID as our target).
+            var results = (await exitTask).ToArray();
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                for (var index = 0; index < results.Length; index++)
+                {
+                    if (results[index].Confirmed) continue;
+                    bool observedExited;
+                    try { observedExited = validated[index].HasExited; }
+                    catch (Exception exception) when (exception is InvalidOperationException
+                        or System.ComponentModel.Win32Exception)
+                    {
+                        DiagnosticLogService.WriteErrorEvent("exit-all-process-observation", exception);
+                        observedExited = false; // Unknown is never assumed exited.
+                    }
+                    results[index] = ExitCompletionPolicy.Reconcile(results[index], observedExited);
+                }
+                if (results.All(result => result.Confirmed)) break;
+                if (attempt < 4) await Task.Delay(200);
+            }
             foreach (var result in results)
             {
                 ReconnectDiagnostics.Write($"exit all pid={result.ProcessId} requested={result.Requested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
             }
             var requested = results.Count(result => result.Requested);
             var confirmed = results.Count(result => result.Confirmed);
-            ReconnectDiagnostics.Write($"exit all result total={targets.Length} requested={requested} confirmed={confirmed}");
+            DiagnosticLogService.WriteActivityEvent($"exit-all-confirmation total={targets.Length} requested={requested} confirmed={confirmed}");
             if (confirmed == targets.Length) return true;
             var lines = groups.Select((group, index) =>
             {
