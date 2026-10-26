@@ -42,6 +42,11 @@ internal static class Program
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
                 await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
+                await Run("DND policy time-window matrix", CoverageHarness.DndPolicy);
+                await Run("WeChat database ownership decision matrix", CoverageHarness.OwnershipDecide);
+                await Run("Exit close policy truth tables", CoverageHarness.ExitPolicyTables);
+                await Run("Settings persistence roundtrip, backup and merge", CoverageHarness.SettingsPersistence);
+                await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
             }
             finally
             {

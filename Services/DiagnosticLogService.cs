@@ -27,7 +27,10 @@ public static class DiagnosticLogService
     internal static void ClearRmSnapshot(int pid) => RmSnapshots.TryRemove(pid, out _);
 
 
-    private static string LogRoot => Path.Combine(
+    // Test-only path override; normal production logging keeps the existing location.
+    internal static string? DirectoryPathOverride { get; set; }
+
+    private static string LogRoot => DirectoryPathOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JuChuang",
         "logs");
