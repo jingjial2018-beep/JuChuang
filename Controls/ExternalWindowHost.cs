@@ -48,6 +48,7 @@ public sealed class ExternalWindowHost : HwndHost
     {
         if (!_hostedWindows.TryGetValue(handle, out var state) || state.CenterInHost == centerInHost) return;
         _hostedWindows[handle] = state with { CenterInHost = centerInHost };
+        NativeMethods.SetHostedNonClientRendering(handle, state.ChromeState, centerInHost);
         if (_currentHandle == handle) ResizeCurrentWindow();
     }
 
@@ -120,6 +121,10 @@ public sealed class ExternalWindowHost : HwndHost
                 1,
                 1,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
+            // The hosted top-level window is not clipped by WPF ClipToBounds. Suppress
+            // its DWM non-client shadow while it fills the workspace; restore the
+            // captured policy when the window is detached.
+            NativeMethods.SetHostedNonClientRendering(handle, nativeChrome, centerInHost);
             // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
             // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
@@ -414,7 +419,7 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     /// <summary>
-    /// 裁剪窗口区域：裁掉超出容器客户区的不可见缩放边框与 DWM 阴影，避免溢出。
+    /// 裁剪窗口区域：裁掉超出容器客户区的不可见缩放边框。顶层窗口的 DWM 阴影由独立策略关闭。
     /// cornerRadius &gt; 0 时用圆角矩形（卡片式）；= 0 时退化为直角矩形（通铺式）。
     /// </summary>
     private static void ApplyClipRegion(
@@ -582,8 +587,8 @@ public sealed class ExternalWindowHost : HwndHost
     {
         var style = unchecked((long)(uint)originalStyle.ToInt64());
         // 保留 WS_CAPTION/WS_THICKFRAME：微信 4.x 与 WhatsApp 都是自绘窗口，原生标题栏
-        // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
-        // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
+        // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds。移除后
+        // 反而会导致内容尺寸错位。边界对齐交给 insets + SetWindowRgn，阴影单独关闭。
         style &= ~(NativeMethods.WS_CHILD | NativeMethods.WS_MINIMIZE);
         if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
