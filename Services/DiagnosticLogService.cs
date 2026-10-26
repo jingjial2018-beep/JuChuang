@@ -251,6 +251,7 @@ public static class DiagnosticLogService
     }
 
     private static DateTime _lastCleanupUtc = DateTime.MinValue;
+    private static string? _lastActiveLogPath;
 
     private static void AppendLine(string line)
     {
@@ -259,7 +260,8 @@ public static class DiagnosticLogService
             Directory.CreateDirectory(LogRoot);
             var path = ResolveActiveLogPath(Encoding.UTF8.GetByteCount(line));
             File.AppendAllText(path, line, Encoding.UTF8);
-            var rotated = !string.Equals(path, CurrentLogPath, StringComparison.OrdinalIgnoreCase);
+            var rotated = !string.Equals(path, _lastActiveLogPath, StringComparison.OrdinalIgnoreCase);
+            _lastActiveLogPath = path;
             if (rotated || DateTime.UtcNow - _lastCleanupUtc >= TimeSpan.FromMinutes(10))
             {
                 _lastCleanupUtc = DateTime.UtcNow;
