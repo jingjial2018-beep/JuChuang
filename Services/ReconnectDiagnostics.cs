@@ -28,15 +28,7 @@ internal static class ReconnectDiagnostics
 
     internal static void Write(string description)
     {
-        try
-        {
-            lock (Sync)
-            {
-                File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "JNest-reconnect-diag.log"),
-                    $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {description}{Environment.NewLine}");
-            }
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        if (!Active) return;
+        DiagnosticLogService.WriteActivityEvent("reconnect:" + description);
     }
 }

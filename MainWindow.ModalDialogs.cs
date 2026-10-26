@@ -12,21 +12,8 @@ namespace JuChuang;
 // Both dialogs share identical positioning and input restrictions.
 public partial class MainWindow
 {
-    private static readonly object ModalLogLock = new();
-
     private static void LogModalZOrder(string text)
-    {
-        try
-        {
-            lock (ModalLogLock)
-            {
-                File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "JNest-modal-zorder.log"),
-                    $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {text}{Environment.NewLine}");
-            }
-        }
-        catch (IOException) { } // Logging must never block or crash modal dialogs.
-        catch (UnauthorizedAccessException) { }
-    }
+        => DiagnosticLogService.WriteDebugEvent("modal-zorder:" + text);
 
     private void ShowHostedModalDialog(Window dialog)
     {

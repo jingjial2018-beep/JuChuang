@@ -184,23 +184,10 @@
                 <ComboBox x:Name="DndEndTime" Width="83" Height="25" FontSize="13" DisplayMemberPath="Label"
                           SelectedValuePath="Minutes" SelectionChanged="DndTimeChanged"/>
             </StackPanel>
+            <TextBlock x:Name="DndAllDayHint" Text="开始与结束相同，将全天免打扰"
+                       FontSize="12" Foreground="#667085" Margin="0,8,0,0"
+                       Visibility="Collapsed"/>
         </StackPanel>
-            <Border Height="1" Background="#E3E7ED" Margin="0,20,0,14"/>
-            <TextBlock Text="隐私与安全" FontSize="15" FontWeight="SemiBold"
-                       Foreground="#667085"/>
-            <Grid Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="通过独立密码锁定 JNest 全部工作区"
-                           FontSize="13" Foreground="#596273"
-                           VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
-                <Button Grid.Column="1" x:Name="ChangeLockPasswordButton" Content="修改密码"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource SettingsCloseButtonStyle}"
-                        Click="ChangeLockPassword_Click"/>
-            </Grid>
           </StackPanel>
         </ScrollViewer>
         <!-- 12-DIP scrollbar and 8-DIP content inset place this edge at the switch edge. -->

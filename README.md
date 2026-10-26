@@ -27,9 +27,9 @@ JNest 适合需要在一台 Windows 电脑上同时管理多个微信账号或�
 
 JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端的未读角标用于提醒。**不会向第三方服务器上传聊天数据，不读取聊天消息正文，不注入微信 DLL，也不 Hook 微信内部聊天 API。**部分微信账号昵称/头像识别会按下方[隐私边界](#隐私边界)所述，只读访问本机账号元数据。
 
-**当前正式版：** [JNest v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9)（Windows 11 x64）。如需下载之后发布的版本，请使用 [最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest)。
+**正式版下载：** [GitHub 最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest)（Windows 11 x64）。历史回滚基线：[v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9)。
 
-> **源码与开发基线：** 仓库默认分支为 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，当前对应 v1.0.9 源码及后续文档、CI 维护提交。要复现已发布的 v1.0.9，请使用固定的 [`v1.0.9` Git Tag](https://github.com/jingjial2018-beep/JuChuang/tree/v1.0.9)；后续功能开发从 `stable` 新建分支，不要使用仅供历史保存的旧 `main`。
+> **源码与开发基线：** 仓库默认分支为 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，承载 v1.0.9 及之后的代码与 CI 维护提交。要复现已发布的 v1.0.9，请使用固定的 [`v1.0.9` Git Tag](https://github.com/jingjial2018-beep/JuChuang/tree/v1.0.9)；后续功能开发从 `stable` 新建分支，不要使用仅供历史保存的旧 `main`。
 
 ## 软件界面
 
@@ -47,7 +47,7 @@ JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端�
 
 ### 工作区密码锁
 
-使用独立密码锁定 JNest 工作区，并支持密码验证、解锁和重启后的锁定状态恢复。锁定的是 JNest 工作区界面，不等同于锁定微信或 WhatsApp 官方客户端本身；已启动的客户端进程可继续运行。
+使用仅在当前 JNest 进程会话内有效的独立密码锁定工作区，支持密码验证与解锁；完整退出或异常终止后，旧密码和锁定状态不再沿用。锁定的是 JNest 工作区界面，不等同于锁定微信或 WhatsApp 官方客户端本身；已启动的客户端进程可继续运行。
 
 ## 主要功能
 

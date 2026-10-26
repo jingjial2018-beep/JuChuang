@@ -340,7 +340,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WindowHost.Visibility = Visibility.Visible;
         await Dispatcher.Yield(DispatcherPriority.Loaded);
         await Dispatcher.Yield(DispatcherPriority.Background);
+        if (_isClosing || Dispatcher.HasShutdownStarted) return;
         await TryScanAndAttachAsync();
+        if (_isClosing || Dispatcher.HasShutdownStarted) return;
         SyncWeChatLoginPrompts();
         // 首次启动时某些 WebView/Store 客户端（尤其 WhatsApp）窗口已经可枚举，
         // 但第一次跨进程托管可能正好撞上客户端自身的布局/恢复过程而失败。
@@ -351,9 +353,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
              startupRetry++)
         {
             await Task.Delay(350);
+            if (_isClosing || Dispatcher.HasShutdownStarted) return;
             await TryScanAndAttachAsync();
         }
 
+        if (_isClosing || Dispatcher.HasShutdownStarted) return;
         if (Entries.Count > 0 && SelectedEntry is null)
         {
             SelectedEntry = Entries.FirstOrDefault(entry => entry.IsAttached) ?? Entries[0];
@@ -390,7 +394,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (ExitClosePolicy.ShouldPromptForChoice(_exitAllCompleted, _exitChoiceApproved,
                 WindowHost is not null && _scanTimer is not null))
         {
-            var choice = ShowExitChoice();
+            ExitChoice choice;
+            try { choice = ShowExitChoice(); }
+            catch (Exception exception)
+            {
+                DiagnosticLogService.WriteErrorEvent("shutdown-choice", exception);
+                e.Cancel = true;
+                _trayExitRequested = false;
+                return;
+            }
             if (choice == ExitChoice.Cancel)
             {
                 e.Cancel = true;
@@ -409,6 +421,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        DiagnosticLogService.WriteActivityEvent("shutdown-cleanup-start");
         RestoreWeChatLoginPrompts();
         _isClosing = true;
         // A XAML/constructor startup failure can close this window before its
@@ -445,7 +458,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _trayIcon = null;
         ReleaseJNestTaskbarIcon();
 
-        WindowHost.DetachAll();
+        try
+        {
+            WindowHost.DetachAll();
+            DiagnosticLogService.WriteActivityEvent("shutdown-cleanup-completed");
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteErrorEvent("shutdown-detach", exception);
+            throw;
+        }
     }
 
     private async Task CompleteExitAllAsync()
@@ -2571,15 +2593,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             MarkProcessExitRequested(pid);
             var killTask = Task.Run(() =>
             {
-                // Recheck immediately before the worker issues Kill: a PID or HWND
-                // may have changed while the dispatcher was yielding.
-                if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != expectedStart.Value
+                // The worker owns its own Process wrapper. Returning on timeout must
+                // never dispose a wrapper that an unfinished worker is using.
+                using var live = Process.GetProcessById(pid);
+                if (live.HasExited || live.StartTime.ToUniversalTime().Ticks != expectedStart.Value
                     || !WindowBelongsToProcess(handle, pid))
                     throw new InvalidOperationException("Client process identity changed before exit.");
-                process.Kill(entireProcessTree: false);
+                live.Kill(entireProcessTree: false);
             });
             if (await Task.WhenAny(killTask, Task.Delay(TimeSpan.FromSeconds(5))) != killTask)
-                ShowTemporaryStatus("系统仍在处理客户端退出请求，请稍候…", TimeSpan.FromHours(1));
+            {
+                // A timed-out OS call can complete later. Its worker rechecks the
+                // process generation before Kill, while future scans refresh UI.
+                _ = killTask.ContinueWith(task =>
+                    DiagnosticLogService.WriteErrorEvent("client-exit-late-worker", task.Exception!.GetBaseException()),
+                    CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+                DiagnosticLogService.WriteActivityEvent("client-exit-request-unconfirmed", pid);
+                ShowTemporaryStatus("客户端退出请求超时，尚未确认；后台将继续检查实际进程状态。", TimeSpan.FromSeconds(8));
+                return;
+            }
             await killTask;
             ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
             using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));

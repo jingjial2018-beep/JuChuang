@@ -40,7 +40,13 @@ internal static class Program
                 await Run("Owned primary discovery validates owner, HWND, PID and start", DiscoveryAndAttach);
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
+                await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
                 await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
+                await Run("DND policy time-window matrix", CoverageHarness.DndPolicy);
+                await Run("WeChat database ownership decision matrix", CoverageHarness.OwnershipDecide);
+                await Run("Exit close policy truth tables", CoverageHarness.ExitPolicyTables);
+                await Run("Settings persistence roundtrip, backup and merge", CoverageHarness.SettingsPersistence);
+                await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
             }
             finally
             {
@@ -280,6 +286,31 @@ internal static class Program
             Assert(!status.Text.Contains("失败") && retry.Visibility == Visibility.Collapsed, "retry did not clear failure UI");
         }
         finally { dialog.Close(); AppSettings.SettingsPathOverride = normal; }
+        return Task.CompletedTask;
+    }
+
+    private static Task DndAllDayHint()
+    {
+        EnsureResources();
+        var dialog = new SettingsDialog(new AppSettings(), () => { }, () => { });
+        try
+        {
+            var toggle = (System.Windows.Controls.Primitives.ToggleButton)Field(dialog, "DndCheck")!;
+            var start = (ComboBox)Field(dialog, "DndStartTime")!;
+            var end = (ComboBox)Field(dialog, "DndEndTime")!;
+            var hint = (TextBlock)Field(dialog, "DndAllDayHint")!;
+            Assert(hint.Visibility == Visibility.Collapsed, "DND hint shown while disabled");
+            toggle.IsChecked = true;
+            start.SelectedValue = 22 * 60;
+            end.SelectedValue = 22 * 60;
+            Assert(hint.Visibility == Visibility.Visible, "Equal DND endpoints did not show warning");
+            end.SelectedValue = 8 * 60;
+            Assert(hint.Visibility == Visibility.Collapsed, "DND hint not cleared after end changed");
+            end.SelectedValue = 22 * 60;
+            toggle.IsChecked = false;
+            Assert(hint.Visibility == Visibility.Collapsed, "DND hint shown when disabled");
+        }
+        finally { dialog.Close(); }
         return Task.CompletedTask;
     }
 
