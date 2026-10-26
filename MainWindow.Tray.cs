@@ -184,14 +184,18 @@ public partial class MainWindow
     {
         if (_isClosing || _allExitInProgress || _clientExitInProgress) return;
         if (_trayMenu is not null) _trayMenu.IsOpen = false;
-
-        // Bring the locked shell back before entering Window.Closing. WPF
-        // forbids calling Show() once the window has begun closing.
-        if (IsJNestProtected) RestoreFromTray();
-        _trayExitRequested = true;
+        DiagnosticLogService.WriteActivityEvent($"tray-exit-requested locked={IsJNestProtected}");
         try
         {
+            // Restore before Closing begins, never while a WPF window is closing.
+            if (IsJNestProtected) RestoreFromTray();
+            _trayExitRequested = true;
             Close();
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteErrorEvent("tray-exit", exception);
+            throw;
         }
         finally
         {
@@ -224,6 +228,8 @@ public partial class MainWindow
         _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle,
             new Action(() =>
             {
+                if (_isClosing || _trayExitRequested || Dispatcher.HasShutdownStarted
+                    || Dispatcher.HasShutdownFinished || !WindowHost.IsReady) return;
                 WindowHost.UpdateOverlayBounds();
                 WindowHost.ActivateCurrentWindow();
             }));
