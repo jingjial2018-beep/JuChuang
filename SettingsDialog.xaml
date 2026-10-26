@@ -123,14 +123,13 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled"
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                       CanContentScroll="False">
           <ScrollViewer.Resources>
               <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource JNestSettingsScrollbarStyle}"/>
           </ScrollViewer.Resources>
           <StackPanel Margin="0,0,8,12">
-        <TextBlock Text="设置" FontSize="21" FontWeight="SemiBold" Foreground="#202939"/>
-        <StackPanel Margin="0,18,0,0">
+        <StackPanel>
             <TextBlock Text="常规" FontSize="15" FontWeight="SemiBold" Foreground="#667085"/>
             <ToggleButton x:Name="StartupCheck" Style="{StaticResource SettingsSwitch}"
                           Margin="0,8,0,0" Checked="StartupChanged" Unchecked="StartupChanged">
@@ -190,8 +189,8 @@
         </StackPanel>
           </StackPanel>
         </ScrollViewer>
-        <!-- 12-DIP scrollbar and 8-DIP content inset place this edge at the switch edge. -->
-        <Grid Grid.Row="1" Margin="0,12,20,0">
+        <!-- Align the footer button with the switches when the content fits without a scrollbar. -->
+        <Grid Grid.Row="1" Margin="0,12,8,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>

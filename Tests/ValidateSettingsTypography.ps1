@@ -7,7 +7,6 @@ $mainCode = Get-Content (Join-Path $root 'MainWindow.xaml.cs') -Raw
 $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
 
 $fontSizes = @{
-    '设置' = '21'
     '常规' = '15'
     '消息通知' = '15'
     '开机自动启动' = '14'
