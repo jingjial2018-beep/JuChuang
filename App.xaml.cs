@@ -220,20 +220,8 @@ public partial class App : Application
 
     private static void LogException(Exception exception)
     {
-        try
-        {
-            var directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "JuChuang");
-            Directory.CreateDirectory(directory);
-            File.AppendAllText(
-                Path.Combine(directory, "error.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {exception}\n\n");
-        }
-        catch
-        {
-            // Logging failures must never interrupt the error-handling path.
-        }
+        // Keep fatal errors in the bounded diagnostic log, including a redacted stack.
+        DiagnosticLogService.WriteErrorEvent("unhandled", exception);
     }
 
     private void ReleaseHostedWindows()

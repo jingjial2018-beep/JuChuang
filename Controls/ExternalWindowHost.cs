@@ -813,7 +813,7 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     private static void PopupTrace(string message, int pid = 0)
-        => DiagnosticLogService.WriteActivityEvent(message, pid);
+        => DiagnosticLogService.WriteDebugEvent(message, pid);
 
     private static void HideWithTrace(IntPtr hwnd, string cause, int pid)
     {

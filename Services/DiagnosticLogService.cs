@@ -13,7 +13,12 @@ namespace JuChuang.Services;
 public static class DiagnosticLogService
 {
     private static readonly object SyncRoot = new();
-    private const int RetentionDays = 14;
+    private const int RetentionDays = 7;
+    private const long MaximumFileBytes = 10L * 1024 * 1024;
+    private const long MaximumTotalBytes = 50L * 1024 * 1024;
+    private const int MaximumStackLength = 1800;
+    private static readonly bool DetailedTraceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("JNEST_DIAGNOSTIC_DETAIL"), "1", StringComparison.Ordinal);
     private const int MaximumDetailLength = 600;
     private sealed record RmSnapshot(int Generation, string Status, string Code, string Token, string Detail);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, RmSnapshot> RmSnapshots = new();
@@ -31,17 +36,19 @@ public static class DiagnosticLogService
         LogRoot,
         $"diagnostics-{DateTime.UtcNow:yyyyMMdd}.log");
 
+    // High-frequency native window traces are opt-in for targeted diagnostics only.
+    // Set JNEST_DIAGNOSTIC_DETAIL=1 before starting JNest to enable for one process.
+    public static void WriteDebugEvent(string eventName, int processId = 0)
+    {
+        if (DetailedTraceEnabled) WriteActivityEvent(eventName, processId);
+    }
+
     public static void WriteActivityEvent(string eventName, int processId = 0)
     {
         try
         {
             var line = $"{DateTime.UtcNow:O}\t{Sanitize(eventName)}\tpid={processId}{Environment.NewLine}";
-            lock (SyncRoot)
-            {
-                Directory.CreateDirectory(LogRoot);
-                CleanupOldLogsIfDue();
-                File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
-            }
+            AppendLine(line);
         }
         catch
         {
@@ -67,13 +74,9 @@ public static class DiagnosticLogService
                 $"\thresult=0x{exception.HResult:X8}" +
                 $"\tsite={Sanitize(site)}" +
                 $"\tdetail={Sanitize(RedactDetail(exception.Message, null))}" +
+                $"\tstack={Sanitize(RedactDetail(exception.StackTrace, null), MaximumStackLength)}" +
                 Environment.NewLine;
-            lock (SyncRoot)
-            {
-                Directory.CreateDirectory(LogRoot);
-                CleanupOldLogsIfDue();
-                File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
-            }
+            AppendLine(line);
         }
         catch
         {
@@ -107,12 +110,7 @@ public static class DiagnosticLogService
                 $"\tavatar={(entry.HasAvatar ? "yes" : "no")}" +
                 Environment.NewLine;
 
-            lock (SyncRoot)
-            {
-                Directory.CreateDirectory(LogRoot);
-                CleanupOldLogsIfDue();
-                File.AppendAllText(CurrentLogPath, line, Encoding.UTF8);
-            }
+            AppendLine(line);
         }
         catch
         {
@@ -235,7 +233,7 @@ public static class DiagnosticLogService
         return redacted;
     }
 
-    private static string Sanitize(string? value)
+    private static string Sanitize(string? value, int maxLength = MaximumDetailLength)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -247,48 +245,75 @@ public static class DiagnosticLogService
             .Replace('\n', ' ')
             .Replace('\t', ' ')
             .Trim();
-        return normalized.Length <= MaximumDetailLength
+        return normalized.Length <= maxLength
             ? normalized
-            : normalized[..MaximumDetailLength] + "…";
+            : normalized[..maxLength] + "…";
     }
 
-    private static DateTime _lastLogCleanupDateUtc = DateTime.MinValue;
+    private static DateTime _lastCleanupUtc = DateTime.MinValue;
 
-    // 旧日志每天清理一次即可，不必每写一行就遍历一次目录。仅在 SyncRoot 锁内调用。
-    private static void CleanupOldLogsIfDue()
+    private static void AppendLine(string line)
     {
-        var today = DateTime.UtcNow.Date;
-        if (_lastLogCleanupDateUtc == today)
+        lock (SyncRoot)
         {
-            return;
+            Directory.CreateDirectory(LogRoot);
+            var path = ResolveActiveLogPath(Encoding.UTF8.GetByteCount(line));
+            File.AppendAllText(path, line, Encoding.UTF8);
+            var rotated = !string.Equals(path, CurrentLogPath, StringComparison.OrdinalIgnoreCase);
+            if (rotated || DateTime.UtcNow - _lastCleanupUtc >= TimeSpan.FromMinutes(10))
+            {
+                _lastCleanupUtc = DateTime.UtcNow;
+                CleanupOldLogs(path);
+            }
         }
-
-        _lastLogCleanupDateUtc = today;
-        CleanupOldLogs();
     }
 
-    private static void CleanupOldLogs()
+    // Keep the original daily name for compatibility; rotate into numbered files
+    // once the UTF-8 byte cap would be exceeded (no truncate of live entries).
+    private static string ResolveActiveLogPath(int bytesToAppend)
+    {
+        var basePath = CurrentLogPath;
+        for (var index = 0; index < 10000; index++)
+        {
+            var path = index == 0 ? basePath
+                : Path.Combine(LogRoot, $"diagnostics-{DateTime.UtcNow:yyyyMMdd}-{index:D3}.log");
+            if (!File.Exists(path) || new FileInfo(path).Length + bytesToAppend <= MaximumFileBytes)
+                return path;
+        }
+        throw new IOException("Diagnostic log rotation index exhausted.");
+    }
+
+    private static void CleanupOldLogs(string activePath)
     {
         try
         {
             var cutoff = DateTime.UtcNow.AddDays(-RetentionDays);
-            foreach (var file in Directory.EnumerateFiles(LogRoot, "diagnostics-*.log"))
+            var files = Directory.EnumerateFiles(LogRoot, "diagnostics-*.log")
+                .Select(path => new FileInfo(path))
+                .OrderBy(file => file.LastWriteTimeUtc)
+                .ToArray();
+            long total = files.Sum(file => file.Length);
+            foreach (var file in files)
             {
+                if (string.Equals(file.FullName, activePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (file.LastWriteTimeUtc >= cutoff && total <= MaximumTotalBytes)
+                    continue;
                 try
                 {
-                    if (File.GetLastWriteTimeUtc(file) < cutoff)
-                    {
-                        File.Delete(file);
-                    }
+                    var length = file.Length;
+                    file.Delete();
+                    total -= length;
                 }
                 catch
                 {
+                    // A locked diagnostics file can be removed on the next rotation.
                 }
             }
         }
         catch
         {
+            // Diagnostics must not disrupt the host process.
         }
     }
 }
-
