@@ -69,7 +69,6 @@ internal static class NativeMethods
     internal const int DWMWA_CAPTION_COLOR = 35;
     internal const int DWMWCP_ROUND = 2;
     internal const int DWMNCRP_USEWINDOWSTYLE = 0;
-    internal const int DWMNCRP_DISABLED = 1;
     internal const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
     // v0.2.1 forced #E1E1E6. Treat that value as a legacy override and return
     // it to DWM's native theme so an already-running client also recovers.
@@ -317,6 +316,11 @@ internal static class NativeMethods
         int right,
         int bottom);
 
+    // Window-region coordinates are relative to the native HWND, not its client area.
+    // ERROR=0 also means the client has cleared our region.
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int GetWindowRgnBox(IntPtr hWnd, out RECT rect);
+
     [DllImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool DeleteObject(IntPtr hObject);
@@ -467,15 +471,6 @@ internal static class NativeMethods
             nonClientPolicy,
             hasTransitionsDisabled,
             transitionsDisabled);
-    }
-
-    internal static void SetHostedNonClientRendering(
-        IntPtr hWnd, DwmChromeState original, bool centerInHost)
-    {
-        var policy = centerInHost
-            ? (original.HasNonClientPolicy ? original.NonClientPolicy : DWMNCRP_USEWINDOWSTYLE)
-            : DWMNCRP_DISABLED;
-        DwmSetWindowAttribute(hWnd, DWMWA_NCRENDERING_POLICY, ref policy, sizeof(int));
     }
 
     internal static void ApplyNativeChromeState(IntPtr hWnd, DwmChromeState state)

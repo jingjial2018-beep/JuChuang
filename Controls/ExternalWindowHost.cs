@@ -48,7 +48,6 @@ public sealed class ExternalWindowHost : HwndHost
     {
         if (!_hostedWindows.TryGetValue(handle, out var state) || state.CenterInHost == centerInHost) return;
         _hostedWindows[handle] = state with { CenterInHost = centerInHost };
-        NativeMethods.SetHostedNonClientRendering(handle, state.ChromeState, centerInHost);
         if (_currentHandle == handle) ResizeCurrentWindow();
     }
 
@@ -63,7 +62,7 @@ public sealed class ExternalWindowHost : HwndHost
             GetOwnerRoot(),
             _currentHandle);
 
-    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false, bool isWeChat = false)
+    public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
     {
         if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"host attach request hwnd=0x{handle.ToInt64():X} ready={IsReady} makeActive={makeActive} valid={NativeMethods.IsWindow(handle)}");
         if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
@@ -84,7 +83,8 @@ public sealed class ExternalWindowHost : HwndHost
                 nativeChrome,
                 disableMaximize,
                 centerInHost,
-                isWeChat);
+                NativeMethods.GetDpiForWindow(_hostHandle),
+                NativeMethods.GetDpiForWindow(handle));
 
             var ownerRoot = GetOwnerRoot();
             // Establish ownership before a background client becomes visible.
@@ -122,10 +122,6 @@ public sealed class ExternalWindowHost : HwndHost
                 1,
                 1,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
-            // The hosted top-level window is not clipped by WPF ClipToBounds. Suppress
-            // its DWM non-client shadow while it fills the workspace; restore the
-            // captured policy when the window is detached.
-            NativeMethods.SetHostedNonClientRendering(handle, nativeChrome, centerInHost);
             // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
             // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
@@ -373,9 +369,32 @@ public sealed class ExternalWindowHost : HwndHost
             || !NativeMethods.GetClientRect(_hostHandle, out var hostRect)
             || !_hostedWindows.TryGetValue(_currentHandle, out var state)) return;
 
+        // Re-measure native frame insets only on a real DPI transition.
+        // Re-measuring every tick would feed our own SetWindowRgn clip back into
+        // DWM_EXTENDED_FRAME_BOUNDS and can cause geometrical drift.
+        var hostDpi = NativeMethods.GetDpiForWindow(_hostHandle);
+        var clientDpi = NativeMethods.GetDpiForWindow(_currentHandle);
+        if (hostDpi != 0 && clientDpi != 0
+            && (hostDpi != state.HostDpi || clientDpi != state.ClientDpi))
+        {
+            if (NativeMethods.GetWindowRect(_currentHandle, out var currentRect))
+            {
+                var freshInsets = CalculateHostInsets(_currentHandle, currentRect);
+                state = state with
+                {
+                    Insets = freshInsets,
+                    HostDpi = hostDpi,
+                    ClientDpi = clientDpi
+                };
+                _hostedWindows[_currentHandle] = state;
+                DiagnosticLogService.WriteActivityEvent(
+                    $"host-dpi-refresh hwnd=0x{_currentHandle.ToInt64():X} dpi={hostDpi}/{clientDpi} insets={freshInsets.Left},{freshInsets.Top},{freshInsets.Right},{freshInsets.Bottom}");
+            }
+        }
+
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
-        var target = CalculateHostedBounds(state, _currentHandle, hostRect, origin);
+        var target = CalculateHostedBounds(state, hostRect, origin);
         var zOrderFlags = ShouldPromoteCurrentWindow() ? 0u : NativeMethods.SWP_NOZORDER;
         if (state.CenterInHost)
         {
@@ -409,7 +428,7 @@ public sealed class ExternalWindowHost : HwndHost
         }
 
         // Original v0.3.34 full-workspace layout for chat and WhatsApp.
-        var insets = GetHostedInsets(state, _currentHandle);
+        var insets = state.Insets;
         var width = Math.Max(1, hostRect.Width + insets.Left + insets.Right);
         var height = Math.Max(1, hostRect.Height + insets.Top + insets.Bottom);
         NativeMethods.SetWindowPos(_currentHandle, NativeMethods.HWND_TOP,
@@ -420,7 +439,7 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     /// <summary>
-    /// 裁剪窗口区域：裁掉超出容器客户区的不可见缩放边框。顶层窗口的 DWM 阴影由独立策略关闭。
+    /// 裁剪窗口区域：裁掉超出容器客户区的不可见缩放边框与 DWM 阴影，避免溢出。
     /// cornerRadius &gt; 0 时用圆角矩形（卡片式）；= 0 时退化为直角矩形（通铺式）。
     /// </summary>
     private static void ApplyClipRegion(
@@ -491,33 +510,47 @@ public sealed class ExternalWindowHost : HwndHost
             return;
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
-        // 仅在窗口位置/尺寸偏离期望时强制归位（防微信自绘或拖拽破坏布局）；
-        // ResizeCurrentWindow 内部会同步重算 insets 并重设圆角裁剪区域。
-        if (!TryGetExpectedBounds(state, out var expected) || !NativeMethods.GetWindowRect(handle, out var actual)
+        // A change in monitor/client DPI must invalidate the attach-time
+        // frame measurement even if the HWND rectangle appears unchanged.
+        var hostDpi = NativeMethods.GetDpiForWindow(_hostHandle);
+        var clientDpi = NativeMethods.GetDpiForWindow(handle);
+        if (hostDpi != 0 && clientDpi != 0
+            && (hostDpi != state.HostDpi || clientDpi != state.ClientDpi))
+        {
+            ResizeCurrentWindow();
+            return;
+        }
+
+        // The client may clear our region without moving its HWND. Check the
+        // actual Win32 region against the same insets used by layout and clip.
+        // Compact login windows have independent clipping rules; skip those.
+        if (!TryGetExpectedBounds(state, out var expected)
+            || !NativeMethods.GetWindowRect(handle, out var actual)
             || actual.Left != expected.Left || actual.Top != expected.Top
-            || actual.Width != expected.Width || actual.Height != expected.Height)
+            || actual.Width != expected.Width || actual.Height != expected.Height
+            || (!state.CenterInHost && !ClipRegionMatches(handle, expected, state.Insets)))
         {
             ResizeCurrentWindow();
         }
     }
 
-    // WeChat's native top-level window paints outside its WPF host when
-    // positioned at origin - native left-frame inset. The previous attempt
-    // ADDED an 8-DIP inset, pushing the whole native HWND farther into the
-    // account sidebar (the regression is visible in the 2026-10-26 screenshots).
-    // For the full-size WeChat window, keep the HWND left edge at the host
-    // boundary instead. Never enlarge or shift it outside the sidebar.
-    // WhatsApp and compact WeChat login retain their original geometry.
-    private static HostInsets GetHostedInsets(HostedWindowState state, IntPtr handle)
+    private static bool ClipRegionMatches(IntPtr handle, NativeMethods.RECT bounds, HostInsets insets)
     {
-        if (!state.IsWeChat || state.CenterInHost) return state.Insets;
-        return state.Insets with { Left = 0 };
+        // GetWindowRgnBox reads the region directly; it requires no temporary
+        // GDI region allocation on the one-second guard path.
+        const int SimpleRegion = 2;
+        var kind = NativeMethods.GetWindowRgnBox(handle, out var actualRegion);
+        return kind == SimpleRegion
+            && actualRegion.Left == insets.Left
+            && actualRegion.Top == insets.Top
+            && actualRegion.Right == Math.Max(insets.Left + 1, bounds.Width - insets.Right)
+            && actualRegion.Bottom == Math.Max(insets.Top + 1, bounds.Height - insets.Bottom);
     }
 
     private static NativeMethods.RECT CalculateHostedBounds(
-        HostedWindowState state, IntPtr handle, NativeMethods.RECT host, NativeMethods.POINT origin)
+        HostedWindowState state, NativeMethods.RECT host, NativeMethods.POINT origin)
     {
-        var insets = GetHostedInsets(state, handle);
+        var insets = state.Insets;
         var winW = state.CenterInHost ? Math.Max(1, state.Rect.Width) :
             Math.Max(1, host.Width + insets.Left + insets.Right);
         var winH = state.CenterInHost ? Math.Max(1, state.Rect.Height) :
@@ -533,7 +566,7 @@ public sealed class ExternalWindowHost : HwndHost
         if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)) return false;
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return false;
-        bounds = CalculateHostedBounds(state, _currentHandle, hostRect, origin);
+        bounds = CalculateHostedBounds(state, hostRect, origin);
         return true;
     }
 
@@ -601,8 +634,8 @@ public sealed class ExternalWindowHost : HwndHost
     {
         var style = unchecked((long)(uint)originalStyle.ToInt64());
         // 保留 WS_CAPTION/WS_THICKFRAME：微信 4.x 与 WhatsApp 都是自绘窗口，原生标题栏
-        // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds。移除后
-        // 反而会导致内容尺寸错位。边界对齐交给 insets + SetWindowRgn，阴影单独关闭。
+        // 并不会渲染出来，但 DWM 依赖这些位来计算 Extended Frame Bounds 与阴影。移除后
+        // 反而会导致内容尺寸错位（悬浮感）与阴影溢出。真正的边界对齐交给 insets + SetWindowRgn。
         style &= ~(NativeMethods.WS_CHILD | NativeMethods.WS_MINIMIZE);
         if (disableMaximize) style &= ~NativeMethods.WS_MAXIMIZEBOX;
         if (isVisible) style |= NativeMethods.WS_VISIBLE;
@@ -874,6 +907,7 @@ public sealed class ExternalWindowHost : HwndHost
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
         bool DisableMaximize,
-        bool CenterInHost = false,
-        bool IsWeChat = false);
+        bool CenterInHost,
+        uint HostDpi,
+        uint ClientDpi);
 }
