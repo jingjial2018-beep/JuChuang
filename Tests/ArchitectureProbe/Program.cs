@@ -5,6 +5,47 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("Native frame insets reconcile 200% to 100% without pixel guesses", () =>
+{
+    var at200 = FrameInsetPolicy.Measure(
+        793, 304, 2841, 1779,
+        804, 304, 2830, 1768);
+    var at100 = FrameInsetPolicy.Measure(
+        511, 227, 1546, 970,
+        511, 227, 1546, 970);
+    Assert(at200 == new FrameInsets(11, 0, 11, 11),
+        "200% PR59 measurement should show an 11-physical-pixel inset");
+    Assert(at100 == new FrameInsets(0, 0, 0, 0),
+        "100% PR59 measurement must not reuse the old 11px inset");
+    var effective = at200!.Value;
+    var first = FrameInsetPolicy.Observe(effective, null, 0, at100);
+    Assert(!first.Changed && first.Pending == at100 && first.PendingCount == 1,
+        "one measurement cannot immediately alter a hosted HWND");
+    var second = FrameInsetPolicy.Observe(effective, first.Pending, first.PendingCount, at100);
+    Assert(second.Changed && second.Effective == at100,
+        "two consistent 100% observations must correct stale insets");
+    var stable = FrameInsetPolicy.Observe(second.Effective, null, 0, at100);
+    Assert(!stable.Changed && stable.Pending is null,
+        "stable correct insets must not cause a periodic relayout");
+    var backTo200a = FrameInsetPolicy.Observe(second.Effective, null, 0, at200);
+    var backTo200b = FrameInsetPolicy.Observe(second.Effective,
+        backTo200a.Pending, backTo200a.PendingCount, at200);
+    Assert(backTo200b.Changed && backTo200b.Effective == at200,
+        "switching back to 200% must restore the measured frame compensation");
+});
+
+Run("Native frame inset observer rejects unrelated/unstable geometry", () =>
+{
+    Assert(FrameInsetPolicy.Measure(0, 0, 1000, 700, 400, 0, 1000, 700) is null,
+        "unrelated DWM frames must not create a 20px-clamped false measurement");
+    var a = new FrameInsets(11, 0, 11, 11);
+    var b = new FrameInsets(0, 0, 0, 0);
+    var first = FrameInsetPolicy.Observe(a, null, 0, b);
+    var cancelled = FrameInsetPolicy.Observe(a, first.Pending, first.PendingCount, a);
+    Assert(!cancelled.Changed && cancelled.Pending is null,
+        "transient one-tick mismatches must not change native geometry");
+});
+
 Run("Account list ignores secondary click but keeps primary selection", () =>
 {
     Assert(AccountSelectionInputPolicy.ShouldSuppress(MouseButton.Right),
