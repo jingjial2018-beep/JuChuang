@@ -184,6 +184,12 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern uint GetDpiForWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetWindowDpiAwarenessContext(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern int GetAwarenessFromDpiAwarenessContext(IntPtr dpiContext);
+
     internal readonly record struct DwmChromeState(
         bool HasBorderColor,
         int BorderColor,
@@ -315,6 +321,11 @@ internal static class NativeMethods
         int top,
         int right,
         int bottom);
+
+    // Read-only region bounding box: 0 means no region/error, 1/2/3
+    // indicate NULL, SIMPLE or COMPLEX native region respectively.
+    [DllImport("user32.dll")]
+    internal static extern int GetWindowRgnBox(IntPtr hWnd, out RECT region);
 
     [DllImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -28,6 +28,13 @@ public sealed class ExternalWindowHost : HwndHost
     private bool _updatingDialogs;
     private sealed record HiddenDialogRecord(IntPtr Hwnd, int Pid, IntPtr OwnerHwnd, NativeMethods.RECT RectAtHide);
     private bool _ownerMinimized;
+    // Experiment-only instrumentation. NEVER merge this constant-enabled probe
+    // into a production release. It reads native window geometry only; no pixels,
+    // messages, credentials, account labels or window titles are collected.
+    private const bool GeometryProbeEnabled = true;
+    private const int GeometryProbeLimit = 260;
+    private int _geometrySamplesWritten;
+    private readonly Dictionary<string, (string Signature, DateTime At)> _geometryLastSamples = [];
     private int _modalDialogSuppressionCount;
     private int _zOrderSuppressionCount;
 
@@ -83,6 +90,7 @@ public sealed class ExternalWindowHost : HwndHost
                 nativeChrome,
                 disableMaximize,
                 centerInHost);
+            TraceHostedGeometry("attach-before-style", handle, state.Insets);
 
             var ownerRoot = GetOwnerRoot();
             // Establish ownership before a background client becomes visible.
@@ -367,6 +375,7 @@ public sealed class ExternalWindowHost : HwndHost
             || !NativeMethods.GetClientRect(_hostHandle, out var hostRect)
             || !_hostedWindows.TryGetValue(_currentHandle, out var state)) return;
 
+        TraceHostedGeometry("layout-before", _currentHandle, state.Insets);
         var origin = new NativeMethods.POINT();
         if (!NativeMethods.ClientToScreen(_hostHandle, ref origin)) return;
         var target = CalculateHostedBounds(state, hostRect, origin);
@@ -399,6 +408,7 @@ public sealed class ExternalWindowHost : HwndHost
                     && !NativeMethods.SetWindowRgn(_currentHandle, region, true))
                     NativeMethods.DeleteObject(region);
             }
+            TraceHostedGeometry("login-layout-after", _currentHandle, state.Insets);
             return;
         }
 
@@ -411,6 +421,7 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
         ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, 0);
+        TraceHostedGeometry("layout-after", _currentHandle, state.Insets);
     }
 
     /// <summary>
@@ -485,14 +496,78 @@ public sealed class ExternalWindowHost : HwndHost
             return;
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
+        TraceHostedGeometry("watchdog", handle, state.Insets);
         // 仅在窗口位置/尺寸偏离期望时强制归位（防微信自绘或拖拽破坏布局）；
         // ResizeCurrentWindow 内部会同步重算 insets 并重设圆角裁剪区域。
         if (!TryGetExpectedBounds(state, out var expected) || !NativeMethods.GetWindowRect(handle, out var actual)
             || actual.Left != expected.Left || actual.Top != expected.Top
             || actual.Width != expected.Width || actual.Height != expected.Height)
         {
+            TraceHostedGeometry("watchdog-mismatch", handle, state.Insets);
             ResizeCurrentWindow();
         }
+    }
+
+    // Pure observer: does not modify position, style, region or z-order.
+    // The same HWND is sampled before and after JNest's EXISTING geometry calls.
+    // A stable fingerprint is written at most once per 15 s; changed geometry is
+    // recorded immediately, with a hard per-process cap to prevent log floods.
+    private void TraceHostedGeometry(string stage, IntPtr handle, HostInsets insets)
+    {
+        if (!GeometryProbeEnabled || _geometrySamplesWritten >= GeometryProbeLimit
+            || _hostHandle == IntPtr.Zero || handle == IntPtr.Zero
+            || !NativeMethods.IsWindow(handle)
+            || !NativeMethods.GetClientRect(_hostHandle, out var hostClient)
+            || !NativeMethods.GetWindowRect(handle, out var windowRect))
+            return;
+
+        var hostOrigin = new NativeMethods.POINT();
+        if (!NativeMethods.ClientToScreen(_hostHandle, ref hostOrigin)) return;
+        var hostBounds = new NativeMethods.RECT
+        {
+            Left = hostOrigin.X, Top = hostOrigin.Y,
+            Right = hostOrigin.X + hostClient.Width,
+            Bottom = hostOrigin.Y + hostClient.Height
+        };
+        var hasFrame = NativeMethods.TryGetExtendedFrameBounds(handle, out var visibleFrame);
+        var regionType = NativeMethods.GetWindowRgnBox(handle, out var currentRegion);
+        var hostDpi = NativeMethods.GetDpiForWindow(_hostHandle);
+        var clientDpi = NativeMethods.GetDpiForWindow(handle);
+        var hostAwareness = NativeMethods.GetAwarenessFromDpiAwarenessContext(
+            NativeMethods.GetWindowDpiAwarenessContext(_hostHandle));
+        var clientAwareness = NativeMethods.GetAwarenessFromDpiAwarenessContext(
+            NativeMethods.GetWindowDpiAwarenessContext(handle));
+        var style = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64();
+        var exStyle = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE).ToInt64();
+
+        static string RectText(NativeMethods.RECT rect)
+            => $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}";
+
+        var visibleBounds = hasFrame ? RectText(visibleFrame) : "unavailable";
+        var regionBounds = regionType > 0 ? RectText(currentRegion) : "none";
+        var signature =
+            $"host={RectText(hostBounds)};hwnd={RectText(windowRect)};frame={visibleBounds};" +
+            $"dpi={hostDpi},{clientDpi};awareness={hostAwareness},{clientAwareness};" +
+            $"region={regionType}:{regionBounds};insets={insets.Left},{insets.Top},{insets.Right},{insets.Bottom};" +
+            $"style=0x{style:X};exstyle=0x{exStyle:X}";
+        var key = $"{handle.ToInt64():X}/{stage}";
+        var now = DateTime.UtcNow;
+        if (_geometryLastSamples.TryGetValue(key, out var previous)
+            && previous.Signature == signature
+            && now - previous.At < TimeSpan.FromSeconds(15))
+            return;
+        _geometryLastSamples[key] = (signature, now);
+        _geometrySamplesWritten++;
+
+        // DWM-frame deltas relative to the workspace: negative left/top or
+        // positive right/bottom indicate visible frame outside JNest's host.
+        var frameDelta = hasFrame
+            ? $"{visibleFrame.Left - hostBounds.Left},{visibleFrame.Top - hostBounds.Top}," +
+              $"{visibleFrame.Right - hostBounds.Right},{visibleFrame.Bottom - hostBounds.Bottom}"
+            : "unavailable";
+        DiagnosticLogService.WriteActivityEvent(
+            $"host-geometry phase={stage} hwnd=0x{handle.ToInt64():X} " +
+            signature + $" frameDeltaLTRB={frameDelta}");
     }
 
     private static NativeMethods.RECT CalculateHostedBounds(
