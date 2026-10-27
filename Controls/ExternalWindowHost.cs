@@ -485,6 +485,12 @@ public sealed class ExternalWindowHost : HwndHost
             return;
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
+        // The HWND may keep a 200%-DPI inset after its visible DWM frame has
+        // changed at 100% (confirmed by PR #59 logs). Geometry-only watchdog
+        // never notices this because it compares against its OWN stale insets.
+        // Reconcile the actual physical DWM frame, but only after two stable
+        // 1-second observations. Login dialogs retain their independent layout.
+        if (TryReconcileFrameInsets(handle, state)) return;
         // 仅在窗口位置/尺寸偏离期望时强制归位（防微信自绘或拖拽破坏布局）；
         // ResizeCurrentWindow 内部会同步重算 insets 并重设圆角裁剪区域。
         if (!TryGetExpectedBounds(state, out var expected) || !NativeMethods.GetWindowRect(handle, out var actual)
@@ -493,6 +499,54 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
         }
+    }
+
+    private bool TryReconcileFrameInsets(IntPtr handle, HostedWindowState state)
+    {
+        if (state.CenterInHost || _hostHandle == IntPtr.Zero ||
+            !NativeMethods.GetWindowRect(handle, out var bounds) ||
+            !NativeMethods.TryGetExtendedFrameBounds(handle, out var frame))
+            return false;
+
+        var hostDpi = NativeMethods.GetDpiForWindow(_hostHandle);
+        var clientDpi = NativeMethods.GetDpiForWindow(handle);
+        // Do not subtract DWM physical pixels from a different awareness /
+        // monitor coordinate space. Cross-DPI support requires a separate
+        // explicit physical-coordinate normalization.
+        if (hostDpi == 0 || hostDpi != clientDpi) return false;
+
+        var observed = FrameInsetPolicy.Measure(
+            bounds.Left, bounds.Top, bounds.Right, bounds.Bottom,
+            frame.Left, frame.Top, frame.Right, frame.Bottom);
+        var current = new FrameInsets(
+            state.Insets.Left, state.Insets.Top, state.Insets.Right, state.Insets.Bottom);
+        var result = FrameInsetPolicy.Observe(
+            current, state.PendingFrameInsets, state.PendingFrameCount, observed);
+        if (!result.Changed)
+        {
+            if (result.Pending != state.PendingFrameInsets ||
+                result.PendingCount != state.PendingFrameCount)
+                _hostedWindows[handle] = state with
+                {
+                    PendingFrameInsets = result.Pending,
+                    PendingFrameCount = result.PendingCount
+                };
+            return false;
+        }
+
+        var fresh = result.Effective;
+        _hostedWindows[handle] = state with
+        {
+            Insets = new HostInsets(fresh.Left, fresh.Top, fresh.Right, fresh.Bottom),
+            PendingFrameInsets = null,
+            PendingFrameCount = 0
+        };
+        DiagnosticLogService.WriteActivityEvent(
+            $"host-frame-insets-corrected hwnd=0x{handle.ToInt64():X} dpi={hostDpi} " +
+            $"old={current.Left},{current.Top},{current.Right},{current.Bottom} " +
+            $"new={fresh.Left},{fresh.Top},{fresh.Right},{fresh.Bottom}");
+        ResizeCurrentWindow();
+        return true;
     }
 
     private static NativeMethods.RECT CalculateHostedBounds(
@@ -855,5 +909,7 @@ public sealed class ExternalWindowHost : HwndHost
         HostInsets Insets,
         NativeMethods.DwmChromeState ChromeState,
         bool DisableMaximize,
-        bool CenterInHost = false);
+        bool CenterInHost = false,
+        FrameInsets? PendingFrameInsets = null,
+        int PendingFrameCount = 0);
 }
