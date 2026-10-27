@@ -79,9 +79,9 @@ $gridRows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[l
 if ($gridRows.Count -lt 2 -or $gridRows[0].GetAttribute('Height') -ne 'Auto') {
     throw 'Settings content must use natural height'
 }
-if ($project.Project.PropertyGroup.Version -ne '1.0.10') {
-    throw 'Project must identify v1.0.10'
+if ($project.Project.PropertyGroup.Version -ne '2.0.0') {
+    throw 'Project must identify v2.0.0'
 }
 if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
 if ($settings.OuterXml -notmatch 'DndAllDayHint') { throw 'Missing all-day DND hint' }
-Write-Host 'PASS: v1.0.10 Final natural-height settings layout, typography, DND hint, right-click guard and version'
+Write-Host 'PASS: v2.0.0 natural-height settings layout, typography, DND hint, right-click guard and version'
