@@ -5,6 +5,34 @@ using JuChuang.Services;
 
 var failures = new List<string>();
 
+Run("WeChat Qt role geometry distinguishes 100%-DPI chat from login", () =>
+{
+    // PR #59 cold-start measurements: the previous 1,000,000-pixel area
+    // heuristic incorrectly centered the 1027 x 739 main chat as a login.
+    Assert(WeChatWindowRolePolicy.IsCompactLoginShape(296, 388, 96),
+        "100%-DPI genuine compact login should remain centered");
+    Assert(WeChatWindowRolePolicy.IsCompactLoginShape(440, 452, 96),
+        "100%-DPI nearly-square login should remain centered");
+    Assert(!WeChatWindowRolePolicy.IsCompactLoginShape(1027, 739, 96),
+        "100%-DPI landscape main chat must fill the workspace");
+    Assert(!WeChatWindowRolePolicy.IsCompactLoginShape(800, 600, 96),
+        "a smaller landscape chat cannot be mistaken for a login");
+});
+
+Run("WeChat Qt login geometry uses DPI-normalized rather than physical-area limits", () =>
+{
+    Assert(WeChatWindowRolePolicy.IsCompactLoginShape(592, 776, 192),
+        "200%-DPI compact login should remain centered");
+    Assert(WeChatWindowRolePolicy.IsCompactLoginShape(444, 582, 144),
+        "150%-DPI compact login should remain centered");
+    Assert(!WeChatWindowRolePolicy.IsCompactLoginShape(2054, 1478, 192),
+        "200%-DPI main chat should fill the workspace");
+    Assert(!WeChatWindowRolePolicy.IsCompactLoginShape(1027, 739, 192),
+        "landscape main chat should never be classified by physical area alone");
+    Assert(!WeChatWindowRolePolicy.IsCompactLoginShape(0, 0, 96),
+        "invalid window geometry must never imply Login");
+});
+
 Run("Account list ignores secondary click but keeps primary selection", () =>
 {
     Assert(AccountSelectionInputPolicy.ShouldSuppress(MouseButton.Right),

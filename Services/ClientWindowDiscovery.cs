@@ -123,7 +123,8 @@ public static class ClientWindowDiscovery
                     kind = ClientKind.WeChat;
                 }
 
-                var role = ResolveWindowRole(kind, title, windowClass, rect.Width, rect.Height);
+                var role = ResolveWindowRole(kind, title, windowClass, rect.Width, rect.Height,
+                    NativeMethods.GetDpiForWindow(handle));
                 if (isManagedWindow && identity is not null && identity.Role != ClientWindowRole.Unknown
                     && (rect.Width < 280 || rect.Height < 200) && role != ClientWindowRole.Login)
                     role = identity.Role; // Parking dimensions cannot establish a login-to-main transition.
@@ -251,7 +252,7 @@ public static class ClientWindowDiscovery
                || normalized is "微信登录" or "登录微信" or "wechat login" or "weixin login";
     }
 
-    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title, string windowClass, int width, int height)
+    private static ClientWindowRole ResolveWindowRole(ClientKind kind, string title, string windowClass, int width, int height, uint dpi)
     {
         if (kind == ClientKind.WhatsApp)
         {
@@ -270,14 +271,16 @@ public static class ClientWindowDiscovery
         if (windowClass.Contains("WeChatLoginWndForPC", StringComparison.OrdinalIgnoreCase))
             return ClientWindowRole.Login;
 
-        // WeChat 4.x uses the generic title "微信" for both quick-login and
-        // chats. Compact windows are login UI even when the caption is generic.
-        // Thresholds require BOTH dimensions to be small to avoid classifying
-        // a normally resized chat window as login.
+        // Qt uses the generic WeChat title for BOTH login and chat windows.
+        // The old physical-pixel area < 1,000,000 incorrectly classified an
+        // ordinary 1027x739 chat window at 100% DPI as "Login" (PR #59).
+        // Only a genuinely compact, near-portrait login-shaped window should
+        // take the centered login path. Normalize dimensions to 96-DPI units.
+        // Explicit login-only titles and classes above remain authoritative.
         var isQtWindow = windowClass.StartsWith("Qt", StringComparison.OrdinalIgnoreCase)
             && windowClass.EndsWith("QWindowIcon", StringComparison.OrdinalIgnoreCase);
         if (IsGenericMainTitle(title) && isQtWindow
-            && width >= 280 && height >= 200 && (long)width * height < 1_000_000)
+            && WeChatWindowRolePolicy.IsCompactLoginShape(width, height, dpi))
             return ClientWindowRole.Login;
 
         return IsGenericMainTitle(title)
