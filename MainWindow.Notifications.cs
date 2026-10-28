@@ -13,6 +13,7 @@ namespace JuChuang;
 public partial class MainWindow
 {
     private HwndSource? _windowSource;
+    private bool _dpiRestartHintShown;
     private uint _shellHookMessage;
     private bool _shellHookRegistered;
     private int _shellWindowReconcilePending;
@@ -63,6 +64,14 @@ public partial class MainWindow
         IntPtr lParam,
         ref bool handled)
     {
+        if (message == NativeMethods.WM_DPICHANGED && !_isClosing && !_dpiRestartHintShown)
+        {
+            _dpiRestartHintShown = true;
+            ShowTemporaryStatus("显示缩放已变化，请完全退出并重新启动 JNest 与客户端以恢复最佳布局", TimeSpan.FromSeconds(30));
+            DiagnosticLogService.WriteActivityEvent("dpi-changed-restart-recommended");
+            // Let WPF and Windows handle the DPI message; no native window rearrangement here.
+        }
+
         if (message == NativeMethods.WM_GETMINMAXINFO && lParam != IntPtr.Zero)
         {
             // Win32 monitor/work rectangles are already in physical screen pixels.

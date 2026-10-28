@@ -683,11 +683,41 @@ Run("Scratch cleanup keeps live owners and removes orphaned or legacy leftovers"
         Assert(File.Exists(freshOrphan), "a just-written orphan gets a short grace period");
         Assert(!File.Exists(legacyOld), "old copies without an owner marker are removed by age");
         Assert(File.Exists(legacyYoung), "recent copies without an owner marker are kept");
+
+        WeChatProfileService.CleanupCurrentProcessArtifacts();
+        Assert(!File.Exists(liveOwner), "normal shutdown must remove this process's remaining plaintext copy");
+        Assert(File.Exists(freshOrphan), "shutdown cleanup must not remove another process's copy");
     }
     finally
     {
         WeChatProfileService.ScratchDirectoryOverride = null;
         WeChatProfileService.LegacyScratchDirectoryOverride = null;
+        try { Directory.Delete(root, recursive: true); } catch { }
+    }
+});
+
+Run("Profile cache never restores a different account after identity reuse", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "jnest-profile-cache-probe-" + Guid.NewGuid().ToString("N"));
+    WeChatProfileCacheService.CacheRootOverride = root;
+    try
+    {
+        var cache = new WeChatProfileCacheService();
+        cache.Store("same-slot", new WeChatLocalProfile("wxid_first", "First", null));
+        Assert(!cache.TryGet("same-slot", "wxid_second", out _),
+            "cached profile must not cross an account boundary");
+        var switched = cache.Store("same-slot", new WeChatLocalProfile("wxid_second", "", null));
+        Assert(switched.AccountId == "wxid_second" && switched.Nickname == "wxid_second",
+            "missing nickname must fall back to the verified account ID, not the old nickname");
+        var reloaded = new WeChatProfileCacheService();
+        Assert(!reloaded.TryGet("same-slot", "wxid_first", out _),
+            "a restarted process must not restore the previous account");
+        Assert(reloaded.TryGet("same-slot", "wxid_second", out var current)
+               && current.Nickname == "wxid_second", "current account fallback did not persist");
+    }
+    finally
+    {
+        WeChatProfileCacheService.CacheRootOverride = null;
         try { Directory.Delete(root, recursive: true); } catch { }
     }
 });

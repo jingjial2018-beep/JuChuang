@@ -69,10 +69,18 @@ internal sealed class BadgeDetector
         var data = bitmap.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         try
         {
-            var stride = Math.Abs(data.Stride);
-            var pixels = new byte[stride * bitmap.Height];
-            Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
-            return DetectPixels(pixels, bitmap.Width, bitmap.Height, stride, kind, dpiScale, trace);
+            // PrintWindow renders the full client, but recognition needs only the
+            // left navigation strip. Avoid copying the chat area on every scan.
+            var region = GetSearchRegion(bitmap.Width, bitmap.Height, kind, dpiScale);
+            var copiedStride = checked((region.Right + 1) * 4);
+            var pixels = new byte[checked(copiedStride * bitmap.Height)];
+            for (var y = 0; y < bitmap.Height; y++)
+            {
+                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride),
+                    pixels, y * copiedStride, copiedStride);
+            }
+            return DetectPixels(pixels, bitmap.Width, bitmap.Height,
+                copiedStride, kind, dpiScale, trace);
         }
         finally
         {
@@ -125,9 +133,7 @@ internal sealed class BadgeDetector
     {
         // 只扫描左侧导航栏的聊天入口。这样不会把会话列表、通话页或归档页的
         // 角标误当成账号总未读数，也大幅减少截图识别开销。
-        var region = kind == ClientKind.WeChat
-            ? RelativeRegion.Create(width, height, 0.025, 0.14, 0.12, 0.38)
-            : RelativeRegion.CreateLogicalPixels(width, height, dpiScale, 18, 180, 38, 235);
+        var region = GetSearchRegion(width, height, kind, dpiScale);
 
         var candidates = FindBadgeCandidates(pixels, width, height, stride, region, kind, dpiScale);
         trace?.Invoke($"candidates={candidates.Count}");
@@ -208,6 +214,12 @@ internal sealed class BadgeDetector
             ? new BadgeResult(true, number, BadgeConfidenceLevel.High)
             : BadgeResult.Dot;
     }
+
+    private static RelativeRegion GetSearchRegion(int width, int height,
+        ClientKind kind, double dpiScale)
+        => kind == ClientKind.WeChat
+            ? RelativeRegion.Create(width, height, 0.025, 0.14, 0.12, 0.38)
+            : RelativeRegion.CreateLogicalPixels(width, height, dpiScale, 18, 180, 38, 235);
 
     private static List<BadgeBox> FindBadgeCandidates(
         byte[] pixels,

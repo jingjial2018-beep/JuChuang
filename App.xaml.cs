@@ -170,6 +170,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _activationCancellation.Cancel();
+        JuChuang.Services.WeChatProfileService.CleanupCurrentProcessArtifacts();
         if (_ownsMutex) { try { _instanceMutex?.ReleaseMutex(); } catch (ApplicationException) { } }
         _instanceMutex?.Dispose();
         base.OnExit(e);

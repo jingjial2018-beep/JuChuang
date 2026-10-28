@@ -23,10 +23,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Read preview version
         shell: pwsh
@@ -45,6 +45,13 @@ jobs:
           dotnet restore .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj
           dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
           dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
+
+      - name: Run badge and notification regression probes
+        shell: pwsh
+        run: |
+          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+          dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
+          .\Tests\ValidateSettingsTypography.ps1
       - name: Restore win-x64 publish assets
         run: dotnet restore .\JuChuang.csproj -r win-x64
 
@@ -75,6 +82,19 @@ jobs:
         run: |
           Copy-Item .\docs/PR_TESTING.md .\artifacts\FrameworkDependent\PR_TESTING.md
           Copy-Item .\docs/PR_TESTING.md .\artifacts\SelfContained\PR_TESTING.md
+
+      - name: Verify .NET 10 x64 output modes
+        shell: pwsh
+        run: |
+          $fd = Get-Content -Raw .\artifacts\FrameworkDependent\JNest.runtimeconfig.json | ConvertFrom-Json
+          if ($fd.runtimeOptions.tfm -ne 'net10.0' -or
+              $fd.runtimeOptions.frameworks.name -notcontains 'Microsoft.WindowsDesktop.App') {
+            throw 'Framework-dependent build does not require .NET 10 Windows Desktop.'
+          }
+          if (-not (Test-Path .\artifacts\SelfContained\JNest.exe) -or
+              -not (Test-Path .\artifacts\SelfContained\hostpolicy.dll)) {
+            throw 'Self-contained win-x64 output is incomplete.'
+          }
 
       - name: Package ZIP files and hashes
         shell: pwsh

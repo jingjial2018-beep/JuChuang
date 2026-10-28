@@ -3,7 +3,7 @@ name: PR Build Check
 on:
   pull_request:
     branches:
-      - main
+      - stable
 
 permissions:
   contents: read
@@ -19,10 +19,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore main app
         run: dotnet restore .\JuChuang.csproj
@@ -47,4 +47,11 @@ jobs:
 
       - name: Run ArchitectureProbe
         run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
+
+      - name: Run RegressionProbe
+        run: dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
+
+      - name: Validate settings typography
+        shell: pwsh
+        run: .\Tests\ValidateSettingsTypography.ps1
 

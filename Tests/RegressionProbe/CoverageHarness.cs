@@ -306,6 +306,14 @@ internal static class CoverageHarness
             var line = File.ReadLines(secondRollPath).FirstOrDefault(l => l.Contains("coverage-error"));
             Assert(line is not null, "error event missing from active log");
             Assert(line!.Length < 2000, $"error line not bounded (length {line.Length})");
+
+            DiagnosticLogService.WriteErrorEvent("coverage-privacy",
+                new InvalidOperationException(@"C:\Users\ExampleUser\Documents\wxid_secret\contact.db"));
+            var privacyLine = File.ReadLines(secondRollPath).FirstOrDefault(l => l.Contains("coverage-privacy"));
+            Assert(privacyLine is not null && !privacyLine.Contains("ExampleUser")
+                   && !privacyLine.Contains("wxid_secret")
+                   && privacyLine.Contains("%USERPROFILE%"),
+                "error detail exposed a Windows user or account identifier");
         }
         finally
         {
