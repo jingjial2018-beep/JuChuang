@@ -486,7 +486,8 @@ public sealed class ExternalWindowHost : HwndHost
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
         // 仅在窗口位置/尺寸偏离期望时强制归位（防微信自绘或拖拽破坏布局）；
-        // ResizeCurrentWindow 内部会同步重算 insets 并重设圆角裁剪区域。
+        // ResizeCurrentWindow 使用接入时记录的 insets 并重设裁剪区域；
+        // 运行中改变 DPI 后，这些 insets 不会随之重新测量。
         if (!TryGetExpectedBounds(state, out var expected) || !NativeMethods.GetWindowRect(handle, out var actual)
             || actual.Left != expected.Left || actual.Top != expected.Top
             || actual.Width != expected.Width || actual.Height != expected.Height)

@@ -29,6 +29,8 @@ JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端�
 
 **正式版下载：** [GitHub 最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest)（Windows 11 x64）。历史回滚基线：[v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10)。
 
+**维护测试版：** [v2.0.1-beta.1](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.1-beta.1) 供 Windows 11 x64 实机验收；正式版仍为 v2.0.0。
+
 > **源码与开发基线：** 仓库默认分支为 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，承载 v1.0.10 Final 及之后的代码与 CI 维护提交。要复现上一版 v1.0.10 Final，请使用固定的 [`v1.0.10` Git Tag](https://github.com/jingjial2018-beep/JuChuang/tree/v1.0.10)；后续功能开发从 `stable` 新建分支，不要使用仅供历史保存的旧 `main`。
 
 ## 软件界面
@@ -265,7 +267,7 @@ JuChuang/
 ## 已知限制
 
 - 当前仅面向 Windows 11 x64。
-- 固定 100% 和 200% DPI 缩放冷启动已验证；**运行中改变 Windows 显示缩放比例不在本版兼容承诺内**，可能造成原生微信窗口边框错位。建议在调整缩放后完全退出并重新打开 JNest 与微信。
+- 固定 100% 和 200% DPI 缩放冷启动已验证；**运行中改变 Windows 显示缩放比例不在本版兼容承诺内**，可能造成原生微信窗口边框错位。
 - 客户端升级可能改变窗口结构、昵称资料格式或角标样式。
 - 跨进程窗口托管依赖 Windows 桌面窗口机制，部分特殊版本可能拒绝接入。
 - 硬件加速窗口在少数显卡驱动或远程桌面环境中可能出现截图失败，此时未读提示会回退为红点或不显示。

@@ -145,7 +145,6 @@ internal static class NativeMethods
     }
 
     internal const int WM_GETMINMAXINFO = 0x0024;
-    internal const int WM_DPICHANGED = 0x02E0;
     internal const uint MONITOR_DEFAULTTONEAREST = 2;
 
     [StructLayout(LayoutKind.Sequential)]
