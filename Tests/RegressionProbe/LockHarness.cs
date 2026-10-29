@@ -17,6 +17,8 @@ public partial class MainWindow
     public readonly ListBox AccountsList = new();
     public readonly List<ClientWindowEntry> Entries = [];
     public ClientWindowEntry? SelectedEntry;
+    private bool _isClosing => false;
+    public System.Windows.WindowState WindowState { get; set; }
     public readonly TaskCompletionSource ScanEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public readonly TaskCompletionSource ScanCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public bool ProtectedForReview => IsJNestProtected;
@@ -35,4 +37,6 @@ public sealed class ReviewHost
     public int Suspensions { get; private set; }
     public void SuspendForModalDialog() => Suspensions++;
     public void ResumeAfterModalDialog() => Suspensions--;
+    public bool RecoverAfterSessionUnlock(IntPtr handle) => true;
+    public bool RefreshHostedWindow(IntPtr handle) => true;
 }

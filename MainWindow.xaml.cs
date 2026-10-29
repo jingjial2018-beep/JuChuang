@@ -294,6 +294,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
             WindowHost.UpdateOverlayBounds();
+            if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
             if (!_isTitleBarInteraction) WindowHost.ActivateCurrentWindow();
         }));
     }
@@ -438,6 +439,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StopClientActivityMonitoring();
         if (_windowSource is not null)
         {
+            if (_sessionNotificationsRegistered)
+            {
+                NativeMethods.WTSUnRegisterSessionNotification(_windowSource.Handle);
+                _sessionNotificationsRegistered = false;
+            }
             _windowSource.RemoveHook(WindowMessageHook);
         }
 
@@ -1622,13 +1628,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入");
+        CurrentStatusText.Text = BuildCurrentStatusText(entry,
+            entry.Status == "接入异常" ? "接入异常" : "已接入");
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
-        WindowHost.ShowOnly(entry.Handle);
+        if (!WindowHost.ShowOnly(entry.Handle))
+        {
+            entry.Status = "接入异常";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry, "窗口显示异常");
+        }
+        else if (entry.Status == "接入异常")
+        {
+            entry.Status = "已接入";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入");
+        }
+        UpdateWindowCount();
         SyncWeChatLoginPrompts();
         QueueHostedWindowRefresh(entry);
+        if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
     }
 
     private void PopOutButton_Click(object sender, RoutedEventArgs e)
@@ -1650,7 +1668,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 明确记录“用户主动弹出”，后台 5 秒扫描不得自动重新接入。
             _dismissedWindowHandles.Add(entry.Handle);
             entry.IsManuallyDetached = true;
-            WindowHost.DetachWindow(entry.Handle);
+            if (!WindowHost.DetachWindow(entry.Handle))
+            {
+                _dismissedWindowHandles.Remove(entry.Handle);
+                entry.IsManuallyDetached = false;
+                entry.Status = "弹出失败";
+                ShowTemporaryStatus("微信窗口未能安全弹出，请重试或退出 JNest 并保留微信运行。",
+                    TimeSpan.FromSeconds(12));
+                return;
+            }
             entry.IsAttached = false;
             entry.Status = "独立窗口";
             DiagnosticLogService.WriteAccountEvent(entry, "manual-detach");
@@ -1661,17 +1687,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;
-            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
+            var attached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
                 disableMaximize: entry.Kind == ClientKind.WhatsApp,
                     centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
-            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
+            entry.IsAttached = attached || WindowHost.Contains(entry.Handle);
+            entry.Status = attached ? "已接入" : entry.IsAttached ? "接入异常" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
-                entry.IsAttached ? "manual-attach" : "manual-attach-failed");
+                attached ? "manual-attach" : "manual-attach-failed");
             ShowTemporaryStatus(entry.IsAttached
-                ? $"{entry.DisplayName} 已重新嵌入。"
+                ? attached ? $"{entry.DisplayName} 已重新嵌入。" : "接入状态异常，请弹出重试。"
                 : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。",
-                entry.IsAttached ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
+                attached ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
         }
 
         UpdateWindowCount();
@@ -1995,7 +2022,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            WindowHost.RefreshHostedWindow(entry.Handle);
+            var refreshed = WindowHost.RefreshHostedWindow(entry.Handle);
+            entry.Status = refreshed ? "已接入" : "接入异常";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry,
+                refreshed ? "已接入" : "窗口显示异常");
+            UpdateWindowCount();
             if (attempt == 0)
             {
                 await Task.Delay(80);
@@ -2006,7 +2037,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateWindowCount()
     {
         var online = Entries.Count(IsVerifiedClientWindow);
-        var attached = Entries.Count(entry => entry.IsAttached && IsVerifiedClientWindow(entry));
+        var attached = Entries.Count(entry => entry.IsAttached
+            && entry.Status != "接入异常" && IsVerifiedClientWindow(entry));
         WindowCountText.Text = $"发现 {online} 个窗口，已接入 {attached} 个";
     }
 

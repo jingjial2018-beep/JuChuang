@@ -70,9 +70,11 @@ public sealed class ExternalWindowHost : HwndHost
             return false;
         }
 
-        if (!_hostedWindows.ContainsKey(handle))
+        var newlyHosted = !_hostedWindows.ContainsKey(handle);
+        var previousHandle = _currentHandle;
+        if (newlyHosted)
         {
-            NativeMethods.GetWindowRect(handle, out var originalRect);
+            if (!NativeMethods.GetWindowRect(handle, out var originalRect)) return false;
             var nativeChrome = NativeMethods.CaptureNativeChromeState(handle);
             var state = new HostedWindowState(
                 NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER),
@@ -117,24 +119,30 @@ public sealed class ExternalWindowHost : HwndHost
                 NativeMethods.HWND_TOP,
                 0,
                 0,
-                1,
-                1,
-                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
+                0,
+                0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
+                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
             // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
             // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
-            _hostedWindows.TryAdd(handle, state);
+            if (!_hostedWindows.TryAdd(handle, state)) return false;
         }
 
-        if (makeActive)
+        var displayed = makeActive ? ShowOnly(handle) : ParkWindowOffScreen(handle);
+        if (displayed && VerifyHostedWindow(handle, makeActive)) return true;
+
+        TraceTransitionFailure(handle, "attach-verification");
+        if (newlyHosted)
         {
-            ShowOnly(handle);
+            // Do not report an invisible/off-screen client as attached. Restore its
+            // desktop state before forgetting it, and retain it for shutdown retry
+            // if the restoration itself fails.
+            DetachWindow(handle, bringToFront: false);
+            if (previousHandle != IntPtr.Zero && NativeMethods.IsWindow(previousHandle))
+                ShowOnly(previousHandle);
         }
-        else
-        {
-            ParkWindowOffScreen(handle);
-        }
-        return true;
+        return false;
     }
 
     public bool ShowOnly(IntPtr handle)
@@ -167,7 +175,9 @@ public sealed class ExternalWindowHost : HwndHost
             RestoreOwnedLoginDialog(handle);
         }
         RefreshHostedWindow(handle);
-        return true;
+        var visible = VerifyHostedWindow(handle, active: true);
+        if (!visible) TraceTransitionFailure(handle, "show-verification");
+        return visible;
     }
 
     public bool RefreshHostedWindow(IntPtr handle)
@@ -182,11 +192,27 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
             NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
-            NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
+            var redrawn = NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
                 NativeMethods.RDW_INVALIDATE | NativeMethods.RDW_ERASE
                 | NativeMethods.RDW_FRAME);
+            if (!redrawn) TraceTransitionFailure(handle, "redraw-failed");
+            return redrawn && VerifyHostedWindow(handle, active: true);
         }
         return true;
+    }
+
+    public bool RecoverAfterSessionUnlock(IntPtr handle)
+    {
+        if (handle != _currentHandle || _ownerMinimized || _modalDialogSuppressionCount != 0
+            || !_hostedWindows.ContainsKey(handle) || !NativeMethods.IsWindow(handle)) return false;
+        // A long Windows session lock can leave the clipped native surface stale.
+        // Rebuild only the selected window's region after WPF has laid out the host.
+        if (!NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true))
+        {
+            TraceTransitionFailure(handle, "unlock-region-clear");
+            return false;
+        }
+        return RefreshHostedWindow(handle);
     }
 
     public void ActivateCurrentWindow()
@@ -295,13 +321,16 @@ public sealed class ExternalWindowHost : HwndHost
 
     public bool DetachWindow(IntPtr handle, bool bringToFront = true)
     {
-        if (!_hostedWindows.TryRemove(handle, out var state)) return false;
-        ReleaseOwnedLoginDialog(handle);
-        if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
-        if (!NativeMethods.IsWindow(handle)) return true;
+        if (!_hostedWindows.TryGetValue(handle, out var state)) return false;
+        if (!NativeMethods.IsWindow(handle))
+        {
+            _hostedWindows.TryRemove(handle, out _);
+            if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
+            return true;
+        }
 
         NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
-        NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
+        var regionCleared = NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, state.Owner);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
@@ -311,10 +340,22 @@ public sealed class ExternalWindowHost : HwndHost
         var height = Math.Max(560, state.Rect.Height);
         var left = state.Rect.Left < -10000 ? 120 : state.Rect.Left;
         var top = state.Rect.Top < -10000 ? 120 : state.Rect.Top;
-        NativeMethods.SetWindowPos(handle, IntPtr.Zero, left, top, width, height,
-            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_FRAMECHANGED
-            | NativeMethods.SWP_SHOWWINDOW);
-        NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+        NativeMethods.ShowWindow(handle,
+            bringToFront ? NativeMethods.SW_RESTORE : NativeMethods.SW_SHOWNOACTIVATE);
+        var positioned = NativeMethods.SetWindowPos(handle,
+            bringToFront ? NativeMethods.HWND_TOP : IntPtr.Zero,
+            left, top, width, height,
+            (bringToFront ? 0u : NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE)
+            | NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW);
+        if (!regionCleared || !positioned || !VerifyStandaloneWindow(handle, state))
+        {
+            TraceTransitionFailure(handle, "detach-verification");
+            return false;
+        }
+
+        ReleaseOwnedLoginDialog(handle);
+        _hostedWindows.TryRemove(handle, out _);
+        if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         if (bringToFront) NativeMethods.SetForegroundWindow(handle);
         return true;
     }
@@ -519,6 +560,64 @@ public sealed class ExternalWindowHost : HwndHost
         return true;
     }
 
+    private bool VerifyHostedWindow(IntPtr handle, bool active)
+    {
+        if (!NativeMethods.IsWindow(handle) || !NativeMethods.IsWindowVisible(handle)
+            || !_hostedWindows.TryGetValue(handle, out var state)
+            || NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != GetOwnerRoot()
+            || NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE)
+                != CreateOverlayExtendedStyle(state.ExtendedStyle)
+            || !NativeMethods.GetWindowRect(handle, out var actual)) return false;
+        if (!active) return IsParkedOffScreen(handle);
+        if (_ownerMinimized || _modalDialogSuppressionCount != 0) return true;
+        if (!TryGetExpectedBounds(state, out var expected)
+            || actual.Left != expected.Left || actual.Top != expected.Top
+            || actual.Width != expected.Width || actual.Height != expected.Height) return false;
+        if (state.CenterInHost) return true;
+        if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)
+            || NativeMethods.GetWindowRgnBox(handle, out var region) == 0) return false;
+        return region.Left == state.Insets.Left && region.Top == state.Insets.Top
+            && region.Right == state.Insets.Left + Math.Max(1, hostRect.Width)
+            && region.Bottom == state.Insets.Top + Math.Max(1, hostRect.Height);
+    }
+
+    private static bool VerifyStandaloneWindow(IntPtr handle, HostedWindowState state)
+    {
+        if (!NativeMethods.IsWindow(handle) || !NativeMethods.IsWindowVisible(handle)
+            || NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != state.Owner
+            || NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE) != state.ExtendedStyle
+            || NativeMethods.GetWindowRgnBox(handle, out _) != 0
+            || !NativeMethods.GetWindowRect(handle, out var rect)) return false;
+        const long volatileStyle = NativeMethods.WS_VISIBLE | NativeMethods.WS_MINIMIZE
+            | NativeMethods.WS_MAXIMIZE;
+        if (((NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64()
+            ^ state.Style.ToInt64()) & ~volatileStyle) != 0) return false;
+        var monitor = NativeMethods.MonitorFromWindow(handle, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var info = new NativeMethods.MONITORINFO
+        {
+            cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>()
+        };
+        return monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref info)
+            && Math.Min(rect.Right, info.rcWork.Right) - Math.Max(rect.Left, info.rcWork.Left) >= 50
+            && Math.Min(rect.Bottom, info.rcWork.Bottom) - Math.Max(rect.Top, info.rcWork.Top) >= 50;
+    }
+
+    private static void TraceTransitionFailure(IntPtr handle, string action)
+    {
+        NativeMethods.GetWindowThreadProcessId(handle, out var pid);
+        var hasRect = NativeMethods.GetWindowRect(handle, out var rect);
+        var regionType = NativeMethods.GetWindowRgnBox(handle, out var region);
+        var owner = NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER);
+        DiagnosticLogService.WriteActivityEvent(
+            $"host-{action} hwnd=0x{handle.ToInt64():X} owner=0x{owner.ToInt64():X} "
+            + $"visible={NativeMethods.IsWindowVisible(handle)} "
+            + $"rect={(hasRect ? $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}" : "unavailable")} "
+            + $"region={regionType}:{region.Left},{region.Top},{region.Right},{region.Bottom} "
+            + $"style=0x{NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64():X} "
+            + $"exstyle=0x{NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE).ToInt64():X} "
+            + $"dpi={NativeMethods.GetDpiForWindow(handle)}", (int)pid);
+    }
+
     private void StartWindowLockMonitoring()
     {
         _moveSizeHook = NativeMethods.SetWinEventHook(NativeMethods.EVENT_SYSTEM_MOVESIZESTART,
@@ -644,17 +743,18 @@ public sealed class ExternalWindowHost : HwndHost
     // 把非选中窗口"停靠"到屏幕外（-32000,-32000）并保持显示，而不是 SW_HIDE。
     // SW_HIDE 会移除窗口的标题栏与任务栏按钮，导致客户端 FlashWindowEx 无法闪烁、
     // HSHELL_FLASH 永远不触发；停靠后窗口对系统仍"可见"，标题栏闪烁能正常产生来消息通知。
-    private void ParkWindowOffScreen(IntPtr handle)
+    private bool ParkWindowOffScreen(IntPtr handle)
     {
-        if (!NativeMethods.IsWindow(handle)) return;
+        if (!NativeMethods.IsWindow(handle)) return false;
         NativeMethods.GetWindowThreadProcessId(handle, out var parkPid);
         PopupTrace($"wechat-popup-park-enter hwnd={handle} pid={parkPid} current={_currentHandle} minimized={_ownerMinimized}", (int)parkPid);
         HideOwnedLoginDialog(handle);
-        if (IsParkedOffScreen(handle)) return;
+        if (IsParkedOffScreen(handle)) return true;
         // 先移动到屏幕外再显示，避免窗口在原始（屏幕内）位置短暂闪现。
-        NativeMethods.SetWindowPos(handle, IntPtr.Zero, -32000, -32000, 0, 0,
+        var moved = NativeMethods.SetWindowPos(handle, IntPtr.Zero, -32000, -32000, 0, 0,
             NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER);
         NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOWNOACTIVATE);
+        return moved && IsParkedOffScreen(handle);
     }
 
     // Only the verified compact Qt duplicate-login prompt owned by this HWND.

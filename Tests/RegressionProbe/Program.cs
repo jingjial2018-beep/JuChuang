@@ -37,6 +37,7 @@ internal static class Program
                 await Run("Unlock gate and relock preserve the newer session lock", RelockAndGate);
                 await Run("Old restore failure cannot replace a newer lock", StaleRestoreFailure);
                 await Run("Settings write failure reports failure and later recovers", SettingsFailure);
+                await Run("Parked window detaches and reattaches without losing its desktop state", ParkedDetachAndReattach);
                 await Run("Owned primary discovery validates owner, HWND, PID and start", DiscoveryAndAttach);
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
@@ -163,6 +164,48 @@ internal static class Program
         }
         finally { AppSettings.SaveProblem -= Notice; AppSettings.SettingsPathOverride = normal; }
         return Task.CompletedTask;
+    }
+
+    private static async Task ParkedDetachAndReattach()
+    {
+        using var fixture = StartFixture();
+        var hwnd = new IntPtr(long.Parse((await fixture.StandardOutput.ReadLineAsync()
+            .WaitAsync(TimeSpan.FromSeconds(10)))!));
+        try
+        {
+            using var source = new HwndSource(new HwndSourceParameters("JNest detach regression owner")
+                { Width = 1, Height = 1, PositionX = -32000, PositionY = -32000,
+                    WindowStyle = unchecked((int)0x80000000) });
+            using var host = new ExternalWindowHost();
+            source.RootVisual = host;
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                Assert(host.AttachWindow(hwnd, false), "background attach failed");
+                Assert(host.DetachWindow(hwnd, bringToFront: false), "parked client did not detach");
+                Assert(!host.Contains(hwnd), "detached client remained hosted");
+                Assert(NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) == IntPtr.Zero,
+                    "detached client retained manager owner");
+                Assert(NativeMethods.IsWindowVisible(hwnd), "detached client remained hidden");
+                Assert(NativeMethods.GetWindowRect(hwnd, out var rect)
+                    && rect.Left > -10000 && rect.Top > -10000,
+                    "detached client remained parked off screen");
+                Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) == 0,
+                    "detached client retained the host clipping region");
+            }
+            Assert(host.AttachWindow(hwnd, false), "selected client background attach failed");
+            Assert(host.ShowOnly(hwnd), "selected client did not reach the host bounds");
+            Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) != 0,
+                "selected client lost the host clipping region");
+            Assert(host.DetachWindow(hwnd, bringToFront: false),
+                "selected client did not return to the desktop");
+        }
+        finally
+        {
+            NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
+            await fixture.StandardInput.WriteLineAsync("quit");
+            await fixture.StandardInput.FlushAsync();
+            await fixture.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     private static async Task DiscoveryAndAttach()
