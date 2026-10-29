@@ -79,8 +79,8 @@ $gridRows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[l
 if ($gridRows.Count -lt 2 -or $gridRows[0].GetAttribute('Height') -ne 'Auto') {
     throw 'Settings content must use natural height'
 }
-if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1')) {
-    throw 'Project must identify v2.0.0 or v2.0.1-beta.1'
+if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2')) {
+    throw 'Project must identify v2.0.0 or v2.0.1-beta.1 or v2.0.1-beta.2'
 }
 if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
 if ($settings.OuterXml -notmatch 'DndAllDayHint') { throw 'Missing all-day DND hint' }
