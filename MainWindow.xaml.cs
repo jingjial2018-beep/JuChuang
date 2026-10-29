@@ -501,7 +501,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _allExitInProgress = false;
             phase = "jnest-close";
             DiagnosticLogService.WriteActivityEvent("exit-all-clients-confirmed");
-            Close();
+            await DeferredWindowClose.ScheduleAsync(this);
         }
         catch (Exception exception)
         {

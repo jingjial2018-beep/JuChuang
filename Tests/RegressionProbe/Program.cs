@@ -42,6 +42,7 @@ internal static class Program
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
+                await Run("Exit-all queues JNest close after the original Closing event", ExitAllDeferredClose);
                 await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
                 await Run("DND policy time-window matrix", CoverageHarness.DndPolicy);
                 await Run("WeChat database ownership decision matrix", CoverageHarness.OwnershipDecide);
@@ -409,6 +410,29 @@ internal static class Program
             new XAttribute(XNamespace.Xmlns + "x", "http://schemas.microsoft.com/winfx/2006/xaml"),
             document.Root!.Element(ns + "Application.Resources")!.Nodes());
         app.Resources = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(resources.ToString());
+    }
+
+    private static async Task ExitAllDeferredClose()
+    {
+        EnsureResources();
+        var window = new Window { ShowInTaskbar = false, Left = -32000, Top = -32000 };
+        Task? deferredClose = null;
+        var closingCount = 0;
+        var closed = false;
+        window.Closing += (_, e) =>
+        {
+            closingCount++;
+            if (closingCount != 1) return;
+            e.Cancel = true;
+            deferredClose = DeferredWindowClose.ScheduleAsync(window);
+        };
+        window.Closed += (_, _) => closed = true;
+        window.Show();
+        window.Close();
+        Assert(deferredClose is not null && !closed && closingCount == 1,
+            "exit-all close ran inside the original Closing event");
+        await deferredClose.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert(closed && closingCount == 2, "deferred exit-all close did not finish");
     }
 
     private static object? Field(object target, string name)
