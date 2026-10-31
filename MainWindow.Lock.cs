@@ -135,7 +135,7 @@ public partial class MainWindow
             TryUnlockAsync,
             exception =>
             {
-                ReportBackgroundFailure(nameof(UnlockJNest_Click), exception);
+                DiagnosticLogService.WriteErrorEvent(nameof(UnlockJNest_Click), exception);
                 if (IsJNestProtected)
                     LockErrorText.Text = "解锁过程中发生异常，请重试。";
             });
