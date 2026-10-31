@@ -179,7 +179,7 @@ internal static class CoverageHarness
         var fallback = new FakeExitProcessTarget(502) { ExitOnKill = true };
         var fallbackResult = (await ExitBatchService.RunAsync(
             [fallback], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1))).Single();
-        Assert(fallbackResult.Confirmed && !fallbackResult.GracefulRequested && fallbackResult.KillRequested,
+        Assert(fallbackResult.Confirmed && fallbackResult.GracefulRequested && fallbackResult.KillRequested,
             "Kill fallback should confirm after graceful close does not exit");
         Assert(fallback.GracefulRequestCount == 1 && fallback.KillRequestCount == 1,
             "fallback must request graceful close once before Kill");
