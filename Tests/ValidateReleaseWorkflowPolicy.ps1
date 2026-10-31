@@ -52,7 +52,7 @@ foreach ($file in Get-ChildItem -LiteralPath $workflowsDir -File -Include '*.yml
     }
 }
 $pr = Get-Content -LiteralPath $preview -Raw
-if ($pr -notmatch '(?ms)^on:\r?\n  pull_request:\r?\n    branches:\r?\n      - stable') {
+if ($pr -notmatch '(?m)^  pull_request:\r?\n    branches:\r?\n      - stable(?:\r?\n|$)') {
     throw 'PR preview packages must target stable'
 }
 if ($pr -match '(?m)^\s+contents:\s*write\b') { throw 'PR previews must not have release write permissions' }
