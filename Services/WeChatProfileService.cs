@@ -384,8 +384,13 @@ public static partial class WeChatProfileService
     {
         var security = info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
         var localSystem = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
         var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
-        if (owner is null || (!owner.Equals(currentUser) && !owner.Equals(localSystem)))
+        // Elevated Windows processes can create a directory owned by the
+        // BUILTIN Administrators group. Ownership does not grant an extra DACL
+        // access rule: access still must be explicitly user/SYSTEM-only below.
+        if (owner is null || (!owner.Equals(currentUser)
+            && !owner.Equals(localSystem) && !owner.Equals(administrators)))
             throw new UnauthorizedAccessException("Profile scratch directory has an unexpected owner.");
         if (!security.AreAccessRulesProtected)
             throw new UnauthorizedAccessException("Profile scratch directory inherits access rules.");
