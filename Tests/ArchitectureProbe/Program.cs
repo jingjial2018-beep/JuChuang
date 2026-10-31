@@ -780,16 +780,6 @@ Run("Diagnostic error throttling preserves first and distinct errors", () =>
         "evicted old fingerprint must be eligible again");
 });
 
-Run("Local WeChat profile read preference preserves upgraded behavior but supports opt-out", () =>
-{
-    var settings = new AppSettings();
-    Assert(settings.EnableLocalProfileRead,
-        "existing installations must preserve automatic account identity on upgrade");
-    settings.EnableLocalProfileRead = false;
-    Assert(!settings.EnableLocalProfileRead,
-        "user opt-out must disable future automatic local profile resolution");
-});
-
 Run("Profile cache never restores a different account after identity reuse", () =>
 {
     var root = Path.Combine(Path.GetTempPath(), "jnest-profile-cache-probe-" + Guid.NewGuid().ToString("N"));

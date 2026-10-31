@@ -1971,27 +1971,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         ShowHostedModalDialog(new SettingsDialog(
-            _settings, ApplyNotificationPreferences, RefreshStartupMenuState, ApplyProfileReadPreference));
-    }
-
-    private void ApplyProfileReadPreference()
-    {
-        // Invalidate any queued or in-flight profile resolution before applying
-        // a new preference. Existing confirmed identities/labels remain intact.
-        foreach (var entry in Entries.Where(e => e.Kind == ClientKind.WeChat))
-        {
-            entry.AccountGeneration++;
-            _accountResolutionLoads.Remove(entry.ProcessId);
-            _accountResolutionRetryAfter.Remove(entry.ProcessId);
-        }
-        DiagnosticLogService.WriteActivityEvent(
-            _settings.EnableLocalProfileRead ? "wechat-profile-read-enabled" : "wechat-profile-read-disabled");
-        if (_settings.EnableLocalProfileRead)
-        {
-            foreach (var entry in Entries.Where(e => e.Kind == ClientKind.WeChat
-                && e.SessionState == ClientSessionState.Main && string.IsNullOrEmpty(e.IdentityKey)))
-                QueueWeChatAccountResolution(entry, null);
-        }
+            _settings, ApplyNotificationPreferences, RefreshStartupMenuState));
     }
 
     private void About_Click(object sender, RoutedEventArgs e)
@@ -2249,7 +2229,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WeChatAccountIdentity? preferredAccount)
     {
         var processId = entry.ProcessId;
-        if (_isClosing || IsProcessExiting(processId) || !_settings.EnableLocalProfileRead) return;
+        if (_isClosing || IsProcessExiting(processId)) return;
         var accountGeneration = entry.AccountGeneration;
         var exitVersion = GetProcessExitVersion(processId);
         var windowHandle = entry.Handle;
@@ -2293,7 +2273,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             await Task.Delay(300);
-            if (!_settings.EnableLocalProfileRead) return;
             if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
                     windowHandle, processStartTicks, resolutionToken, exitVersion))
             {
@@ -2304,7 +2283,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (WeChatAccountIdentity? Account, WeChatProfileReadResult Result) resolution;
             try
             {
-                if (!_settings.EnableLocalProfileRead || !IsCurrentAccountResolution(entry, processId, accountGeneration,
+                if (!IsCurrentAccountResolution(entry, processId, accountGeneration,
                         windowHandle, processStartTicks, resolutionToken, exitVersion))
                 {
                     return;
@@ -2533,7 +2512,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private bool ForceRefreshWeChatProfile(ClientWindowEntry entry)
     {
-        if (entry.Kind != ClientKind.WeChat || _isPreviewMode || !_settings.EnableLocalProfileRead
+        if (entry.Kind != ClientKind.WeChat || _isPreviewMode
             || entry.SessionState != ClientSessionState.Main
             || !WindowBelongsToProcess(entry.Handle, entry.ProcessId))
             return false;

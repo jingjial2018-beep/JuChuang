@@ -126,17 +126,6 @@
                        FontSize="12" Foreground="#667085" Margin="0,8,0,0"
                        Visibility="Collapsed"/>
         </StackPanel>
-        <StackPanel Margin="0,20,0,0">
-            <TextBlock Text="微信本地资料" FontSize="15" FontWeight="SemiBold" Foreground="#667085"/>
-            <ToggleButton x:Name="LocalProfileCheck" Style="{StaticResource SettingsSwitch}"
-                          Margin="0,9,0,0" Checked="LocalProfileChanged" Unchecked="LocalProfileChanged">
-                <StackPanel>
-                    <TextBlock Text="自动识别账号昵称与头像" FontSize="14" Foreground="#202939"/>
-                    <TextBlock Text="需要只读访问微信进程内存并解密本机资料库；关闭后新账号可能无法自动识别"
-                               FontSize="12" Foreground="#596273" TextWrapping="Wrap" Margin="0,3,12,0"/>
-                </StackPanel>
-            </ToggleButton>
-        </StackPanel>
         </StackPanel>
         <Grid Grid.Row="1" Margin="0,18,0,0">
             <Grid.ColumnDefinitions>
