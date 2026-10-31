@@ -1989,7 +1989,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_settings.EnableLocalProfileRead)
         {
             foreach (var entry in Entries.Where(e => e.Kind == ClientKind.WeChat
-                && e.SessionState == ClientSessionState.Main && !string.IsNullOrEmpty(e.IdentityKey) == false))
+                && e.SessionState == ClientSessionState.Main && string.IsNullOrEmpty(e.IdentityKey)))
                 QueueWeChatAccountResolution(entry, null);
         }
     }
@@ -2533,7 +2533,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private bool ForceRefreshWeChatProfile(ClientWindowEntry entry)
     {
-        if (entry.Kind != ClientKind.WeChat || _isPreviewMode
+        if (entry.Kind != ClientKind.WeChat || _isPreviewMode || !_settings.EnableLocalProfileRead
             || entry.SessionState != ClientSessionState.Main
             || !WindowBelongsToProcess(entry.Handle, entry.ProcessId))
             return false;

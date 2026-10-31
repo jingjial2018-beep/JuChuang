@@ -131,10 +131,13 @@ public sealed class ExternalWindowHost : HwndHost
         var hostDpi = root == IntPtr.Zero ? 0 : NativeMethods.GetDpiForWindow(root);
         DiagnosticLogService.WriteDebugEvent(
             $"host-dpi-snapshot phase={phase} hostDpi={hostDpi} clientDpi={NativeMethods.GetDpiForWindow(hwnd)} " +
-            $"rect={(hasRect ? rect.ToString() : "unavailable")} frame={(hasFrame ? frame.ToString() : "unavailable")} " +
-            $"host={(hasHostRect ? hostRect.ToString() : "unavailable")} regionKind={regionKind} " +
-            $"region={region} cachedInsets={state.Insets} parked={IsParkedOffScreen(hwnd)}", (int)pid);
+            $"rect={(hasRect ? FormatRect(rect) : "unavailable")} frame={(hasFrame ? FormatRect(frame) : "unavailable")} " +
+            $"host={(hasHostRect ? FormatRect(hostRect) : "unavailable")} regionKind={regionKind} " +
+            $"region={FormatRect(region)} cachedInsets={state.Insets} parked={IsParkedOffScreen(hwnd)}", (int)pid);
     }
+
+    private static string FormatRect(NativeMethods.RECT rect)
+        => $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}";
 
     private void FlushTrailingLocationRechecks(object? sender, EventArgs e)
     {
@@ -143,7 +146,11 @@ public sealed class ExternalWindowHost : HwndHost
         {
             _trailingLocationRechecks.TryRemove(hwnd, out _);
             if (!_hostedWindows.ContainsKey(hwnd) || !NativeMethods.IsWindow(hwnd)) continue;
-            EnforceHostedWindow(hwnd);
+            try { EnforceHostedWindow(hwnd); }
+            catch (Exception error)
+            {
+                DiagnosticLogService.WriteErrorEvent("host-location-trailing", error);
+            }
         }
         if (!_trailingLocationRechecks.IsEmpty) _locationTrailingTimer.Start();
     }
