@@ -133,6 +133,93 @@ internal static class CoverageHarness
         return Task.CompletedTask;
     }
 
+    // ---------- 客户端优雅退出与 Kill 兜底生命周期 ----------
+
+    private sealed class FakeExitProcessTarget(int processId) : IExitProcessTarget
+    {
+        private int _exited;
+
+        public int ProcessId { get; } = processId;
+        public bool ExitOnGraceful { get; init; }
+        public bool GracefulAccepted { get; init; } = true;
+        public bool ExitOnKill { get; init; }
+        public Exception? GracefulException { get; init; }
+        public Exception? KillException { get; init; }
+        public int GracefulRequestCount { get; private set; }
+        public int KillRequestCount { get; private set; }
+
+        public bool RequestGracefulExit()
+        {
+            GracefulRequestCount++;
+            if (GracefulException is not null) throw GracefulException;
+            if (ExitOnGraceful) Interlocked.Exchange(ref _exited, 1);
+            return GracefulAccepted;
+        }
+
+        public Task<bool> WaitForExitAsync(TimeSpan timeout)
+            => Task.FromResult(Volatile.Read(ref _exited) != 0);
+
+        public void ForceKill()
+        {
+            KillRequestCount++;
+            if (KillException is not null) throw KillException;
+            if (ExitOnKill) Interlocked.Exchange(ref _exited, 1);
+        }
+    }
+
+    public static async Task ExitBatchLifecycle()
+    {
+        var grace = new FakeExitProcessTarget(501) { ExitOnGraceful = true };
+        var graceResult = (await ExitBatchService.RunAsync(
+            [grace], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1))).Single();
+        Assert(graceResult.Confirmed && graceResult.GracefulRequested && !graceResult.KillRequested,
+            "graceful exit should confirm without invoking Kill");
+        Assert(grace.KillRequestCount == 0, "Kill ran after a successful graceful exit");
+
+        var fallback = new FakeExitProcessTarget(502) { ExitOnKill = true };
+        var fallbackResult = (await ExitBatchService.RunAsync(
+            [fallback], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1))).Single();
+        Assert(fallbackResult.Confirmed && fallbackResult.GracefulRequested && fallbackResult.KillRequested,
+            "Kill fallback should confirm after graceful close does not exit");
+        Assert(fallback.GracefulRequestCount == 1 && fallback.KillRequestCount == 1,
+            "fallback must request graceful close once before Kill");
+
+        var stale = new FakeExitProcessTarget(503)
+        {
+            GracefulException = new ExitProcessIdentityException("stale process generation"),
+            ExitOnKill = true
+        };
+        var staleResult = (await ExitBatchService.RunAsync(
+            [stale], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1))).Single();
+        Assert(!staleResult.Confirmed && stale.KillRequestCount == 0
+               && staleResult.Error?.StartsWith("IdentityMismatch:", StringComparison.Ordinal) == true,
+            "identity mismatch must block Kill fallback");
+
+        var killFailure = new FakeExitProcessTarget(504)
+        {
+            KillException = new UnauthorizedAccessException("denied")
+        };
+        var killFailureResult = (await ExitBatchService.RunAsync(
+            [killFailure], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1))).Single();
+        Assert(!killFailureResult.Confirmed
+               && killFailureResult.Error?.StartsWith("KillFailed:", StringComparison.Ordinal) == true,
+            "failed Kill must remain unconfirmed");
+
+        var killTimeout = new FakeExitProcessTarget(505);
+        var killTimeoutResult = (await ExitBatchService.RunAsync(
+            [killTimeout], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1))).Single();
+        Assert(!killTimeoutResult.Confirmed && killTimeoutResult.Error == "KillTimeout",
+            "a process still alive after Kill must remain unconfirmed");
+
+        var first = new FakeExitProcessTarget(506) { ExitOnGraceful = true };
+        var duplicate = new FakeExitProcessTarget(506) { ExitOnGraceful = true };
+        var duplicateResults = await ExitBatchService.RunAsync(
+            [first, duplicate], TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(1));
+        Assert(duplicateResults.Count == 1 && first.GracefulRequestCount == 1
+               && duplicate.GracefulRequestCount == 0,
+            "duplicate PID targets must be de-duplicated before exit requests");
+    }
+
     // ---------- 退出关闭策略真值表 ----------
 
     public static Task ExitPolicyTables()

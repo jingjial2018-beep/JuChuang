@@ -48,6 +48,7 @@ internal static class Program
                 await Run("DND policy time-window matrix", CoverageHarness.DndPolicy);
                 await Run("WeChat database ownership decision matrix", CoverageHarness.OwnershipDecide);
                 await Run("Exit close policy truth tables", CoverageHarness.ExitPolicyTables);
+                await Run("Graceful client exit precedes Kill fallback and preserves process identity", CoverageHarness.ExitBatchLifecycle);
                 await Run("Settings persistence roundtrip, backup and merge", CoverageHarness.SettingsPersistence);
                 await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
             }

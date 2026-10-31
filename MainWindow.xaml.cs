@@ -115,9 +115,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateLocalClock()
     {
         var now = DateTimeOffset.Now;
-        LocalDateText.Text = now.ToString("yyyy/MM/dd", System.Globalization.CultureInfo.InvariantCulture);
-        LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
-        LocalTimeZoneText.Text = now.ToString("dddd", System.Globalization.CultureInfo.CurrentUICulture);
+        LocalDateText.Text = now.ToString("M月d日 · dddd",
+            System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));
+        LocalDateTimeSeparatorText.Text = "#";
+        LocalTimeText.Text = now.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
     }
     private string? _pendingStatusText;
     private ClientWindowEntry? _pendingMessageEntry;
@@ -2619,7 +2620,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        // WM_CLOSE may hide the application to tray; exit only the validated process.
+        // Send WM_CLOSE to the original verified HWND first. If the client remains
+        // alive after the grace window, the shared service revalidates process
+        // generation and HWND ownership before terminating only that process.
         var affected = Entries.Count(other => other.ProcessId == entry.ProcessId);
         var answer = ShowExitConfirmation(entry.DisplayName, entry.ProcessId, affected);
         if (!answer) return;
@@ -2648,46 +2651,37 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            // Only terminate this PID; do not kill other independent client processes.
             MarkProcessExitRequested(pid);
-            var killTask = Task.Run(() =>
+            var result = (await ExitBatchService.RunAsync(
+                [new SystemExitProcessTarget(process, handle)],
+                TimeSpan.FromMilliseconds(2500),
+                TimeSpan.FromSeconds(3))).Single();
+
+            bool originalProcessExited;
+            try { originalProcessExited = process.HasExited; }
+            catch (Exception observationException) when (observationException is InvalidOperationException
+                or System.ComponentModel.Win32Exception)
             {
-                // The worker owns its own Process wrapper. Returning on timeout must
-                // never dispose a wrapper that an unfinished worker is using.
-                using var live = Process.GetProcessById(pid);
-                if (live.HasExited || live.StartTime.ToUniversalTime().Ticks != expectedStart.Value
-                    || !WindowBelongsToProcess(handle, pid))
-                    throw new InvalidOperationException("Client process identity changed before exit.");
-                live.Kill(entireProcessTree: false);
-            });
-            if (await Task.WhenAny(killTask, Task.Delay(TimeSpan.FromSeconds(5))) != killTask)
+                DiagnosticLogService.WriteErrorEvent("sidebar-exit-process-observation", observationException);
+                originalProcessExited = false;
+            }
+            result = ExitCompletionPolicy.Reconcile(result, originalProcessExited);
+
+            ReconnectDiagnostics.Write($"sidebar exit kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X} graceful={result.GracefulRequested} kill={result.KillRequested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
+            DiagnosticLogService.WriteActivityEvent($"client-exit-confirmation pid={pid} graceful={result.GracefulRequested} forced={result.KillRequested} confirmed={result.Confirmed}");
+
+            if (!result.Confirmed)
             {
-                // A timed-out OS call can complete later. Its worker rechecks the
-                // process generation before Kill, while future scans refresh UI.
-                _ = killTask.ContinueWith(task =>
-                    DiagnosticLogService.WriteErrorEvent("client-exit-late-worker", task.Exception!.GetBaseException()),
-                    CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-                DiagnosticLogService.WriteActivityEvent("client-exit-request-unconfirmed", pid);
-                ShowTemporaryStatus("客户端退出请求超时，尚未确认；后台将继续检查实际进程状态。", TimeSpan.FromSeconds(8));
+                ShowTemporaryStatus($"{ExitResultPresentation.Status(result)}，账号状态将由自动扫描继续核对。",
+                    TimeSpan.FromSeconds(8));
                 return;
             }
-            await killTask;
-            ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
-            using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                ReconnectDiagnostics.Write($"sidebar exit timeout pid={pid} confirmed=false");
-                ShowTemporaryStatus("进程尚未确认退出，账号状态将由自动扫描继续核对。", TimeSpan.FromSeconds(8));
-                return;
-            }
-            ReconnectDiagnostics.Write($"sidebar exit confirmed pid={pid}");
+
             foreach (var associated in Entries.Where(other => other.ProcessId == pid).ToArray())
                 RemoveEntry(associated);
-            ShowTemporaryStatus($"已退出 {entry.DisplayName}。");
+            ShowTemporaryStatus(result.KillRequested
+                ? $"客户端未能正常关闭，已强制退出 {entry.DisplayName}。"
+                : $"已退出 {entry.DisplayName}。");
         }
         catch (Exception exception) when (exception is InvalidOperationException
             or System.ComponentModel.Win32Exception or System.UnauthorizedAccessException)

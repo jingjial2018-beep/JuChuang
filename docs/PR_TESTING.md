@@ -67,3 +67,15 @@ ZIP 同目录的 `SHA256SUMS.txt` 包含两种测试包的 SHA-256。请对下�
 **判定标准：** 一个客户端截图异常不能清除其现有未读状态、不能使 JNest 主界面卡死，也不能造成同一 HWND/PID 的重复截图任务；其他客户端的托管和通知规则保持不变。
 
 **软超时说明：** 3 秒只限制 JNest 等待截图结果的时间，不能终止已进入 Win32 的 `PrintWindow` 调用。若原生调用永久不返回，该窗口会保持 in-flight 状态，直到该工作线程实际结束；真正硬终止需要独立辅助进程，不属于 beta.1。
+
+
+## v2.0.2-beta.2 Stage B — graceful exit and Kill fallback
+
+1. **Single-client exit:** select one expendable WeChat or WhatsApp client, confirm exit, and verify that JNest first requests normal window close. The account entry is removed only after process exit is confirmed.
+2. **All-client exit:** with two WeChat accounts and one WhatsApp instance connected, choose “全部退出”. All unique client PIDs should receive the graceful-close request without one client serially blocking the others. JNest closes only after all target processes are confirmed exited.
+3. **Grace period and fallback:** a client that remains alive after the 2.5-second grace period may be force-terminated. Use a disposable session and save any work first; do not test forced termination with unsaved content.
+4. **Identity protection:** before graceful close and again before Kill, the process PID and start time must match the captured process generation. If the original HWND still exists, it must still belong to that PID. A changed/reused HWND or PID must block Kill.
+5. **Unconfirmed result:** if a request or process-exit confirmation times out, JNest must not show success or remove the account entry. Automatic scanning may reconcile the entry later.
+6. **Status bar:** confirm the bottom display reads Chinese month/day and weekday, then “#” and 24-hour HH:mm (no seconds). The 32-DIP status bar height and its other controls remain unchanged.
+
+**判定标准：** graceful close is always attempted first; Kill is only a fallback after the bounded grace period and a fresh identity check. No unrelated process tree is terminated, and no unconfirmed exit is reported as successful. Stage A's accepted two-WeChat/one-WhatsApp behavior and 100%/200% cold-start DPI behavior must remain unchanged.

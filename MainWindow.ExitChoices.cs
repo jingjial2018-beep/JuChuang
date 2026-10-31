@@ -191,7 +191,7 @@ public partial class MainWindow
             .GroupBy(e => e.ProcessId).ToArray();
         var targets = groups.Select(group => group.First()).ToArray();
         ShowTemporaryStatus($"正在退出 {targets.Length} 个客户端进程…", TimeSpan.FromHours(1));
-        var validated = new List<Process>();
+        var validated = new List<(Process Process, IntPtr Handle)>();
         try
         {
             foreach (var entry in targets)
@@ -207,20 +207,22 @@ public partial class MainWindow
                     process.Dispose();
                     throw new InvalidOperationException($"“{entry.DisplayName}”进程状态已变化（PID {entry.ProcessId}）");
                 }
-                validated.Add(process);
+                validated.Add((process, entry.Handle));
             }
-            foreach (var process in validated)
+            foreach (var target in validated)
             {
-                _exitingClientProcessIds.Add(process.Id);
-                MarkProcessExitRequested(process.Id);
+                _exitingClientProcessIds.Add(target.Process.Id);
+                MarkProcessExitRequested(target.Process.Id);
             }
             var exitTask = ExitBatchService.RunAsync(
-                validated.Select(process => (IExitProcessTarget)new SystemExitProcessTarget(process)).ToArray(),
+                validated.Select(target =>
+                    (IExitProcessTarget)new SystemExitProcessTarget(target.Process, target.Handle)).ToArray(),
+                TimeSpan.FromMilliseconds(2500),
                 TimeSpan.FromSeconds(3));
-            // ExitBatchService now bounds both the native request and confirmation phases.
-            // Native Kill and OS exit-confirmation can finish just after their
-            // bounded timeout. Reconcile with the Process wrappers captured and
-            // identity-verified above (never treat a reused PID as our target).
+            // Every client receives WM_CLOSE before the shared grace window. A client
+            // still alive afterwards is revalidated by PID/start time/HWND before Kill.
+            // Reconcile against the original Process wrappers; never infer exit from a
+            // fresh PID lookup that could refer to a reused process identifier.
             var results = (await exitTask).ToArray();
             for (var attempt = 0; attempt < 5; attempt++)
             {
@@ -228,7 +230,7 @@ public partial class MainWindow
                 {
                     if (results[index].Confirmed) continue;
                     bool observedExited;
-                    try { observedExited = validated[index].HasExited; }
+                    try { observedExited = validated[index].Process.HasExited; }
                     catch (Exception exception) when (exception is InvalidOperationException
                         or System.ComponentModel.Win32Exception)
                     {
@@ -242,11 +244,13 @@ public partial class MainWindow
             }
             foreach (var result in results)
             {
-                ReconnectDiagnostics.Write($"exit all pid={result.ProcessId} requested={result.Requested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
+                ReconnectDiagnostics.Write($"exit all pid={result.ProcessId} requested={result.Requested} graceful={result.GracefulRequested} kill={result.KillRequested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
             }
             var requested = results.Count(result => result.Requested);
+            var graceful = results.Count(result => result.GracefulRequested);
+            var forced = results.Count(result => result.KillRequested);
             var confirmed = results.Count(result => result.Confirmed);
-            DiagnosticLogService.WriteActivityEvent($"exit-all-confirmation total={targets.Length} requested={requested} confirmed={confirmed}");
+            DiagnosticLogService.WriteActivityEvent($"exit-all-confirmation total={targets.Length} requested={requested} graceful={graceful} forced={forced} confirmed={confirmed}");
             if (confirmed == targets.Length) return true;
             var lines = groups.Select((group, index) =>
             {
@@ -275,7 +279,7 @@ public partial class MainWindow
         {
             ClearTemporaryStatus();
             _exitingClientProcessIds.Clear();
-            foreach (var process in validated) process.Dispose();
+            foreach (var target in validated) target.Process.Dispose();
         }
     }
 }

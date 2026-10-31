@@ -79,7 +79,7 @@ $gridRows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[l
 if ($gridRows.Count -lt 2 -or $gridRows[0].GetAttribute('Height') -ne 'Auto') {
     throw 'Settings content must use natural height'
 }
-if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2', '2.0.1-beta.3', '2.0.2-beta.1')) {
+if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2', '2.0.1-beta.3', '2.0.2-beta.1', '2.0.2-beta.2')) {
     throw 'Project must identify v2.0.0 or a v2.0.1/v2.0.2 maintenance beta'
 }
 if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
