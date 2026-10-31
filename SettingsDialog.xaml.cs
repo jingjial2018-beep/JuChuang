@@ -18,13 +18,13 @@ public partial class SettingsDialog : Window
     private readonly Action _profileSettingsChanged;
     private bool _loading = true;
 
-    public SettingsDialog(AppSettings settings, Action notificationSettingsChanged, Action startupSettingsChanged, Action profileSettingsChanged)
+    public SettingsDialog(AppSettings settings, Action notificationSettingsChanged, Action startupSettingsChanged, Action? profileSettingsChanged = null)
     {
         InitializeComponent();
         _settings = settings;
         _notificationSettingsChanged = notificationSettingsChanged;
         _startupSettingsChanged = startupSettingsChanged;
-        _profileSettingsChanged = profileSettingsChanged;
+        _profileSettingsChanged = profileSettingsChanged ?? (() => { });
         StartupCheck.IsChecked = StartupService.IsEnabled();
         FlashCheck.IsChecked = settings.EnableTaskbarFlash;
         ToastCheck.IsChecked = settings.EnableToastNotifications;
