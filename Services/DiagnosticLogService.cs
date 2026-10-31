@@ -17,6 +17,8 @@ public static class DiagnosticLogService
     private const long MaximumFileBytes = 10L * 1024 * 1024;
     private const long MaximumTotalBytes = 50L * 1024 * 1024;
     private const int MaximumStackLength = 1800;
+    private static readonly RepeatedErrorGate ErrorGate =
+        new(TimeSpan.FromSeconds(30), maximumEntries: 256);
     private static readonly bool DetailedTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("JNEST_DIAGNOSTIC_DETAIL"), "1", StringComparison.Ordinal);
     private const int MaximumDetailLength = 600;
@@ -67,6 +69,11 @@ public static class DiagnosticLogService
     {
         try
         {
+            // Repeated identical native failures can otherwise fill disk and
+            // spend substantial time on synchronous file I/O. Always record
+            // the first occurrence, then bound identical bursts for 30 seconds.
+            var fingerprint = $"{source}|{exception.GetType().FullName}|{exception.HResult}|{Sanitize(RedactDetail(exception.Message, null))}";
+            if (!ErrorGate.ShouldLog(fingerprint, DateTime.UtcNow)) return;
             var site = exception.TargetSite is { } method
                 ? $"{method.DeclaringType?.Name}.{method.Name}"
                 : null;

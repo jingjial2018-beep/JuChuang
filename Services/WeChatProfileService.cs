@@ -338,7 +338,11 @@ public static partial class WeChatProfileService
         var directory = ScratchDirectory;
         // Never write a plaintext database into a directory whose ACL could not be
         // verified. Existing directories may have been created by an older version.
-        Directory.CreateDirectory(Path.GetDirectoryName(directory)!);
+        var parent = Path.GetDirectoryName(directory)
+            ?? throw new UnauthorizedAccessException("Profile scratch directory parent is unavailable.");
+        Directory.CreateDirectory(parent);
+        if ((new DirectoryInfo(parent).Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new UnauthorizedAccessException("Profile scratch directory parent is a reparse point.");
         using var identity = WindowsIdentity.GetCurrent();
         var user = identity.User ?? throw new UnauthorizedAccessException("Current user SID is unavailable.");
         var security = new DirectorySecurity();
@@ -368,7 +372,38 @@ public static partial class WeChatProfileService
         if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
             throw new UnauthorizedAccessException("Profile scratch directory is a reparse point.");
 
+        // Do not assume a successful SetAccessControl call implies the effective
+        // directory ACL is private: read it back before creating plaintext files.
+        VerifyScratchDirectoryPermissions(info, user);
         return directory;
+    }
+
+    internal static string EnsureScratchDirectoryForTest() => EnsureScratchDirectory();
+
+    private static void VerifyScratchDirectoryPermissions(DirectoryInfo info, SecurityIdentifier currentUser)
+    {
+        var security = info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+        var localSystem = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+        // Elevated Windows processes can create a directory owned by the
+        // BUILTIN Administrators group. Ownership does not grant an extra DACL
+        // access rule: access still must be explicitly user/SYSTEM-only below.
+        if (owner is null || (!owner.Equals(currentUser)
+            && !owner.Equals(localSystem) && !owner.Equals(administrators)))
+            throw new UnauthorizedAccessException("Profile scratch directory has an unexpected owner.");
+        if (!security.AreAccessRulesProtected)
+            throw new UnauthorizedAccessException("Profile scratch directory inherits access rules.");
+
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .OfType<FileSystemAccessRule>().ToArray();
+        if (rules.Length == 0 ||
+            rules.Any(rule => rule.AccessControlType != AccessControlType.Allow
+                || rule.IdentityReference is not SecurityIdentifier sid
+                || (!sid.Equals(currentUser) && !sid.Equals(localSystem))) ||
+            !rules.Any(rule => rule.IdentityReference.Equals(currentUser)
+                && (rule.FileSystemRights & FileSystemRights.FullControl) == FileSystemRights.FullControl))
+            throw new UnauthorizedAccessException("Profile scratch directory grants access beyond the current user and SYSTEM.");
     }
 
     /// <summary>
@@ -383,6 +418,12 @@ public static partial class WeChatProfileService
         foreach (var directory in new[] { ScratchDirectory, LegacyScratchDirectory })
         {
             if (!Directory.Exists(directory)) continue;
+            try
+            {
+                if ((new DirectoryInfo(directory).Attributes & FileAttributes.ReparsePoint) != 0)
+                    continue;
+            }
+            catch { continue; }
             string[] files;
             try { files = Directory.EnumerateFiles(directory, "contact-*").ToArray(); }
             catch { continue; }
@@ -391,8 +432,11 @@ public static partial class WeChatProfileService
             {
                 try
                 {
-                    var lastWritten = File.GetLastWriteTimeUtc(file);
                     var fileName = Path.GetFileName(file);
+                    if (!ScratchCleanupPattern.IsMatch(fileName)
+                        || (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+                    var lastWritten = File.GetLastWriteTimeUtc(file);
                     var match = OwnerPattern.Match(fileName);
                     if (match.Success
                         && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var ownerPid)
@@ -424,6 +468,12 @@ public static partial class WeChatProfileService
     internal static void CleanupCurrentProcessArtifacts()
     {
         if (!Directory.Exists(ScratchDirectory)) return;
+        try
+        {
+            if ((new DirectoryInfo(ScratchDirectory).Attributes & FileAttributes.ReparsePoint) != 0)
+                return;
+        }
+        catch { return; }
         string[] files;
         try { files = Directory.EnumerateFiles(ScratchDirectory, "contact-*").ToArray(); }
         catch { return; }
@@ -438,12 +488,24 @@ public static partial class WeChatProfileService
                     CultureInfo.InvariantCulture, out var ownerStartTicks)
                 || ownerPid != Environment.ProcessId
                 || ownerStartTicks != OwnerStartTicks.Value) continue;
-            try { File.Delete(file); }
+            try
+            {
+                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0)
+                    File.Delete(file);
+            }
             catch { /* Startup cleanup will retry after an abnormal shutdown. */ }
         }
     }
 
     private static readonly TimeSpan OrphanGracePeriod = TimeSpan.FromSeconds(5);
+
+    // Only files with known JNest naming schemes are eligible for cleanup,
+    // never arbitrary contact-* files in a shared legacy %TEMP% directory.
+    private static readonly Regex ScratchCleanupPattern = new(
+        @"^contact-\d+-(?:owner\d+-[0-9a-fA-F]+-)?[0-9a-fA-F]{32}\.db(?:-wal|-shm)?$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    internal static bool IsScratchCleanupCandidate(string fileName)
+        => ScratchCleanupPattern.IsMatch(Path.GetFileName(fileName));
 
     // 文件名：contact-{微信PID}-owner{创建者PID}-{创建者启动时间ticks(十六进制)}-{GUID}.db
     private static readonly Regex OwnerPattern = new(
@@ -466,7 +528,12 @@ public static partial class WeChatProfileService
     internal static long CurrentProcessStartTicks => OwnerStartTicks.Value;
 
     internal static string BuildScratchFileName(int weChatProcessId)
-        => $"contact-{weChatProcessId}-owner{Environment.ProcessId}-{OwnerStartTicks.Value:x}-{Guid.NewGuid():N}.db";
+    {
+        var start = OwnerStartTicks.Value;
+        if (start <= 0)
+            throw new UnauthorizedAccessException("Unable to bind plaintext scratch file to a verified process lifetime.");
+        return $"contact-{weChatProcessId}-owner{Environment.ProcessId}-{start:x}-{Guid.NewGuid():N}.db";
+    }
 
     /// <summary>
     /// 创建者是否仍是“同一个进程实例”。用 PID + 启动时间核对，而不是进程名：

@@ -697,6 +697,89 @@ Run("Scratch cleanup keeps live owners and removes orphaned or legacy leftovers"
     }
 });
 
+Run("Activation pipe uses bounded input and current-user named pipe", () =>
+{
+    Assert(ActivationMessagePolicy.IsSafe("activate"), "normal activation must be allowed");
+    Assert(ActivationMessagePolicy.IsSafe("account=wxid_123&pid=42"), "toast account args must remain compatible");
+    Assert(!ActivationMessagePolicy.IsSafe(new string('a', ActivationMessagePolicy.MaximumCharacters + 1)),
+        "oversized activation must be rejected");
+    Assert(!ActivationMessagePolicy.IsSafe("activate\\nother".Replace("\\n", "\n")),
+        "embedded newline must be rejected");
+
+    string? Read(string line)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(line));
+        return ActivationMessagePolicy.ReadBoundedLineAsync(stream, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
+    }
+    Assert(Read("activate\\r\\n".Replace("\\r", "\r").Replace("\\n", "\n")) == "activate",
+        "CRLF-delimited activation frame should decode");
+    Assert(Read("partial") is null, "truncated frame cannot activate JNest");
+    Assert(Read(new string('x', ActivationMessagePolicy.MaximumCharacters + 1) + "\n") is null,
+        "overlength frame cannot allocate an unbounded activation argument");
+    Assert(Read("activate\rBAD\n") is null, "CR injection must be rejected");
+
+    // CI validates framing and that the Windows-only current-user pipe mode
+    // is available. The complete second-process activation roundtrip is left
+    // to the Windows real-device checklist, not an interactive CI pipe wait.
+    var pipeName = "jnest-acl-probe-" + Guid.NewGuid().ToString("N");
+    using var server = new System.IO.Pipes.NamedPipeServerStream(
+        pipeName, System.IO.Pipes.PipeDirection.In, 1,
+        System.IO.Pipes.PipeTransmissionMode.Byte,
+        System.IO.Pipes.PipeOptions.Asynchronous | System.IO.Pipes.PipeOptions.CurrentUserOnly);
+    Assert(server.CanRead && !server.CanWrite, "current-user activation pipe must be read-only");
+});
+
+Run("Plaintext scratch ACL is private and cleanup refuses unrelated files", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "jnest-acl-probe-" + Guid.NewGuid().ToString("N"));
+    var scratch = Path.Combine(root, "scratch");
+    Directory.CreateDirectory(root);
+    WeChatProfileService.ScratchDirectoryOverride = scratch;
+    try
+    {
+        Assert(WeChatProfileService.EnsureScratchDirectoryForTest() == scratch,
+            "scratch ACL setup refused a valid private directory");
+        var acl = new DirectoryInfo(scratch).GetAccessControl(
+            System.Security.AccessControl.AccessControlSections.Access);
+        Assert(acl.AreAccessRulesProtected, "scratch ACL still inherits broader access rules");
+        Assert(!WeChatProfileService.IsScratchCleanupCandidate("contact-passwords.txt"),
+            "unrelated files must not be eligible for cleanup");
+        var unrelated = Path.Combine(scratch, "contact-passwords.txt");
+        File.WriteAllText(unrelated, "keep");
+        File.SetLastWriteTimeUtc(unrelated, DateTime.UtcNow.AddHours(-1));
+        WeChatProfileService.CleanupTemporaryArtifacts(TimeSpan.FromMinutes(1));
+        Assert(File.Exists(unrelated), "cleanup deleted an unrelated file");
+    }
+    finally
+    {
+        WeChatProfileService.ScratchDirectoryOverride = null;
+        try { Directory.Delete(root, recursive: true); } catch { }
+    }
+});
+
+Run("Window discovery metadata caches discard stale and excess processes", () =>
+{
+    ClientWindowDiscovery.SeedExpiredMetadataForTest(400);
+    var sizes = ClientWindowDiscovery.MetadataCacheSizesForTest();
+    Assert(sizes.Names <= 256 && sizes.Versions <= 128,
+        "metadata caches must remain bounded under short-lived PID churn");
+});
+
+Run("Diagnostic error throttling preserves first and distinct errors", () =>
+{
+    var gate = new RepeatedErrorGate(TimeSpan.FromSeconds(30), maximumEntries: 2);
+    var now = DateTime.UtcNow;
+    Assert(gate.ShouldLog("capture|timeout", now), "first error was unexpectedly discarded");
+    Assert(!gate.ShouldLog("capture|timeout", now.AddSeconds(1)), "duplicate error was not throttled");
+    Assert(gate.ShouldLog("capture|access-denied", now.AddSeconds(1)),
+        "distinct error must not be hidden");
+    Assert(gate.ShouldLog("capture|timeout", now.AddSeconds(31)), "error did not recover after cooldown");
+    Assert(gate.ShouldLog("pipe|timeout", now.AddSeconds(32)), "third distinct error was suppressed");
+    Assert(gate.ShouldLog("capture|access-denied", now.AddSeconds(33)),
+        "evicted old fingerprint must be eligible again");
+});
+
 Run("Profile cache never restores a different account after identity reuse", () =>
 {
     var root = Path.Combine(Path.GetTempPath(), "jnest-profile-cache-probe-" + Guid.NewGuid().ToString("N"));

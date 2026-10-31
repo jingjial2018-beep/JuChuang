@@ -28,6 +28,9 @@ public static class ClientWindowDiscovery
     // 一个已经退出的 Chrome/微信 PID 被新进程复用后可能造成误识别。
     private static readonly ConcurrentDictionary<int, ProcessNameCacheEntry> ProcessNameCache = [];
     private static readonly TimeSpan ProcessNameCacheLifetime = TimeSpan.FromSeconds(10);
+    private const int MaximumProcessNameCacheEntries = 256;
+    private const int MaximumVersionCacheEntries = 128;
+    private static long _lastMetadataPruneTicks;
 
     public static IReadOnlyList<WindowCandidate> FindClientWindows(int? selfTestTargetProcessId = null)
         => FindClientWindowsCore(selfTestTargetProcessId, includeHiddenProcessId: null);
@@ -159,6 +162,7 @@ public static class ClientWindowDiscovery
                     .ThenByDescending(candidate => IsGenericMainTitle(candidate.WindowTitle))
                     .ThenByDescending(candidate => candidate.PixelArea)
                     .First());
+        PruneMetadataCaches();
         return selectedCandidates
             .OrderBy(candidate => candidate.Kind)
             .ThenBy(candidate => candidate.ProcessId)
@@ -360,7 +364,7 @@ public static class ClientWindowDiscovery
             var resolvedVersion = Version.TryParse(versionText, out var version)
                 ? version.ToString()
                 : null;
-            VersionCache[processId] = new VersionCacheEntry(startUtc, resolvedVersion);
+            VersionCache[processId] = new VersionCacheEntry(startUtc, resolvedVersion, DateTime.UtcNow);
             return resolvedVersion;
         }
         catch
@@ -373,7 +377,51 @@ public static class ClientWindowDiscovery
 
     private readonly record struct ProcessNameCacheEntry(string Name, DateTime CachedUtc);
 
-    private readonly record struct VersionCacheEntry(DateTime StartUtc, string? Version);
+    private readonly record struct VersionCacheEntry(DateTime StartUtc, string? Version, DateTime CachedUtc);
+
+    // PID-keyed metadata must not grow indefinitely as unrelated foreground
+    // applications create short-lived processes. Expired entries are pruned
+    // opportunistically, not on every Win32 window callback.
+    private static void PruneMetadataCaches(bool force = false)
+    {
+        var now = DateTime.UtcNow;
+        var previous = Interlocked.Read(ref _lastMetadataPruneTicks);
+        if (!force)
+        {
+            if (now.Ticks - previous < TimeSpan.FromMinutes(1).Ticks ||
+                Interlocked.CompareExchange(ref _lastMetadataPruneTicks, now.Ticks, previous) != previous)
+                return;
+        }
+
+        foreach (var pair in ProcessNameCache)
+            if (now - pair.Value.CachedUtc > TimeSpan.FromSeconds(30))
+                ProcessNameCache.TryRemove(pair.Key, out _);
+        foreach (var pair in VersionCache)
+            if (now - pair.Value.CachedUtc > TimeSpan.FromMinutes(10))
+                VersionCache.TryRemove(pair.Key, out _);
+
+        foreach (var pair in ProcessNameCache.OrderBy(p => p.Value.CachedUtc)
+                     .Take(Math.Max(0, ProcessNameCache.Count - MaximumProcessNameCacheEntries)))
+            ProcessNameCache.TryRemove(pair.Key, out _);
+        foreach (var pair in VersionCache.OrderBy(p => p.Value.CachedUtc)
+                     .Take(Math.Max(0, VersionCache.Count - MaximumVersionCacheEntries)))
+            VersionCache.TryRemove(pair.Key, out _);
+    }
+
+    internal static (int Names, int Versions) MetadataCacheSizesForTest()
+        => (ProcessNameCache.Count, VersionCache.Count);
+
+    internal static void SeedExpiredMetadataForTest(int entries)
+    {
+        var expired = DateTime.UtcNow.AddHours(-1);
+        for (var index = 1; index <= entries; index++)
+        {
+            // Negative PIDs are impossible real process IDs.
+            ProcessNameCache[-index] = new ProcessNameCacheEntry("expired", expired);
+            VersionCache[-index] = new VersionCacheEntry(expired, "0.0", expired);
+        }
+        PruneMetadataCaches(force: true);
+    }
 
     private static string ReadWindowTitle(IntPtr handle)
     {

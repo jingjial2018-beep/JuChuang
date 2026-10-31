@@ -79,3 +79,35 @@ ZIP 同目录的 `SHA256SUMS.txt` 包含两种测试包的 SHA-256。请对下�
 6. **Status bar:** confirm the bottom display reads Chinese month/day and weekday, then “#” and 24-hour HH:mm (no seconds). The 32-DIP status bar height and its other controls remain unchanged.
 
 **判定标准：** graceful close is always attempted first; Kill is only a fallback after the bounded grace period and a fresh identity check. No unrelated process tree is terminated, and no unconfirmed exit is reported as successful. Stage A's accepted two-WeChat/one-WhatsApp behavior and 100%/200% cold-start DPI behavior must remain unchanged.
+
+
+## v2.0.2-beta.3 Stage C+D — security and monitoring
+
+**Use a separate installation directory and avoid production accounts/data
+for destructive security testing.** Retain the Stage B exit checks.
+
+1. With two WeChat accounts plus one WhatsApp, verify metadata and avatars
+   remain correct, including after restarting one client. The SQLCipher scratch
+   directory must have protected permissions limited to the current user and SYSTEM.
+   No decrypted database must remain after normal completed reads.
+2. Run a second JNest instance in the *same Windows user session*: it should
+   activate the first instance. Windows Toast click-to-account should still work.
+   Do not send test commands from an untrusted or another-user session.
+3. If a peer connects to the pipe but sends nothing, it must not permanently
+   block later activation requests. The 3-second deadline should free the reader.
+4. Exercise login-to-main, HWND recreation, maximize/restore, hide/show, and
+   account switching. Client discovery must remain correct after many short-lived
+   unrelated desktop processes.
+5. Repeatedly open and close nested modal dialogs, including the password
+   confirmation flow, and verify mouse clicks in unrelated applications still
+   work. Check that no modal guard traps input after closing JNest.
+6. Run with diagnostics enabled for targeted observation; verify 10-MB
+   rotation/50-MB total/7-day retention behavior. Identical exceptions within
+   30 seconds should not flood the files; distinct failures should still log.
+7. Verify 100% and 200% cold starts independently. Runtime DPI switching
+   remains out of scope.
+
+**Stop conditions:** inability to read the user's own profile database due to
+ACL failure, any unexpected access by another Windows user, incorrect account
+binding, a stuck activation pipe, or mouse input blocked outside the hosted
+modal context. Do not merge pending an investigation.
