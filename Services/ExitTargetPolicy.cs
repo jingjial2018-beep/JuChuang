@@ -11,9 +11,25 @@ public static class ExitTargetPolicy
 public static class ExitResultPresentation
 {
     public static string Status(ExitProcessResult result)
-        => result.Confirmed ? "已退出"
-            : result.Error == "RequestTimeout" ? "请求未确认（可能仍在执行）"
-            : !result.Requested ? "请求失败"
-            : result.Error == "Timeout" ? "未确认退出"
-            : "确认失败";
+    {
+        if (result.Confirmed)
+            return result.KillRequested ? "已强制退出"
+                : result.GracefulRequested ? "已正常退出"
+                : "已退出";
+
+        if (result.Error?.StartsWith("IdentityMismatch:", StringComparison.Ordinal) == true)
+            return "进程身份校验失败，未执行强制退出";
+        if (result.Error == "GracefulRequestTimeout")
+            return "正常退出请求超时";
+        if (result.Error?.StartsWith("GracefulRequestFailed:", StringComparison.Ordinal) == true)
+            return "正常退出请求失败";
+        if (result.Error == "KillRequestTimeout")
+            return "强制退出请求超时";
+        if (result.Error == "KillTimeout")
+            return "强制退出未确认";
+        if (result.Error?.StartsWith("KillFailed:", StringComparison.Ordinal) == true)
+            return "强制退出失败";
+
+        return "确认失败";
+    }
 }

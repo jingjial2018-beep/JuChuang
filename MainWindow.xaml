@@ -604,11 +604,14 @@
                     <TextBlock x:Name="StatusMessageText" Grid.Column="1" Margin="20,0" FontSize="13"
                                Foreground="#667085" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
-                        <TextBlock x:Name="LocalTimeText" Margin="12,0,0,0" FontSize="14" Foreground="#475467"
-                                   FontWeight="SemiBold" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
-                        <TextBlock x:Name="LocalTimeZoneText" Margin="12,0,0,0" FontSize="13"
-                                   Foreground="#667085" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalDateText" FontSize="13" Foreground="#667085"
+                                   FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalDateTimeSeparatorText" Text="#" Margin="10,0,0,0"
+                                   FontSize="13" Foreground="#98A2B3" FontFamily="Microsoft YaHei UI"
+                                   VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalTimeText" Margin="6,0,0,0" FontSize="14"
+                                   Foreground="#475467" FontWeight="Medium" FontFamily="Segoe UI"
+                                   VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>
             </Border>

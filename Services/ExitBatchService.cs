@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace JuChuang.Services;
@@ -5,15 +6,26 @@ namespace JuChuang.Services;
 public interface IExitProcessTarget
 {
     int ProcessId { get; }
-    void RequestExit();
+    bool RequestGracefulExit();
     Task<bool> WaitForExitAsync(TimeSpan timeout);
+    void ForceKill();
 }
 
-public sealed record ExitProcessResult(int ProcessId, bool Requested, bool Confirmed, string? Error);
+public sealed record ExitProcessResult(int ProcessId, bool Requested, bool Confirmed, string? Error)
+{
+    public bool GracefulRequested { get; init; }
+    public bool KillRequested { get; init; }
+}
+
+public sealed class ExitProcessIdentityException : InvalidOperationException
+{
+    public ExitProcessIdentityException(string message, Exception? innerException = null)
+        : base(message, innerException) { }
+}
 
 // A batch may time out immediately before a terminated client is observed.
 // The original Process wrapper, rather than a new PID lookup, is used as
-// evidence: it still identifies the process generation validated before Kill.
+// evidence: it still identifies the process generation validated before exit.
 public static class ExitCompletionPolicy
 {
     public static ExitProcessResult Reconcile(ExitProcessResult result, bool originalProcessExited)
@@ -24,57 +36,135 @@ public static class ExitCompletionPolicy
 
 public static class ExitBatchService
 {
+    // Every target begins its graceful request concurrently. Each client gets a
+    // bounded grace period; only clients still alive after that are force-killed.
     public static async Task<IReadOnlyList<ExitProcessResult>> RunAsync(
-        IReadOnlyList<IExitProcessTarget> targets, TimeSpan timeout)
+        IReadOnlyList<IExitProcessTarget> targets,
+        TimeSpan gracefulTimeout,
+        TimeSpan operationTimeout)
     {
-        // Issue every request before waiting so one slow process cannot delay the others.
-        // Kill can block in the OS. Start all requests on worker threads so a
-        // WPF Closing handler can yield before any termination request finishes.
         var uniqueTargets = targets.DistinctBy(target => target.ProcessId).ToArray();
-        var requests = uniqueTargets.Select(target => Task.Run(() => RequestExit(target))).ToArray();
-        // A blocking native termination request must not hold the whole batch indefinitely.
-        // Preserve a separate Unknown/RequestTimeout result: its worker might finish later.
-        var requestResults = await Task.WhenAll(requests.Select(async (request, index) =>
-        {
-            var completed = await Task.WhenAny(request, Task.Delay(timeout));
-            return completed == request
-                ? await request
-                : new ExitProcessResult(uniqueTargets[index].ProcessId, false, false, "RequestTimeout");
-        }));
-        var confirmations = uniqueTargets.Select((target, index) =>
-            requestResults[index] is { } failure
-                ? Task.FromResult(failure)
-                : ConfirmAsync(target, timeout));
-        return await Task.WhenAll(confirmations);
+        var exits = uniqueTargets
+            .Select(target => ExitOneAsync(target, gracefulTimeout, operationTimeout))
+            .ToArray();
+        return await Task.WhenAll(exits);
     }
 
-    private static ExitProcessResult? RequestExit(IExitProcessTarget target)
+    private static async Task<ExitProcessResult> ExitOneAsync(
+        IExitProcessTarget target,
+        TimeSpan gracefulTimeout,
+        TimeSpan operationTimeout)
     {
+        var gracefulTask = Task.Run(target.RequestGracefulExit);
+        if (await Task.WhenAny(gracefulTask, Task.Delay(operationTimeout)) != gracefulTask)
+        {
+            ObserveLateFailure(gracefulTask, "client-exit-graceful-late-worker");
+            DiagnosticLogService.WriteActivityEvent($"client-exit-graceful-request-timeout pid={target.ProcessId}");
+            return new ExitProcessResult(target.ProcessId, false, false, "GracefulRequestTimeout");
+        }
+
+        bool gracefulRequested;
         try
         {
-            target.RequestExit();
-            return null;
+            gracefulRequested = await gracefulTask;
         }
-        catch (Exception exception)
+        catch (ExitProcessIdentityException exception)
         {
             return new ExitProcessResult(target.ProcessId, false, false,
-                exception.GetType().Name + ": " + exception.Message);
-        }
-    }
-
-    private static async Task<ExitProcessResult> ConfirmAsync(IExitProcessTarget target, TimeSpan timeout)
-    {
-        try
-        {
-            var confirmed = await target.WaitForExitAsync(timeout);
-            return new ExitProcessResult(target.ProcessId, true, confirmed,
-                confirmed ? null : "Timeout");
+                "IdentityMismatch: " + exception.Message);
         }
         catch (Exception exception)
         {
-            return new ExitProcessResult(target.ProcessId, true, false,
-                exception.GetType().Name + ": " + exception.Message);
+            DiagnosticLogService.WriteErrorEvent("client-exit-graceful-request", exception);
+            return new ExitProcessResult(target.ProcessId, false, false,
+                "GracefulRequestFailed: " + exception.GetType().Name);
         }
+
+        try
+        {
+            if (await target.WaitForExitAsync(gracefulTimeout))
+            {
+                return new ExitProcessResult(target.ProcessId, gracefulRequested, true, null)
+                {
+                    GracefulRequested = gracefulRequested
+                };
+            }
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteErrorEvent("client-exit-graceful-confirmation", exception);
+            // A failed observation is not evidence of exit. The kill target performs
+            // a fresh PID/start-time/HWND check before any forced termination.
+        }
+
+        var killTask = Task.Run(target.ForceKill);
+        if (await Task.WhenAny(killTask, Task.Delay(operationTimeout)) != killTask)
+        {
+            ObserveLateFailure(killTask, "client-exit-kill-late-worker");
+            DiagnosticLogService.WriteActivityEvent($"client-exit-kill-request-timeout pid={target.ProcessId}");
+            return new ExitProcessResult(target.ProcessId, true, false, "KillRequestTimeout")
+            {
+                GracefulRequested = gracefulRequested
+            };
+        }
+
+        try
+        {
+            await killTask;
+        }
+        catch (ExitProcessIdentityException exception)
+        {
+            var exited = await TryObserveExited(target, TimeSpan.FromMilliseconds(100));
+            return new ExitProcessResult(target.ProcessId, true, exited,
+                exited ? null : "IdentityMismatch: " + exception.Message)
+            {
+                GracefulRequested = gracefulRequested
+            };
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteErrorEvent("client-exit-kill-request", exception);
+            var exited = await TryObserveExited(target, TimeSpan.FromMilliseconds(100));
+            return new ExitProcessResult(target.ProcessId, true, exited,
+                exited ? null : "KillFailed: " + exception.GetType().Name)
+            {
+                GracefulRequested = gracefulRequested
+            };
+        }
+
+        var confirmed = await TryObserveExited(target, operationTimeout);
+        return new ExitProcessResult(target.ProcessId, true, confirmed,
+            confirmed ? null : "KillTimeout")
+        {
+            GracefulRequested = gracefulRequested,
+            KillRequested = true
+        };
+    }
+
+    private static async Task<bool> TryObserveExited(IExitProcessTarget target, TimeSpan timeout)
+    {
+        try
+        {
+            return await target.WaitForExitAsync(timeout);
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLogService.WriteErrorEvent("client-exit-process-observation", exception);
+            return false;
+        }
+    }
+
+    private static void ObserveLateFailure(Task task, string eventName)
+    {
+        _ = task.ContinueWith(
+            completed =>
+            {
+                if (completed.Exception is { } exception)
+                    DiagnosticLogService.WriteErrorEvent(eventName, exception.GetBaseException());
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 }
 
@@ -83,25 +173,68 @@ internal sealed class SystemExitProcessTarget : IExitProcessTarget
     private readonly Process process;
     private readonly int processId;
     private readonly long processStartUtcTicks;
+    private readonly IntPtr windowHandle;
 
-    public SystemExitProcessTarget(Process process)
+    public SystemExitProcessTarget(Process process, IntPtr windowHandle)
     {
         this.process = process;
+        this.windowHandle = windowHandle;
         processId = process.Id;
         processStartUtcTicks = process.StartTime.ToUniversalTime().Ticks;
     }
 
     public int ProcessId => processId;
 
-    public void RequestExit()
+    public bool RequestGracefulExit()
     {
-        // The caller may dispose its Process wrapper after a bounded request timeout.
-        // A late native Kill worker owns a separate wrapper and must verify process
-        // identity again, rather than accessing a disposed wrapper or a reused PID.
         using var current = Process.GetProcessById(processId);
-        if (current.HasExited || current.StartTime.ToUniversalTime().Ticks != processStartUtcTicks)
-            throw new InvalidOperationException("Client process identity changed during exit.");
+        VerifyProcessIdentity(current);
+
+        // The HWND can disappear if the client is already closing. That is not
+        // permission to target a replacement window; ForceKill rechecks ownership
+        // if this original handle is still valid.
+        if (!NativeMethods.IsWindow(windowHandle)) return false;
+        VerifyWindowOwner();
+        return NativeMethods.PostMessage(windowHandle, NativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    public void ForceKill()
+    {
+        using var current = Process.GetProcessById(processId);
+        VerifyProcessIdentity(current);
+
+        // WM_CLOSE may destroy the original HWND before the client process exits.
+        // If the handle still exists, it must still belong to the validated PID.
+        if (NativeMethods.IsWindow(windowHandle))
+            VerifyWindowOwner();
+
         current.Kill(entireProcessTree: false);
+    }
+
+    private void VerifyProcessIdentity(Process current)
+    {
+        if (current.HasExited)
+            throw new ExitProcessIdentityException("The validated client process has already exited.");
+
+        long currentStart;
+        try
+        {
+            currentStart = current.StartTime.ToUniversalTime().Ticks;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+        {
+            throw new ExitProcessIdentityException("The client process start time cannot be verified.", exception);
+        }
+
+        if (currentStart != processStartUtcTicks)
+            throw new ExitProcessIdentityException("The client PID now belongs to a different process generation.");
+    }
+
+    private void VerifyWindowOwner()
+    {
+        NativeMethods.GetWindowThreadProcessId(windowHandle, out var ownerProcessId);
+        if (ownerProcessId != (uint)processId)
+            throw new ExitProcessIdentityException("The original client HWND no longer belongs to the validated PID.");
     }
 
     public async Task<bool> WaitForExitAsync(TimeSpan timeout)
