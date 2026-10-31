@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - maintenance/**
+      - fix/**
   pull_request:
     branches:
       - stable

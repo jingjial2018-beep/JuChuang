@@ -11,19 +11,18 @@
   host/client DPI, native/DWM rectangles, host bounds, region and cached
   insets. Optional expert-only selected-window recalibration is disabled by
   default, gated by `JNEST_EXPERIMENTAL_DPI_RECALIBRATION=1`.
-- W1: add a Settings opt-out for *new* WeChat local profile reads; previously
-  confirmed identities and manual names remain usable. Existing automatic
-  recognition stays enabled on upgrade to avoid breaking account binding.
+- WeChat nickname and avatar recognition remains automatic, with the existing
+  profile-read privacy protections and manual account names preserved.
 - E5: fix RegressionProbe nullable warning; bump PR Actions generations to
   Node.js 24-compatible releases.
-- Version + docs + ArchitectureProbe profile preference regression test.
+- Version and docs updates.
 
 ## Test gates
 
 PR Build Check, ArchitectureProbe, BadgeProbe, RegressionProbe, typography
 validation and Windows x64 FrameworkDependent/SelfContained preview ZIPs.
 
-Two WeChat and one WhatsApp; 100%/200% cold-start DPI; profile toggle;
+Two WeChat and one WhatsApp; 100%/200% cold-start DPI; automatic profile recognition;
 modal dialogs; native/window interaction; tray and exit; and optional
 200→100→200 diagnostic observations.
 

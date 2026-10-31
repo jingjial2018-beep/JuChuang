@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using System.Xml.Linq;
 using JuChuang;
 using JuChuang.Controls;
+using JuChuang.Models;
 using JuChuang.Services;
 
 internal static class Program
@@ -42,6 +43,9 @@ internal static class Program
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
+                await Run("Status clock has no separators and retains seconds", StatusClock);
+                await Run("Password dialog collapses empty error space", PasswordDialogSpacing);
+                await Run("Detached account removal leaves its process running", DetachedAccountRemoval);
                 await Run("Exit-all queues JNest close after the original Closing event", ExitAllDeferredClose);
                 await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
                 await Run("Guarded runner isolates asynchronous event failures", CoverageHarness.GuardedRunnerIsolation);
@@ -357,6 +361,79 @@ internal static class Program
             Assert(hint.Visibility == Visibility.Collapsed, "DND hint shown when disabled");
         }
         finally { dialog.Close(); }
+        return Task.CompletedTask;
+    }
+
+    private static Task StatusClock()
+    {
+        EnsureResources();
+        var window = (Window)Activator.CreateInstance(typeof(App).Assembly.GetType("JuChuang.MainWindow")!)!;
+        try
+        {
+            Call(window, "UpdateLocalClock");
+            var date = (TextBlock)Field(window, "LocalDateText")!;
+            var time = (TextBlock)Field(window, "LocalTimeText")!;
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(date.Text, @"^\d{1,2}月\d{1,2}日  周[一二三四五六日]$"),
+                "status date or weekday format changed");
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(time.Text, @"^\d{2}:\d{2}:\d{2}$"),
+                "status time omitted seconds");
+            Assert(date.FontSize == time.FontSize && date.FontWeight == time.FontWeight
+                && date.FontFamily.Source == time.FontFamily.Source
+                && date.Foreground.ToString() == time.Foreground.ToString(),
+                "status clock typography is inconsistent");
+            Assert(window.FindName("LocalDateTimeSeparatorText") is null,
+                "status clock still contains a separator");
+        }
+        finally { CloseWithoutPrompt(window); }
+        return Task.CompletedTask;
+    }
+
+    private static Task PasswordDialogSpacing()
+    {
+        EnsureResources();
+        var dialog = new LockPasswordDialog();
+        try
+        {
+            var error = (TextBlock)Field(dialog, "ErrorText")!;
+            Assert(error.Visibility == Visibility.Collapsed,
+                "empty password error reserves space");
+            error.Text = "测试错误";
+            Assert(error.Visibility == Visibility.Visible,
+                "password error is hidden when populated");
+            error.Text = "";
+            Assert(error.Visibility == Visibility.Collapsed,
+                "cleared password error still reserves space");
+        }
+        finally { dialog.Close(); }
+        return Task.CompletedTask;
+    }
+
+    private static Task DetachedAccountRemoval()
+    {
+        EnsureResources();
+        var window = (Window)Activator.CreateInstance(typeof(App).Assembly.GetType("JuChuang.MainWindow")!)!;
+        using var process = Process.GetCurrentProcess();
+        var start = process.StartTime.ToUniversalTime().Ticks;
+        var entry = new ClientWindowEntry(new IntPtr(0x123456), process.Id, "Weixin", "Weixin",
+            ClientKind.WeChat, "测试账号")
+        {
+            ProcessStartUtcTicks = start,
+            IsManuallyDetached = true,
+            IsAttached = false
+        };
+        try
+        {
+            var entries = (System.Collections.ObjectModel.ObservableCollection<ClientWindowEntry>)
+                window.GetType().GetProperty("Entries")!.GetValue(window)!;
+            entries.Add(entry);
+            var button = new Button { CommandParameter = entry };
+            Call(window, "CloseEntry_Click", button, new RoutedEventArgs(Button.ClickEvent, button));
+            Assert(!entries.Contains(entry), "detached account remained in list");
+            var suppressed = (HashSet<(int ProcessId, long StartUtcTicks)>)Field(window, "_removedDetachedProcesses")!;
+            Assert(suppressed.Contains((process.Id, start)), "background scan could immediately reinsert detached process");
+            Assert(!process.HasExited, "detached account removal terminated its process");
+        }
+        finally { CloseWithoutPrompt(window); }
         return Task.CompletedTask;
     }
 

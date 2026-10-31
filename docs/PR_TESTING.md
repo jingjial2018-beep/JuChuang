@@ -124,10 +124,9 @@ without real-device acceptance.
 2. Exercise repeated WinEvent location bursts while resizing/restoring
    hosted windows. Trailing 200-ms rechecks must not cause excess movement
    or block input in unrelated applications.
-3. Under Settings → 微信本地资料 disable automatic local profile reads,
-   restart, and verify manual labels and existing verified identities are
-   preserved while no *new* profile reads start. Re-enable to resume
-   resolution of previously unresolved accounts.
+3. Confirm WeChat nickname and avatar recognition remains automatic. Verify
+   manual labels and previously confirmed identities survive restart, and
+   profile-read failures do not expose another account's identity.
 4. Launch with `JNEST_DIAGNOSTIC_DETAIL=1`. Change DPI 200→100→200 and
    examine `host-dpi-snapshot` (host/client DPI, window/frame/host/region
    rectangles and cached insets). Read-only observations are the default;
@@ -138,5 +137,24 @@ without real-device acceptance.
    production acceptance path.
 6. Confirm Windows Build Check, ArchitectureProbe, BadgeProbe,
    RegressionProbe, typography validation and both x64 ZIP modes.
+
+## v2.0.2 formal-candidate corrections
+
+1. At the bottom of JNest, verify `10月31日  周六  15:56:00`-style spacing,
+   no dot, hash or dividing line, matching typography, updating seconds and
+   unchanged 32-DIP bar height.
+2. With an embedded WeChat and WhatsApp, click the corresponding account ×
+   separately and verify the confirmation and process-generation-checked exit.
+   Record graceful close and fallback results; use a disposable session for
+   any forced termination test.
+3. Pop out another client, then click its account ×. Confirm its native window
+   and process remain running, its JNest card disappears, background scans do
+   not recreate the card, and “全部接入” restores the same running client.
+4. Confirm automatic WeChat nickname/avatar recognition without a settings
+   switch. Check that manual names and existing privacy protections remain.
+5. Open both set-password and change-password dialogs. Verify tighter top and
+   bottom spacing, no blank error row, unchanged password field and button
+   sizes, and an error message that appears for invalid input and collapses
+   again after correction. Verify password creation, change and unlock.
 
 The official `stable` baseline remains unchanged.
