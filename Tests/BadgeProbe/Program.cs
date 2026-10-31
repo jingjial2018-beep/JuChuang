@@ -33,21 +33,27 @@ var captureHandle = new IntPtr(1234);
 const int capturePid = 5678;
 var firstCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
 var duplicateCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
+// A timed-out native worker remains gated even after its retry cooldown expires.
 captureGate.Defer(captureHandle, capturePid, captureNow.AddSeconds(15));
-var duringCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(14));
-// Even after the cooldown expires, the original native capture may still be in flight.
-// The gate must continue blocking duplicates until that worker actually completes.
 var afterCooldownStillInFlight = captureGate.TryBegin(
     captureHandle, capturePid, captureNow.AddSeconds(16));
-captureGate.Complete(captureHandle, capturePid);
-var afterCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(16));
+
+// A separate completed capture verifies that the cooldown is applied after its worker exits.
+var cooldownHandle = new IntPtr(1235);
+var cooldownCapture = captureGate.TryBegin(cooldownHandle, capturePid, captureNow);
+captureGate.Defer(cooldownHandle, capturePid, captureNow.AddSeconds(15));
+captureGate.Complete(cooldownHandle, capturePid);
+var duringCooldown = captureGate.TryBegin(cooldownHandle, capturePid, captureNow.AddSeconds(14));
+var afterCooldown = captureGate.TryBegin(cooldownHandle, capturePid, captureNow.AddSeconds(16));
 var otherProcessCapture = captureGate.TryBegin(captureHandle, capturePid + 1, captureNow);
 captureGate.Complete(captureHandle, capturePid);
+captureGate.Complete(cooldownHandle, capturePid);
 captureGate.Complete(captureHandle, capturePid + 1);
 var captureGatePassed =
     firstCapture == BadgeCaptureStartResult.Started
     && duplicateCapture == BadgeCaptureStartResult.AlreadyRunning
     && afterCooldownStillInFlight == BadgeCaptureStartResult.AlreadyRunning
+    && cooldownCapture == BadgeCaptureStartResult.Started
     && duringCooldown == BadgeCaptureStartResult.CoolingDown
     && afterCooldown == BadgeCaptureStartResult.Started
     && otherProcessCapture == BadgeCaptureStartResult.Started;
