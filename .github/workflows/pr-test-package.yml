@@ -1,6 +1,10 @@
 name: JNest PR test package (no release)
 
 on:
+  push:
+    branches:
+      - maintenance/**
+      - fix/**
   pull_request:
     branches:
       - stable
@@ -13,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-test-package-${{ github.event.pull_request.number }}
+  group: pr-test-package-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,20 +25,24 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Read preview version
         shell: pwsh
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           [xml]$project = Get-Content .\JuChuang.csproj
           $baseVersion = $project.Project.PropertyGroup.Version
-          "PREVIEW_VERSION=$baseVersion-preview.pr${{ github.event.pull_request.number }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PACKAGE_NAME=JNest-v$baseVersion-preview-PR${{ github.event.pull_request.number }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $previewSuffix = if ([string]::IsNullOrWhiteSpace($env:PR_NUMBER)) { "build$($env:RUN_NUMBER)" } else { "pr$($env:PR_NUMBER)" }
+          "PREVIEW_VERSION=$baseVersion-preview.$previewSuffix" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PACKAGE_NAME=JNest-v$baseVersion-preview-$previewSuffix" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore
         run: dotnet restore .\JuChuang.csproj -r win-x64
@@ -45,6 +53,13 @@ jobs:
           dotnet restore .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj
           dotnet build .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-restore
           dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
+
+      - name: Run badge and notification regression probes
+        shell: pwsh
+        run: |
+          dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
+          dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
+          .\Tests\ValidateSettingsTypography.ps1
       - name: Restore win-x64 publish assets
         run: dotnet restore .\JuChuang.csproj -r win-x64
 
@@ -76,6 +91,19 @@ jobs:
           Copy-Item .\docs/PR_TESTING.md .\artifacts\FrameworkDependent\PR_TESTING.md
           Copy-Item .\docs/PR_TESTING.md .\artifacts\SelfContained\PR_TESTING.md
 
+      - name: Verify .NET 10 x64 output modes
+        shell: pwsh
+        run: |
+          $fd = Get-Content -Raw .\artifacts\FrameworkDependent\JNest.runtimeconfig.json | ConvertFrom-Json
+          if ($fd.runtimeOptions.tfm -ne 'net10.0' -or
+              $fd.runtimeOptions.frameworks.name -notcontains 'Microsoft.WindowsDesktop.App') {
+            throw 'Framework-dependent build does not require .NET 10 Windows Desktop.'
+          }
+          if (-not (Test-Path .\artifacts\SelfContained\JNest.exe) -or
+              -not (Test-Path .\artifacts\SelfContained\hostpolicy.dll)) {
+            throw 'Self-contained win-x64 output is incomplete.'
+          }
+
       - name: Package ZIP files and hashes
         shell: pwsh
         run: |
@@ -95,7 +123,7 @@ jobs:
           Copy-Item .\docs/PR_TESTING.md .\packages\PR_TESTING.md
 
       - name: Upload preview package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.PACKAGE_NAME }}
           path: .\packages\*

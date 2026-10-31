@@ -21,11 +21,12 @@ public sealed record CachedWeChatProfile(
 /// </summary>
 public sealed class WeChatProfileCacheService
 {
+    internal static string? CacheRootOverride { get; set; }
     private readonly object _syncRoot = new();
     private readonly Dictionary<string, CachedWeChatProfile> _profiles =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private static string CacheRoot => Path.Combine(
+    private static string CacheRoot => CacheRootOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JuChuang",
         "profile-cache");

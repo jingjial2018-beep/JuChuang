@@ -17,26 +17,79 @@ internal sealed class BadgeDetector
     private static readonly Lazy<IReadOnlyDictionary<char, GlyphTemplate[]>> Templates =
         new(CreateTemplates, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    public BadgeResult? Detect(IntPtr hwnd, ClientKind kind)
-    {
-        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd)
-            || !NativeMethods.GetWindowRect(hwnd, out var rect)
-            || rect.Width <= 0 || rect.Height <= 0)
-        {
-            return null;
-        }
+    private static readonly TimeSpan CaptureTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan CaptureRetryDelay = TimeSpan.FromSeconds(15);
+    private readonly BadgeCaptureGate _captureGate = new();
 
+    internal async Task<BadgeCaptureAttempt> DetectAsync(IntPtr hwnd, ClientKind kind, int processId)
+    {
+        var start = _captureGate.TryBegin(hwnd, processId, DateTime.UtcNow);
+        if (start != BadgeCaptureStartResult.Started)
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.Skipped, null);
+
+        Task<BadgeCaptureAttempt>? captureTask = null;
         try
         {
+            captureTask = Task.Run(() => DetectCore(hwnd, kind));
+            var attempt = await captureTask.WaitAsync(CaptureTimeout);
+            if (attempt.Status == BadgeCaptureStatus.WindowHung)
+            {
+                _captureGate.Defer(hwnd, processId, DateTime.UtcNow + CaptureRetryDelay);
+                DiagnosticLogService.WriteActivityEvent("badge-window-hung", processId);
+            }
+            return attempt;
+        }
+        catch (TimeoutException)
+        {
+            // WaitAsync bounds the caller, not the native PrintWindow call itself.
+            // Keep the HWND/PID in-flight gate until the worker really completes.
+            _captureGate.Defer(hwnd, processId, DateTime.UtcNow + CaptureRetryDelay);
+            DiagnosticLogService.WriteActivityEvent("badge-capture-timeout", processId);
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.TimedOut, null);
+        }
+        finally
+        {
+            if (captureTask is null || captureTask.IsCompleted)
+            {
+                _captureGate.Complete(hwnd, processId);
+            }
+            else
+            {
+                _ = captureTask.ContinueWith(
+                    _ => _captureGate.Complete(hwnd, processId),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+        }
+    }
+
+    private static BadgeCaptureAttempt DetectCore(IntPtr hwnd, ClientKind kind)
+    {
+        try
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
+            if (NativeMethods.IsHungAppWindow(hwnd))
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.WindowHung, null);
+            if (!NativeMethods.GetWindowRect(hwnd, out var rect)
+                || rect.Width <= 0 || rect.Height <= 0)
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
+
             using var bitmap = Capture(hwnd, rect.Width, rect.Height);
+            if (bitmap is null)
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
+
             var dpi = NativeMethods.GetDpiForWindow(hwnd);
             var dpiScale = dpi > 0 ? Math.Clamp(dpi / 96.0, 0.75, 4.0) : 1.0;
-            return bitmap is null ? null : AnalyzeBitmap(bitmap, kind, dpiScale, null);
+            return new BadgeCaptureAttempt(
+                BadgeCaptureStatus.Completed,
+                AnalyzeBitmap(bitmap, kind, dpiScale, null));
         }
         catch
         {
             // 消息提示是辅助功能；截图或识别失败时不能影响窗口管理主流程。
-            return null;
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
         }
     }
 
@@ -69,10 +122,18 @@ internal sealed class BadgeDetector
         var data = bitmap.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         try
         {
-            var stride = Math.Abs(data.Stride);
-            var pixels = new byte[stride * bitmap.Height];
-            Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
-            return DetectPixels(pixels, bitmap.Width, bitmap.Height, stride, kind, dpiScale, trace);
+            // PrintWindow renders the full client, but recognition needs only the
+            // left navigation strip. Avoid copying the chat area on every scan.
+            var region = GetSearchRegion(bitmap.Width, bitmap.Height, kind, dpiScale);
+            var copiedStride = checked((region.Right + 1) * 4);
+            var pixels = new byte[checked(copiedStride * bitmap.Height)];
+            for (var y = 0; y < bitmap.Height; y++)
+            {
+                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride),
+                    pixels, y * copiedStride, copiedStride);
+            }
+            return DetectPixels(pixels, bitmap.Width, bitmap.Height,
+                copiedStride, kind, dpiScale, trace);
         }
         finally
         {
@@ -125,9 +186,7 @@ internal sealed class BadgeDetector
     {
         // 只扫描左侧导航栏的聊天入口。这样不会把会话列表、通话页或归档页的
         // 角标误当成账号总未读数，也大幅减少截图识别开销。
-        var region = kind == ClientKind.WeChat
-            ? RelativeRegion.Create(width, height, 0.025, 0.14, 0.12, 0.38)
-            : RelativeRegion.CreateLogicalPixels(width, height, dpiScale, 18, 180, 38, 235);
+        var region = GetSearchRegion(width, height, kind, dpiScale);
 
         var candidates = FindBadgeCandidates(pixels, width, height, stride, region, kind, dpiScale);
         trace?.Invoke($"candidates={candidates.Count}");
@@ -208,6 +267,12 @@ internal sealed class BadgeDetector
             ? new BadgeResult(true, number, BadgeConfidenceLevel.High)
             : BadgeResult.Dot;
     }
+
+    private static RelativeRegion GetSearchRegion(int width, int height,
+        ClientKind kind, double dpiScale)
+        => kind == ClientKind.WeChat
+            ? RelativeRegion.Create(width, height, 0.025, 0.14, 0.12, 0.38)
+            : RelativeRegion.CreateLogicalPixels(width, height, dpiScale, 18, 180, 38, 235);
 
     private static List<BadgeBox> FindBadgeCandidates(
         byte[] pixels,

@@ -44,7 +44,9 @@ public sealed record WeChatProfileReadResult(
 
 /// <summary>
 /// Reads only the current account's row from WeChat 4.x contact.db. It never opens
-/// message/session databases and never persists a database key or a decrypted copy.
+/// message/session databases and never persists a database key. A short-lived
+/// decrypted contact database copy is removed on a best-effort basis after the
+/// read, on normal exit, and during later startup cleanup.
 /// </summary>
 public static partial class WeChatProfileService
 {
@@ -74,14 +76,11 @@ public static partial class WeChatProfileService
         var result = TryReadProfileDetailed(processId, accountId);
         if (result.Profile is null)
         {
-            Trace.WriteLine(
-                $"[WeChatProfile] account={accountId} stage={result.Stage} detail={result.Detail ?? "-"}");
+            DiagnosticLogService.WriteDebugEvent($"wechat-profile-read-{result.Stage}", processId);
         }
         else if (result.Profile.AvatarPath is null)
         {
-            Trace.WriteLine(
-                $"[WeChatProfile] account={accountId} stage={WeChatProfileFailureStage.AvatarCacheMissing} " +
-                $"detail={result.Detail ?? "-"}");
+            DiagnosticLogService.WriteDebugEvent("wechat-profile-avatar-cache-missing", processId);
         }
 
         return result.Profile;
@@ -150,6 +149,7 @@ public static partial class WeChatProfileService
 
             if (keyMatch.Value.PageIndex < 0)
             {
+                CryptographicOperations.ZeroMemory(keyMatch.Value.Key);
                 context.Fail(WeChatProfileFailureStage.AmbiguousAccountKey,
                     "multiple account databases matched this process; refusing uncertain identity binding");
                 return context.ToResult(null);
@@ -256,6 +256,7 @@ public static partial class WeChatProfileService
 
         if (keyMatch.Value.PageIndex < 0)
         {
+            CryptographicOperations.ZeroMemory(keyMatch.Value.Key);
             context.Fail(WeChatProfileFailureStage.AmbiguousAccountKey,
                 "multiple verified keys for profile database; identity cannot be trusted");
             return null;
@@ -272,14 +273,12 @@ public static partial class WeChatProfileService
         Func<string, T?> action)
         where T : class
     {
-        var scratchDirectory = EnsureScratchDirectory();
-        CleanupTemporaryArtifacts(ReadTimeCleanupMinimumAge);
-        var decryptedPath = Path.Combine(
-            scratchDirectory,
-            BuildScratchFileName(processId));
-
+        string? decryptedPath = null;
         try
         {
+            var scratchDirectory = EnsureScratchDirectory();
+            CleanupTemporaryArtifacts(ReadTimeCleanupMinimumAge);
+            decryptedPath = Path.Combine(scratchDirectory, BuildScratchFileName(processId));
             DecryptDatabase(contactDatabase, decryptedPath, key);
 
             // WCDB keeps contact.db in WAL mode: rows written after the last checkpoint
@@ -295,14 +294,13 @@ public static partial class WeChatProfileService
             {
                 return action(decryptedPath);
             }
-            catch (Exception firstFailure) when (appliedFrames > 0)
+            catch (Exception) when (appliedFrames > 0)
             {
                 // The merged WAL image may be inconsistent (partial frame / torn write).
                 // Fall back to the main database alone instead of failing outright.
-                Trace.WriteLine(
-                    $"[WeChatProfile] WAL merge produced an unreadable database " +
-                    $"({firstFailure.Message}); retrying without WAL frames");
+                DiagnosticLogService.WriteDebugEvent("wechat-profile-wal-fallback", processId);
                 context.WalMergeFallback = true;
+                DeleteTemporaryDatabase(decryptedPath);
                 DecryptDatabase(contactDatabase, decryptedPath, key);
                 return action(decryptedPath);
             }
@@ -310,7 +308,10 @@ public static partial class WeChatProfileService
         finally
         {
             CryptographicOperations.ZeroMemory(key);
-            DeleteTemporaryDatabase(decryptedPath);
+            if (decryptedPath is not null)
+            {
+                DeleteTemporaryDatabase(decryptedPath);
+            }
         }
     }
 
@@ -335,42 +336,74 @@ public static partial class WeChatProfileService
     private static string EnsureScratchDirectory()
     {
         var directory = ScratchDirectory;
-        if (Directory.Exists(directory))
+        // Never write a plaintext database into a directory whose ACL could not be
+        // verified. Existing directories may have been created by an older version.
+        var parent = Path.GetDirectoryName(directory)
+            ?? throw new UnauthorizedAccessException("Profile scratch directory parent is unavailable.");
+        Directory.CreateDirectory(parent);
+        if ((new DirectoryInfo(parent).Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new UnauthorizedAccessException("Profile scratch directory parent is a reparse point.");
+        using var identity = WindowsIdentity.GetCurrent();
+        var user = identity.User ?? throw new UnauthorizedAccessException("Current user SID is unavailable.");
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        security.AddAccessRule(new FileSystemAccessRule(
+            user, FileSystemRights.FullControl, inherit,
+            PropagationFlags.None, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            FileSystemRights.FullControl, inherit,
+            PropagationFlags.None, AccessControlType.Allow));
+
+        var info = new DirectoryInfo(directory);
+        if (!info.Exists)
         {
-            return directory;
+            info.Create(security);
+        }
+        else
+        {
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new UnauthorizedAccessException("Profile scratch directory is a reparse point.");
+            info.SetAccessControl(security);
         }
 
-        try
-        {
-            // 先建好父目录，只让最末一级带显式 ACL，不改动 JuChuang 目录本身的权限。
-            Directory.CreateDirectory(Path.GetDirectoryName(directory)!);
+        info.Refresh();
+        if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new UnauthorizedAccessException("Profile scratch directory is a reparse point.");
 
-            using var identity = WindowsIdentity.GetCurrent();
-            var security = new DirectorySecurity();
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
-            if (identity.User is { } user)
-            {
-                security.AddAccessRule(new FileSystemAccessRule(
-                    user, FileSystemRights.FullControl, inherit,
-                    PropagationFlags.None, AccessControlType.Allow));
-            }
-
-            // 保留 SYSTEM，避免杀毒/备份服务因无法访问而报错。
-            security.AddAccessRule(new FileSystemAccessRule(
-                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-                FileSystemRights.FullControl, inherit,
-                PropagationFlags.None, AccessControlType.Allow));
-
-            new DirectoryInfo(directory).Create(security);
-        }
-        catch
-        {
-            // 收紧权限失败不应让资料读取整体失败；退回默认权限（继承自当前用户的数据目录）。
-            Directory.CreateDirectory(directory);
-        }
-
+        // Do not assume a successful SetAccessControl call implies the effective
+        // directory ACL is private: read it back before creating plaintext files.
+        VerifyScratchDirectoryPermissions(info, user);
         return directory;
+    }
+
+    internal static string EnsureScratchDirectoryForTest() => EnsureScratchDirectory();
+
+    private static void VerifyScratchDirectoryPermissions(DirectoryInfo info, SecurityIdentifier currentUser)
+    {
+        var security = info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+        var localSystem = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+        // Elevated Windows processes can create a directory owned by the
+        // BUILTIN Administrators group. Ownership does not grant an extra DACL
+        // access rule: access still must be explicitly user/SYSTEM-only below.
+        if (owner is null || (!owner.Equals(currentUser)
+            && !owner.Equals(localSystem) && !owner.Equals(administrators)))
+            throw new UnauthorizedAccessException("Profile scratch directory has an unexpected owner.");
+        if (!security.AreAccessRulesProtected)
+            throw new UnauthorizedAccessException("Profile scratch directory inherits access rules.");
+
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .OfType<FileSystemAccessRule>().ToArray();
+        if (rules.Length == 0 ||
+            rules.Any(rule => rule.AccessControlType != AccessControlType.Allow
+                || rule.IdentityReference is not SecurityIdentifier sid
+                || (!sid.Equals(currentUser) && !sid.Equals(localSystem))) ||
+            !rules.Any(rule => rule.IdentityReference.Equals(currentUser)
+                && (rule.FileSystemRights & FileSystemRights.FullControl) == FileSystemRights.FullControl))
+            throw new UnauthorizedAccessException("Profile scratch directory grants access beyond the current user and SYSTEM.");
     }
 
     /// <summary>
@@ -385,6 +418,12 @@ public static partial class WeChatProfileService
         foreach (var directory in new[] { ScratchDirectory, LegacyScratchDirectory })
         {
             if (!Directory.Exists(directory)) continue;
+            try
+            {
+                if ((new DirectoryInfo(directory).Attributes & FileAttributes.ReparsePoint) != 0)
+                    continue;
+            }
+            catch { continue; }
             string[] files;
             try { files = Directory.EnumerateFiles(directory, "contact-*").ToArray(); }
             catch { continue; }
@@ -393,8 +432,11 @@ public static partial class WeChatProfileService
             {
                 try
                 {
-                    var lastWritten = File.GetLastWriteTimeUtc(file);
                     var fileName = Path.GetFileName(file);
+                    if (!ScratchCleanupPattern.IsMatch(fileName)
+                        || (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+                    var lastWritten = File.GetLastWriteTimeUtc(file);
                     var match = OwnerPattern.Match(fileName);
                     if (match.Success
                         && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var ownerPid)
@@ -423,7 +465,47 @@ public static partial class WeChatProfileService
         return removed;
     }
 
+    internal static void CleanupCurrentProcessArtifacts()
+    {
+        if (!Directory.Exists(ScratchDirectory)) return;
+        try
+        {
+            if ((new DirectoryInfo(ScratchDirectory).Attributes & FileAttributes.ReparsePoint) != 0)
+                return;
+        }
+        catch { return; }
+        string[] files;
+        try { files = Directory.EnumerateFiles(ScratchDirectory, "contact-*").ToArray(); }
+        catch { return; }
+
+        foreach (var file in files)
+        {
+            var match = OwnerPattern.Match(Path.GetFileName(file));
+            if (!match.Success
+                || !int.TryParse(match.Groups[1].Value, NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var ownerPid)
+                || !long.TryParse(match.Groups[2].Value, NumberStyles.AllowHexSpecifier,
+                    CultureInfo.InvariantCulture, out var ownerStartTicks)
+                || ownerPid != Environment.ProcessId
+                || ownerStartTicks != OwnerStartTicks.Value) continue;
+            try
+            {
+                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0)
+                    File.Delete(file);
+            }
+            catch { /* Startup cleanup will retry after an abnormal shutdown. */ }
+        }
+    }
+
     private static readonly TimeSpan OrphanGracePeriod = TimeSpan.FromSeconds(5);
+
+    // Only files with known JNest naming schemes are eligible for cleanup,
+    // never arbitrary contact-* files in a shared legacy %TEMP% directory.
+    private static readonly Regex ScratchCleanupPattern = new(
+        @"^contact-\d+-(?:owner\d+-[0-9a-fA-F]+-)?[0-9a-fA-F]{32}\.db(?:-wal|-shm)?$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    internal static bool IsScratchCleanupCandidate(string fileName)
+        => ScratchCleanupPattern.IsMatch(Path.GetFileName(fileName));
 
     // 文件名：contact-{微信PID}-owner{创建者PID}-{创建者启动时间ticks(十六进制)}-{GUID}.db
     private static readonly Regex OwnerPattern = new(
@@ -446,7 +528,12 @@ public static partial class WeChatProfileService
     internal static long CurrentProcessStartTicks => OwnerStartTicks.Value;
 
     internal static string BuildScratchFileName(int weChatProcessId)
-        => $"contact-{weChatProcessId}-owner{Environment.ProcessId}-{OwnerStartTicks.Value:x}-{Guid.NewGuid():N}.db";
+    {
+        var start = OwnerStartTicks.Value;
+        if (start <= 0)
+            throw new UnauthorizedAccessException("Unable to bind plaintext scratch file to a verified process lifetime.");
+        return $"contact-{weChatProcessId}-owner{Environment.ProcessId}-{start:x}-{Guid.NewGuid():N}.db";
+    }
 
     /// <summary>
     /// 创建者是否仍是“同一个进程实例”。用 PID + 启动时间核对，而不是进程名：
@@ -685,10 +772,9 @@ public static partial class WeChatProfileService
                     accountDirectory,
                     accountId));
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            Trace.WriteLine(
-                $"[WeChatProfile] avatar-db fallback failed for account={accountId}: {exception.Message}");
+            DiagnosticLogService.WriteDebugEvent("wechat-avatar-db-fallback-failed", processId);
             return null;
         }
     }
@@ -1098,7 +1184,7 @@ public static partial class WeChatProfileService
             FileMode.Open,
             FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
-        using var output = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var output = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
 
         var page = new byte[PageSize];
         var pageNumber = 1;

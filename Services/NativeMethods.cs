@@ -30,6 +30,7 @@ internal static class NativeMethods
     internal const long WS_POPUP = 0x80000000L;
     internal const long WS_VISIBLE = 0x10000000L;
     internal const long WS_MINIMIZE = 0x20000000L;
+    internal const long WS_MAXIMIZE = 0x01000000L;
     internal const long WS_CAPTION = 0x00C00000L;
     internal const long WS_THICKFRAME = 0x00040000L;
     internal const long WS_SYSMENU = 0x00080000L;
@@ -79,6 +80,10 @@ internal static class NativeMethods
     internal const uint WM_NCACTIVATE = 0x0086;
     internal const uint WM_CANCELMODE = 0x001F;
     internal const uint WM_EXITSIZEMOVE = 0x0232;
+    internal const int WM_WTSSESSION_CHANGE = 0x02B1;
+    internal const int WM_DPICHANGED = 0x02E0;
+    internal const int WTS_SESSION_UNLOCK = 0x8;
+    internal const int NOTIFY_FOR_THIS_SESSION = 0;
     internal const int WA_ACTIVE = 1;
     internal const uint EVENT_SYSTEM_MOVESIZESTART = 0x000A;
     internal const uint EVENT_SYSTEM_MOVESIZEEND = 0x000B;
@@ -176,6 +181,10 @@ internal static class NativeMethods
     // PrintWindow 标志：强制从硬件加速（DirectUI/WebView）窗口回读完整内容。
     // 微信 4.x（Qt）与 WhatsApp（WebView2）的自绘窗口若不带此标志会截到黑屏。
     internal const uint PW_RENDERFULLCONTENT = 0x00000002;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsHungAppWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -300,6 +309,9 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool redraw);
 
+    [DllImport("user32.dll")]
+    internal static extern int GetWindowRgnBox(IntPtr hWnd, out RECT rect);
+
     [DllImport("gdi32.dll", SetLastError = true)]
     internal static extern IntPtr CreateRoundRectRgn(
         int left,
@@ -347,6 +359,14 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool DeregisterShellHookWindow(IntPtr hWnd);
 
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WTSRegisterSessionNotification(IntPtr hWnd, int dwFlags);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WTSUnRegisterSessionNotification(IntPtr hWnd);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern uint RegisterWindowMessage(string lpString);
 
@@ -366,7 +386,7 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr SetWinEventHook(
         uint eventMin,
         uint eventMax,

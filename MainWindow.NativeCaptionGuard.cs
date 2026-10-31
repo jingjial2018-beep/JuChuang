@@ -142,6 +142,43 @@ public partial class MainWindow
         WmMouseWheel or WmMouseHWheel;
 
     private int _guardLeft, _guardTop, _guardRight, _guardBottom;
+    private int _queuedHookDiagnostics;
+
+    private void QueueNativeHookDiagnostic(Func<string> messageFactory, bool mouse = false)
+    {
+        if (!ReconnectDiagnostics.Active) return;
+        if (Interlocked.Increment(ref _queuedHookDiagnostics) > 32)
+        {
+            Interlocked.Decrement(ref _queuedHookDiagnostics);
+            return;
+        }
+        try
+        {
+            // Never write a file or inspect modal WPF state inside WH_MOUSE_LL.
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                try
+                {
+                    if (!ReconnectDiagnostics.Active) return;
+                    var message = messageFactory();
+                    if (mouse) ReconnectDiagnostics.Mouse(message);
+                    else ReconnectDiagnostics.Write(message);
+                }
+                catch (Exception exception)
+                {
+                    DiagnosticLogService.WriteErrorEvent("native-hook-diagnostics", exception);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _queuedHookDiagnostics);
+                }
+            }));
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _queuedHookDiagnostics);
+        }
+    }
 
     private void StartNativeCaptionGuard()
     {
@@ -154,13 +191,27 @@ public partial class MainWindow
             ShowTemporaryStatus("窗口按钮保护测试未启用");
             return;
         }
-        _captionGuardRefreshTimer.Tick += (_, _) =>
+        // A named handler can be removed on shutdown/restart; an anonymous
+        // subscription accumulated handlers after repeated Start/Stop cycles.
+        _captionGuardRefreshTimer.Tick -= CaptionGuardRefreshTimer_Tick;
+        _captionGuardRefreshTimer.Tick += CaptionGuardRefreshTimer_Tick;
+        _captionGuardRefreshTimer.Start();
+        CaptionGuardRefreshTimer_Tick(this, EventArgs.Empty);
+    }
+
+    private void CaptionGuardRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_isClosing) return;
+        try
         {
             RefreshNativeCaptionGuard();
             RefreshModalClickShield();
-        };
-        _captionGuardRefreshTimer.Start();
-        RefreshNativeCaptionGuard();
+        }
+        catch (Exception exception)
+        {
+            _guardedClient = IntPtr.Zero; // Fail open for input.
+            DiagnosticLogService.WriteErrorEvent("caption-guard-refresh", exception);
+        }
     }
 
     private void RefreshNativeCaptionGuard()
@@ -192,6 +243,27 @@ public partial class MainWindow
 
     private IntPtr OnNativeCaptionMouse(int code, IntPtr msg, IntPtr data)
     {
+        try
+        {
+            return ProcessNativeCaptionMouse(code, msg, data);
+        }
+        catch (Exception exception)
+        {
+            // Never let a managed exception escape a global low-level mouse
+            // hook. Do not perform file I/O or logging on the hook callback.
+            try
+            {
+                if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                    _ = Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                        new Action(() => DiagnosticLogService.WriteErrorEvent("caption-mouse-hook", exception)));
+            }
+            catch { /* A shutting-down dispatcher cannot accept diagnostics. */ }
+            return CallNextHookEx(_captionMouseHook, code, msg, data);
+        }
+    }
+
+    private IntPtr ProcessNativeCaptionMouse(int code, IntPtr msg, IntPtr data)
+    {
         if (code >= 0 && !_isClosing)
         {
             var command = unchecked((int)msg.ToInt64());
@@ -211,7 +283,7 @@ public partial class MainWindow
                 var isShieldTarget = root == _modalClickShieldHwnd;
                 if (ReconnectDiagnostics.Active && IsModalActivationButtonDown(command)
                     && (isHostedTarget || isManagerTarget || isShieldTarget))
-                    ReconnectDiagnostics.Mouse($"modal-click-before msg=0x{command:X} point={point.X},{point.Y} hit=0x{target.ToInt64():X} root=0x{root.ToInt64():X} {ModalClickSnapshot()}");
+                    QueueNativeHookDiagnostic(() => $"modal-click-before msg=0x{command:X} point={point.X},{point.Y} hit=0x{target.ToInt64():X} root=0x{root.ToInt64():X} {ModalClickSnapshot()}", mouse: true);
                 // WPF's disabled modal owner can be returned by WindowFromPoint
                 // instead of the separate embedded client top-level HWND.
                 // Beta.2 only checked IsHostedWindow(root), missing that path.
@@ -244,7 +316,7 @@ public partial class MainWindow
                         }
                         var direct = NativeMethods.SetForegroundWindow(currentHwnd);
                         if (ReconnectDiagnostics.Active)
-                            ReconnectDiagnostics.Write($"modal-direct-click shieldActivate={shieldActivated} dialogActivate={direct} dialog=0x{currentHwnd.ToInt64():X} {ModalClickSnapshot()}");
+                            QueueNativeHookDiagnostic(() => $"modal-direct-click shieldActivate={shieldActivated} dialogActivate={direct} dialog=0x{currentHwnd.ToInt64():X} {ModalClickSnapshot()}");
                         RestoreHostedModalFromUserClick();
                     }
 
@@ -253,7 +325,7 @@ public partial class MainWindow
                     if (isHostedTarget)
                     {
                         if (ReconnectDiagnostics.Active)
-                            ReconnectDiagnostics.Write($"BLOCK modal mouse=0x{command:X} root=0x{root.ToInt64():X}");
+                            QueueNativeHookDiagnostic(() => $"BLOCK modal mouse=0x{command:X} root=0x{root.ToInt64():X}");
                         return new IntPtr(1);
                     }
                 }
@@ -271,7 +343,7 @@ public partial class MainWindow
                     var foreground = NativeMethods.GetForegroundWindow();
                     if (foreground == _guardedClient || foreground == _guardedOwner)
                     {
-                        if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"BLOCK caption mouse=0x{command:X} foreground=0x{foreground.ToInt64():X}");
+                        if (ReconnectDiagnostics.Active) QueueNativeHookDiagnostic(() => $"BLOCK caption mouse=0x{command:X} foreground=0x{foreground.ToInt64():X}");
                         return new IntPtr(1);
                     }
                 }
@@ -288,11 +360,18 @@ public partial class MainWindow
         _modalGuardDialogHwnd = IntPtr.Zero;
         _modalActivationQueued = false;
         _captionGuardRefreshTimer.Stop();
+        _captionGuardRefreshTimer.Tick -= CaptionGuardRefreshTimer_Tick;
         if (_captionMouseHook != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(_captionMouseHook);
-            _captionMouseHook = IntPtr.Zero;
+            if (UnhookWindowsHookEx(_captionMouseHook))
+                _captionMouseHook = IntPtr.Zero;
+            else
+                DiagnosticLogService.WriteActivityEvent(
+                    "caption-guard-unhook-failed-" + Marshal.GetLastWin32Error());
         }
-        _captionHookCallback = null;
+        // If UnhookWindowsHookEx fails, keep the delegate rooted until the
+        // process ends; releasing it could crash another mouse-hook callback.
+        if (_captionMouseHook == IntPtr.Zero)
+            _captionHookCallback = null;
     }
 }

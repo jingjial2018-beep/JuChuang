@@ -134,9 +134,9 @@ Run("Window rebind requires matching client process identity", () =>
 
 Run("Exit completion reconciles bounded timeouts with observed original process", () =>
 {
-    var requestTimedOut = new ExitProcessResult(701, false, false, "RequestTimeout");
-    var confirmationTimedOut = new ExitProcessResult(702, true, false, "Timeout");
-    var denied = new ExitProcessResult(703, false, false, "AccessDenied");
+    var requestTimedOut = new ExitProcessResult(701, false, false, "GracefulRequestTimeout");
+    var confirmationTimedOut = new ExitProcessResult(702, true, false, "KillTimeout");
+    var denied = new ExitProcessResult(703, false, false, "GracefulRequestFailed: UnauthorizedAccessException");
     Assert(!ExitCompletionPolicy.Reconcile(requestTimedOut, false).Confirmed,
         "request timeout cannot claim a running original process exited");
     var requestNowExited = ExitCompletionPolicy.Reconcile(requestTimedOut, true);
@@ -154,10 +154,10 @@ Run("Exit completion reconciles bounded timeouts with observed original process"
 Run("Exit batch reports timeout without claiming completion", () =>
 {
     var target = new FakeExitTarget(101, () => { }, () => Task.FromResult(false));
-    var result = ExitBatchService.RunAsync([target], TimeSpan.FromMilliseconds(10))
-        .GetAwaiter().GetResult().Single();
-    Assert(result.Requested && !result.Confirmed && result.Error == "Timeout",
-        "timed-out termination must remain unconfirmed");
+    var result = ExitBatchService.RunAsync([target], TimeSpan.FromMilliseconds(10),
+        TimeSpan.FromMilliseconds(10)).GetAwaiter().GetResult().Single();
+    Assert(result.Requested && !result.Confirmed && result.Error == "KillTimeout",
+        "timed-out Kill fallback must remain unconfirmed");
 });
 
 Run("Exit batch continues after a partial request failure", () =>
@@ -169,8 +169,8 @@ Run("Exit batch continues after a partial request failure", () =>
     var successful = new FakeExitTarget(202,
         () => requested++,
         () => Task.FromResult(requested == 1));
-    var results = ExitBatchService.RunAsync([failed, successful], TimeSpan.FromSeconds(1))
-        .GetAwaiter().GetResult();
+    var results = ExitBatchService.RunAsync([failed, successful],
+        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
     Assert(results.Count == 2 && !results[0].Requested && !results[0].Confirmed,
         "failed process must be reported separately");
     Assert(results[1].Requested && results[1].Confirmed,
@@ -184,8 +184,8 @@ Run("Exit batch requests every process before awaiting any", () =>
         () => Task.FromResult(requests == 2));
     var second = new FakeExitTarget(302, () => requests++,
         () => Task.FromResult(requests == 2));
-    var results = ExitBatchService.RunAsync([first, second], TimeSpan.FromSeconds(1))
-        .GetAwaiter().GetResult();
+    var results = ExitBatchService.RunAsync([first, second],
+        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
     Assert(results.All(result => result.Confirmed),
         "all termination requests must precede confirmation waits");
 });
@@ -197,7 +197,7 @@ Run("Exit request never blocks the caller thread", () =>
         () => gate.Wait(TimeSpan.FromSeconds(2)),
         () => Task.FromResult(true));
     var timer = Stopwatch.StartNew();
-    var task = ExitBatchService.RunAsync([target], TimeSpan.FromSeconds(3));
+    var task = ExitBatchService.RunAsync([target], TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     var elapsed = timer.Elapsed;
     gate.Set();
     Assert(elapsed < TimeSpan.FromSeconds(1), "Kill request blocked the UI caller");
@@ -215,14 +215,14 @@ Run("Exit results distinguish failure and unconfirmed state", () =>
 {
     Assert(ExitResultPresentation.Status(new ExitProcessResult(1, true, true, null)) == "已退出",
         "confirmed process label is wrong");
-    Assert(ExitResultPresentation.Status(new ExitProcessResult(2, false, false, "Denied")) == "请求失败",
-        "request failure label is wrong");
-    Assert(ExitResultPresentation.Status(new ExitProcessResult(3, true, false, "Timeout")) == "未确认退出",
-        "timeout label is wrong");
-    Assert(ExitResultPresentation.Status(new ExitProcessResult(4, true, false, "Wait failed")) == "确认失败",
-        "confirmation failure label is wrong");
-    Assert(ExitResultPresentation.Status(new ExitProcessResult(5, false, false, "RequestTimeout")).StartsWith("请求未确认"),
-        "native request timeout must not be described as a definite failure");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(2, false, false, "GracefulRequestFailed: UnauthorizedAccessException")) == "正常退出请求失败",
+        "graceful request failure label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(3, true, false, "KillTimeout")) == "强制退出未确认",
+        "Kill timeout label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(4, true, false, "KillConfirmationFailed: InvalidOperationException")) == "强制退出确认失败",
+        "Kill confirmation failure label is wrong");
+    Assert(ExitResultPresentation.Status(new ExitProcessResult(5, false, false, "GracefulRequestTimeout")).StartsWith("正常退出请求超时"),
+        "graceful request timeout must not be described as a definite failure");
 });
 
 Run("Blocked OS request returns an uncertain result by deadline while other requests proceed", () =>
@@ -237,7 +237,7 @@ Run("Blocked OS request returns an uncertain result by deadline while other requ
     }, () => throw new InvalidOperationException("must not wait on a pending request"));
     var second = new FakeExitTarget(702, () => otherRequested.Set(), () => Task.FromResult(true));
     var timer = Stopwatch.StartNew();
-    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromMilliseconds(300));
+    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(300));
     try
     {
         Assert(entered.Wait(TimeSpan.FromSeconds(2)), "blocked request did not start");
@@ -245,7 +245,7 @@ Run("Blocked OS request returns an uncertain result by deadline while other requ
         var results = task.GetAwaiter().GetResult();
         Assert(timer.Elapsed < TimeSpan.FromSeconds(3), "batch waited indefinitely for a native request");
         Assert(results.Count == 2 && !results[0].Requested && !results[0].Confirmed
-            && results[0].Error == "RequestTimeout", "pending request must be uncertain");
+            && results[0].Error == "GracefulRequestTimeout", "pending request must be uncertain");
         Assert(results[1].Requested && results[1].Confirmed,
             "other process must complete despite a blocked request");
     }
@@ -260,8 +260,8 @@ Run("Exit batch deduplicates a shared process", () =>
     var requests = 0;
     var first = new FakeExitTarget(501, () => requests++, () => Task.FromResult(true));
     var duplicate = new FakeExitTarget(501, () => requests++, () => Task.FromResult(true));
-    var results = ExitBatchService.RunAsync([first, duplicate], TimeSpan.FromSeconds(1))
-        .GetAwaiter().GetResult();
+    var results = ExitBatchService.RunAsync([first, duplicate],
+        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
     Assert(requests == 1 && results.Count == 1 && results[0].Confirmed,
         "shared PID must receive one termination request");
 });
@@ -270,10 +270,11 @@ Run("Exit wait failure remains unconfirmed", () =>
 {
     var target = new FakeExitTarget(601, () => { },
         () => throw new InvalidOperationException("wait failed"));
-    var result = ExitBatchService.RunAsync([target], TimeSpan.FromSeconds(1))
-        .GetAwaiter().GetResult().Single();
-    Assert(result.Requested && !result.Confirmed && result.Error!.Contains("InvalidOperationException"),
-        "wait failure must not claim exit");
+    var result = ExitBatchService.RunAsync([target], TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(1)).GetAwaiter().GetResult().Single();
+    Assert(result.Requested && !result.Confirmed
+        && result.Error!.StartsWith("KillConfirmationFailed: InvalidOperationException", StringComparison.Ordinal),
+        "wait failure after Kill must not claim exit");
 });
 
 Run("Confirmed all-exit Close enters cleanup without another prompt", () =>
@@ -683,11 +684,124 @@ Run("Scratch cleanup keeps live owners and removes orphaned or legacy leftovers"
         Assert(File.Exists(freshOrphan), "a just-written orphan gets a short grace period");
         Assert(!File.Exists(legacyOld), "old copies without an owner marker are removed by age");
         Assert(File.Exists(legacyYoung), "recent copies without an owner marker are kept");
+
+        WeChatProfileService.CleanupCurrentProcessArtifacts();
+        Assert(!File.Exists(liveOwner), "normal shutdown must remove this process's remaining plaintext copy");
+        Assert(File.Exists(freshOrphan), "shutdown cleanup must not remove another process's copy");
     }
     finally
     {
         WeChatProfileService.ScratchDirectoryOverride = null;
         WeChatProfileService.LegacyScratchDirectoryOverride = null;
+        try { Directory.Delete(root, recursive: true); } catch { }
+    }
+});
+
+Run("Activation pipe uses bounded input and current-user named pipe", () =>
+{
+    Assert(ActivationMessagePolicy.IsSafe("activate"), "normal activation must be allowed");
+    Assert(ActivationMessagePolicy.IsSafe("account=wxid_123&pid=42"), "toast account args must remain compatible");
+    Assert(!ActivationMessagePolicy.IsSafe(new string('a', ActivationMessagePolicy.MaximumCharacters + 1)),
+        "oversized activation must be rejected");
+    Assert(!ActivationMessagePolicy.IsSafe("activate\\nother".Replace("\\n", "\n")),
+        "embedded newline must be rejected");
+
+    string? Read(string line)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(line));
+        return ActivationMessagePolicy.ReadBoundedLineAsync(stream, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
+    }
+    Assert(Read("activate\\r\\n".Replace("\\r", "\r").Replace("\\n", "\n")) == "activate",
+        "CRLF-delimited activation frame should decode");
+    Assert(Read("partial") is null, "truncated frame cannot activate JNest");
+    Assert(Read(new string('x', ActivationMessagePolicy.MaximumCharacters + 1) + "\n") is null,
+        "overlength frame cannot allocate an unbounded activation argument");
+    Assert(Read("activate\rBAD\n") is null, "CR injection must be rejected");
+
+    // CI validates framing and that the Windows-only current-user pipe mode
+    // is available. The complete second-process activation roundtrip is left
+    // to the Windows real-device checklist, not an interactive CI pipe wait.
+    var pipeName = "jnest-acl-probe-" + Guid.NewGuid().ToString("N");
+    using var server = new System.IO.Pipes.NamedPipeServerStream(
+        pipeName, System.IO.Pipes.PipeDirection.In, 1,
+        System.IO.Pipes.PipeTransmissionMode.Byte,
+        System.IO.Pipes.PipeOptions.Asynchronous | System.IO.Pipes.PipeOptions.CurrentUserOnly);
+    Assert(server.CanRead && !server.CanWrite, "current-user activation pipe must be read-only");
+});
+
+Run("Plaintext scratch ACL is private and cleanup refuses unrelated files", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "jnest-acl-probe-" + Guid.NewGuid().ToString("N"));
+    var scratch = Path.Combine(root, "scratch");
+    Directory.CreateDirectory(root);
+    WeChatProfileService.ScratchDirectoryOverride = scratch;
+    try
+    {
+        Assert(WeChatProfileService.EnsureScratchDirectoryForTest() == scratch,
+            "scratch ACL setup refused a valid private directory");
+        var acl = new DirectoryInfo(scratch).GetAccessControl(
+            System.Security.AccessControl.AccessControlSections.Access);
+        Assert(acl.AreAccessRulesProtected, "scratch ACL still inherits broader access rules");
+        Assert(!WeChatProfileService.IsScratchCleanupCandidate("contact-passwords.txt"),
+            "unrelated files must not be eligible for cleanup");
+        var unrelated = Path.Combine(scratch, "contact-passwords.txt");
+        File.WriteAllText(unrelated, "keep");
+        File.SetLastWriteTimeUtc(unrelated, DateTime.UtcNow.AddHours(-1));
+        WeChatProfileService.CleanupTemporaryArtifacts(TimeSpan.FromMinutes(1));
+        Assert(File.Exists(unrelated), "cleanup deleted an unrelated file");
+    }
+    finally
+    {
+        WeChatProfileService.ScratchDirectoryOverride = null;
+        try { Directory.Delete(root, recursive: true); } catch { }
+    }
+});
+
+Run("Window discovery metadata caches discard stale and excess processes", () =>
+{
+    ClientWindowDiscovery.SeedExpiredMetadataForTest(400);
+    var sizes = ClientWindowDiscovery.MetadataCacheSizesForTest();
+    Assert(sizes.Names <= 256 && sizes.Versions <= 128,
+        "metadata caches must remain bounded under short-lived PID churn");
+});
+
+Run("Diagnostic error throttling preserves first and distinct errors", () =>
+{
+    var gate = new RepeatedErrorGate(TimeSpan.FromSeconds(30), maximumEntries: 2);
+    var now = DateTime.UtcNow;
+    Assert(gate.ShouldLog("capture|timeout", now), "first error was unexpectedly discarded");
+    Assert(!gate.ShouldLog("capture|timeout", now.AddSeconds(1)), "duplicate error was not throttled");
+    Assert(gate.ShouldLog("capture|access-denied", now.AddSeconds(1)),
+        "distinct error must not be hidden");
+    Assert(gate.ShouldLog("capture|timeout", now.AddSeconds(31)), "error did not recover after cooldown");
+    Assert(gate.ShouldLog("pipe|timeout", now.AddSeconds(32)), "third distinct error was suppressed");
+    Assert(gate.ShouldLog("capture|access-denied", now.AddSeconds(33)),
+        "evicted old fingerprint must be eligible again");
+});
+
+Run("Profile cache never restores a different account after identity reuse", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "jnest-profile-cache-probe-" + Guid.NewGuid().ToString("N"));
+    WeChatProfileCacheService.CacheRootOverride = root;
+    try
+    {
+        var cache = new WeChatProfileCacheService();
+        cache.Store("same-slot", new WeChatLocalProfile("wxid_first", "First", null));
+        Assert(!cache.TryGet("same-slot", "wxid_second", out _),
+            "cached profile must not cross an account boundary");
+        var switched = cache.Store("same-slot", new WeChatLocalProfile("wxid_second", "", null));
+        Assert(switched.AccountId == "wxid_second" && switched.Nickname == "wxid_second",
+            "missing nickname must fall back to the verified account ID, not the old nickname");
+        var reloaded = new WeChatProfileCacheService();
+        Assert(!reloaded.TryGet("same-slot", "wxid_first", out _),
+            "a restarted process must not restore the previous account");
+        Assert(reloaded.TryGet("same-slot", "wxid_second", out var current)
+               && current.Nickname == "wxid_second", "current account fallback did not persist");
+    }
+    finally
+    {
+        WeChatProfileCacheService.CacheRootOverride = null;
         try { Directory.Delete(root, recursive: true); } catch { }
     }
 });
@@ -810,7 +924,12 @@ static void Assert(bool condition, string message)
 sealed class FakeExitTarget(int processId, Action request, Func<Task<bool>> wait) : IExitProcessTarget
 {
     public int ProcessId => processId;
-    public void RequestExit() => request();
+    public bool RequestGracefulExit()
+    {
+        request();
+        return true;
+    }
     public Task<bool> WaitForExitAsync(TimeSpan timeout) => wait();
+    public void ForceKill() { }
 }
 

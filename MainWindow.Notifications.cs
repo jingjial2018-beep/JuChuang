@@ -15,6 +15,7 @@ public partial class MainWindow
     private HwndSource? _windowSource;
     private uint _shellHookMessage;
     private bool _shellHookRegistered;
+    private bool _sessionNotificationsRegistered;
     private int _shellWindowReconcilePending;
     private NativeMethods.WinEventDelegate? _clientActivityCallback;
     private readonly List<IntPtr> _clientActivityHooks = [];
@@ -39,11 +40,15 @@ public partial class MainWindow
             _shellHookMessage = NativeMethods.RegisterWindowMessage("SHELLHOOK");
             _shellHookRegistered = _shellHookMessage != 0
                 && NativeMethods.RegisterShellHookWindow(handle);
+            _sessionNotificationsRegistered = NativeMethods.WTSRegisterSessionNotification(
+                handle, NativeMethods.NOTIFY_FOR_THIS_SESSION);
             _windowSource.AddHook(WindowMessageHook);
             if (!_shellHookRegistered)
             {
                 DiagnosticLogService.WriteActivityEvent("shell-hook-unavailable");
             }
+            if (!_sessionNotificationsRegistered)
+                DiagnosticLogService.WriteActivityEvent("session-notification-unavailable");
         }
 
         StartClientActivityMonitoring();
@@ -63,6 +68,21 @@ public partial class MainWindow
         IntPtr lParam,
         ref bool handled)
     {
+        if (message == NativeMethods.WM_DPICHANGED)
+        {
+            // WPF continues to process WM_DPICHANGED; the native-window host
+            // only observes the transition by default. No stale HWND resize or
+            // clipping reset is performed on the notification callback.
+            if (WindowHost is { IsReady: true })
+                WindowHost.ObserveOwnerDpiTransition((uint)(wParam.ToInt64() & 0xFFFF));
+            return IntPtr.Zero;
+        }
+        if (message == NativeMethods.WM_WTSSESSION_CHANGE
+            && wParam.ToInt32() == NativeMethods.WTS_SESSION_UNLOCK)
+        {
+            QueueWindowsSessionUnlockRecovery();
+            return IntPtr.Zero;
+        }
         if (message == NativeMethods.WM_GETMINMAXINFO && lParam != IntPtr.Zero)
         {
             // Win32 monitor/work rectangles are already in physical screen pixels.
@@ -158,6 +178,10 @@ public partial class MainWindow
                         await Task.Delay(500);
                         await TryScanAndAttachAsync();
                     }
+                }
+                catch (Exception exception)
+                {
+                    ReportBackgroundFailure(nameof(QueueClientWindowReconcile), exception);
                 }
                 finally
                 {

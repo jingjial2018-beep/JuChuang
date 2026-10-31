@@ -17,6 +17,14 @@ public sealed class ExternalWindowHost : HwndHost
 {
     private readonly ConcurrentDictionary<IntPtr, HostedWindowState> _hostedWindows = [];
     private readonly ConcurrentDictionary<IntPtr, long> _lastLocationEventTicks = [];
+    // Keep one final correction after a high-frequency burst; otherwise the
+    // leading-edge 200ms throttle can drop the last native position event.
+    private readonly ConcurrentDictionary<IntPtr, byte> _trailingLocationRechecks = [];
+    private readonly DispatcherTimer _locationTrailingTimer;
+    private int _ownerDpiChangeGeneration;
+    private static readonly bool ExperimentalDpiRecalibration =
+        string.Equals(Environment.GetEnvironmentVariable("JNEST_EXPERIMENTAL_DPI_RECALIBRATION"),
+            "1", StringComparison.Ordinal);
     private readonly DispatcherTimer _windowLockTimer;
     private readonly NativeMethods.WinEventDelegate _winEventCallback;
     private IntPtr _hostHandle;
@@ -39,10 +47,113 @@ public sealed class ExternalWindowHost : HwndHost
             Interval = TimeSpan.FromMilliseconds(1000)
         };
         _windowLockTimer.Tick += (_, _) => EnforceHostedWindows();
+        _locationTrailingTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(200)
+        };
+        _locationTrailingTimer.Tick += FlushTrailingLocationRechecks;
     }
 
     public bool IsReady => _hostHandle != IntPtr.Zero;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
+
+    // Observe WPF's per-monitor DPI transition without taking over native
+    // ownership or changing the established 100%/200% cold-start behavior.
+    public void ObserveOwnerDpiTransition(uint targetDpi)
+    {
+        var generation = ++_ownerDpiChangeGeneration;
+        DiagnosticLogService.WriteActivityEvent($"host-dpi-change target={targetDpi}");
+        RecordDpiGeometry("message");
+        _ = ObserveDpiSettleAsync(generation, targetDpi);
+    }
+
+    private async Task ObserveDpiSettleAsync(int generation, uint targetDpi)
+    {
+        try
+        {
+            await Task.Delay(250);
+            if (generation != _ownerDpiChangeGeneration || _hostHandle == IntPtr.Zero) return;
+            RecordDpiGeometry("250ms");
+            await Task.Delay(450);
+            if (generation != _ownerDpiChangeGeneration || _hostHandle == IntPtr.Zero) return;
+            RecordDpiGeometry("700ms");
+            if (!ExperimentalDpiRecalibration || _ownerMinimized
+                || _modalDialogSuppressionCount != 0
+                || _currentHandle == IntPtr.Zero
+                || !_hostedWindows.TryGetValue(_currentHandle, out var state)
+                || state.CenterInHost || !NativeMethods.IsWindow(_currentHandle))
+                return;
+
+            // Experimental opt-in only: remeasure the *selected* native window.
+            // Never mutate the original Rect used to restore a popped-out client,
+            // or the geometry of an off-screen parked background window.
+            var hwnd = _currentHandle;
+            if (!NativeMethods.GetWindowRect(hwnd, out var first)
+                || !NativeMethods.TryGetExtendedFrameBounds(hwnd, out var firstFrame))
+                return;
+            await Task.Delay(120);
+            if (generation != _ownerDpiChangeGeneration || _hostHandle == IntPtr.Zero
+                || _ownerMinimized || _modalDialogSuppressionCount != 0
+                || _currentHandle != hwnd || !_hostedWindows.TryGetValue(hwnd, out state)
+                || !NativeMethods.GetWindowRect(hwnd, out var second)
+                || !NativeMethods.TryGetExtendedFrameBounds(hwnd, out var secondFrame))
+                return;
+            if (!SameSize(first, second) || !SameSize(firstFrame, secondFrame)) return;
+            var measured = CalculateHostInsets(hwnd, second);
+            if (measured == state.Insets) return;
+            _hostedWindows[hwnd] = state with { Insets = measured };
+            ResizeCurrentWindow();
+            DiagnosticLogService.WriteActivityEvent(
+                $"host-dpi-opt-in-recalibrated target={targetDpi} previous={state.Insets} measured={measured}");
+        }
+        catch (Exception error)
+        {
+            DiagnosticLogService.WriteErrorEvent("host-dpi-observation", error);
+        }
+    }
+
+    private static bool SameSize(NativeMethods.RECT a, NativeMethods.RECT b)
+        => a.Width == b.Width && a.Height == b.Height;
+
+    private void RecordDpiGeometry(string phase)
+    {
+        if (!IsReady || _currentHandle == IntPtr.Zero
+            || !_hostedWindows.TryGetValue(_currentHandle, out var state)
+            || !NativeMethods.IsWindow(_currentHandle))
+            return;
+        var hwnd = _currentHandle;
+        NativeMethods.GetWindowThreadProcessId(hwnd, out var pid);
+        var hasRect = NativeMethods.GetWindowRect(hwnd, out var rect);
+        var hasFrame = NativeMethods.TryGetExtendedFrameBounds(hwnd, out var frame);
+        var hasHostRect = NativeMethods.GetClientRect(_hostHandle, out var hostRect);
+        var regionKind = NativeMethods.GetWindowRgnBox(hwnd, out var region);
+        var root = GetOwnerRoot();
+        var hostDpi = root == IntPtr.Zero ? 0 : NativeMethods.GetDpiForWindow(root);
+        DiagnosticLogService.WriteDebugEvent(
+            $"host-dpi-snapshot phase={phase} hostDpi={hostDpi} clientDpi={NativeMethods.GetDpiForWindow(hwnd)} " +
+            $"rect={(hasRect ? FormatRect(rect) : "unavailable")} frame={(hasFrame ? FormatRect(frame) : "unavailable")} " +
+            $"host={(hasHostRect ? FormatRect(hostRect) : "unavailable")} regionKind={regionKind} " +
+            $"region={FormatRect(region)} cachedInsets={state.Insets} parked={IsParkedOffScreen(hwnd)}", (int)pid);
+    }
+
+    private static string FormatRect(NativeMethods.RECT rect)
+        => $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}";
+
+    private void FlushTrailingLocationRechecks(object? sender, EventArgs e)
+    {
+        _locationTrailingTimer.Stop();
+        foreach (var hwnd in _trailingLocationRechecks.Keys.ToArray())
+        {
+            _trailingLocationRechecks.TryRemove(hwnd, out _);
+            if (!_hostedWindows.ContainsKey(hwnd) || !NativeMethods.IsWindow(hwnd)) continue;
+            try { EnforceHostedWindow(hwnd); }
+            catch (Exception error)
+            {
+                DiagnosticLogService.WriteErrorEvent("host-location-trailing", error);
+            }
+        }
+        if (!_trailingLocationRechecks.IsEmpty) _locationTrailingTimer.Start();
+    }
 
     public void SetCenterInHost(IntPtr handle, bool centerInHost)
     {
@@ -70,9 +181,11 @@ public sealed class ExternalWindowHost : HwndHost
             return false;
         }
 
-        if (!_hostedWindows.ContainsKey(handle))
+        var newlyHosted = !_hostedWindows.ContainsKey(handle);
+        var previousHandle = _currentHandle;
+        if (newlyHosted)
         {
-            NativeMethods.GetWindowRect(handle, out var originalRect);
+            if (!NativeMethods.GetWindowRect(handle, out var originalRect)) return false;
             var nativeChrome = NativeMethods.CaptureNativeChromeState(handle);
             var state = new HostedWindowState(
                 NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER),
@@ -117,24 +230,30 @@ public sealed class ExternalWindowHost : HwndHost
                 NativeMethods.HWND_TOP,
                 0,
                 0,
-                1,
-                1,
-                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
+                0,
+                0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
+                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED | attachZOrderFlags);
             // 保留客户端完整原生样式：不清除标题栏/边框/圆角，仅在接入时清掉
             // 可能残留的旧裁剪区域，后续由 ApplyClipRegion 重新设定圆角裁剪。
             NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
-            _hostedWindows.TryAdd(handle, state);
+            if (!_hostedWindows.TryAdd(handle, state)) return false;
         }
 
-        if (makeActive)
+        var displayed = makeActive ? ShowOnly(handle) : ParkWindowOffScreen(handle);
+        if (displayed && VerifyHostedWindow(handle, makeActive)) return true;
+
+        TraceTransitionFailure(handle, "attach-verification");
+        if (newlyHosted)
         {
-            ShowOnly(handle);
+            // Do not report an invisible/off-screen client as attached. Restore its
+            // desktop state before forgetting it, and retain it for shutdown retry
+            // if the restoration itself fails.
+            DetachWindow(handle, bringToFront: false);
+            if (previousHandle != IntPtr.Zero && NativeMethods.IsWindow(previousHandle))
+                ShowOnly(previousHandle);
         }
-        else
-        {
-            ParkWindowOffScreen(handle);
-        }
-        return true;
+        return false;
     }
 
     public bool ShowOnly(IntPtr handle)
@@ -167,7 +286,9 @@ public sealed class ExternalWindowHost : HwndHost
             RestoreOwnedLoginDialog(handle);
         }
         RefreshHostedWindow(handle);
-        return true;
+        var visible = VerifyHostedWindow(handle, active: true);
+        if (!visible) TraceTransitionFailure(handle, "show-verification");
+        return visible;
     }
 
     public bool RefreshHostedWindow(IntPtr handle)
@@ -182,11 +303,27 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
             NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
-            NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
+            var redrawn = NativeMethods.RedrawWindow(handle, IntPtr.Zero, IntPtr.Zero,
                 NativeMethods.RDW_INVALIDATE | NativeMethods.RDW_ERASE
                 | NativeMethods.RDW_FRAME);
+            if (!redrawn) TraceTransitionFailure(handle, "redraw-failed");
+            return redrawn && VerifyHostedWindow(handle, active: true);
         }
         return true;
+    }
+
+    public bool RecoverAfterSessionUnlock(IntPtr handle)
+    {
+        if (handle != _currentHandle || _ownerMinimized || _modalDialogSuppressionCount != 0
+            || !_hostedWindows.ContainsKey(handle) || !NativeMethods.IsWindow(handle)) return false;
+        // A long Windows session lock can leave the clipped native surface stale.
+        // Rebuild only the selected window's region after WPF has laid out the host.
+        if (!NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true))
+        {
+            TraceTransitionFailure(handle, "unlock-region-clear");
+            return false;
+        }
+        return RefreshHostedWindow(handle);
     }
 
     public void ActivateCurrentWindow()
@@ -295,13 +432,18 @@ public sealed class ExternalWindowHost : HwndHost
 
     public bool DetachWindow(IntPtr handle, bool bringToFront = true)
     {
-        if (!_hostedWindows.TryRemove(handle, out var state)) return false;
-        ReleaseOwnedLoginDialog(handle);
-        if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
-        if (!NativeMethods.IsWindow(handle)) return true;
+        if (!_hostedWindows.TryGetValue(handle, out var state)) return false;
+        if (!NativeMethods.IsWindow(handle))
+        {
+            _hostedWindows.TryRemove(handle, out _);
+            _lastLocationEventTicks.TryRemove(handle, out _);
+            _trailingLocationRechecks.TryRemove(handle, out _);
+            if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
+            return true;
+        }
 
         NativeMethods.ShowWindow(handle, NativeMethods.SW_HIDE);
-        NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
+        var regionCleared = NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWLP_HWNDPARENT, state.Owner);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_STYLE, state.Style);
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE, state.ExtendedStyle);
@@ -311,10 +453,24 @@ public sealed class ExternalWindowHost : HwndHost
         var height = Math.Max(560, state.Rect.Height);
         var left = state.Rect.Left < -10000 ? 120 : state.Rect.Left;
         var top = state.Rect.Top < -10000 ? 120 : state.Rect.Top;
-        NativeMethods.SetWindowPos(handle, IntPtr.Zero, left, top, width, height,
-            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_FRAMECHANGED
-            | NativeMethods.SWP_SHOWWINDOW);
-        NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+        NativeMethods.ShowWindow(handle,
+            bringToFront ? NativeMethods.SW_RESTORE : NativeMethods.SW_SHOWNOACTIVATE);
+        var positioned = NativeMethods.SetWindowPos(handle,
+            bringToFront ? NativeMethods.HWND_TOP : IntPtr.Zero,
+            left, top, width, height,
+            (bringToFront ? 0u : NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE)
+            | NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW);
+        if (!regionCleared || !positioned || !VerifyStandaloneWindow(handle, state))
+        {
+            TraceTransitionFailure(handle, "detach-verification");
+            return false;
+        }
+
+        ReleaseOwnedLoginDialog(handle);
+        _hostedWindows.TryRemove(handle, out _);
+        _lastLocationEventTicks.TryRemove(handle, out _);
+        _trailingLocationRechecks.TryRemove(handle, out _);
+        if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         if (bringToFront) NativeMethods.SetForegroundWindow(handle);
         return true;
     }
@@ -323,6 +479,8 @@ public sealed class ExternalWindowHost : HwndHost
     public bool ForgetWindow(IntPtr handle)
     {
         if (!_hostedWindows.TryRemove(handle, out _)) return false;
+        _lastLocationEventTicks.TryRemove(handle, out _);
+        _trailingLocationRechecks.TryRemove(handle, out _);
         if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         return true;
     }
@@ -451,6 +609,8 @@ public sealed class ExternalWindowHost : HwndHost
             if (!NativeMethods.IsWindow(handle))
             {
                 _hostedWindows.TryRemove(handle, out _);
+                _lastLocationEventTicks.TryRemove(handle, out _);
+                _trailingLocationRechecks.TryRemove(handle, out _);
                 if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
                 continue;
             }
@@ -486,7 +646,8 @@ public sealed class ExternalWindowHost : HwndHost
         }
         if (!NativeMethods.IsWindowVisible(handle)) NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOW);
         // 仅在窗口位置/尺寸偏离期望时强制归位（防微信自绘或拖拽破坏布局）；
-        // ResizeCurrentWindow 内部会同步重算 insets 并重设圆角裁剪区域。
+        // ResizeCurrentWindow 使用接入时记录的 insets 并重设裁剪区域；
+        // 运行中改变 DPI 后，这些 insets 不会随之重新测量。
         if (!TryGetExpectedBounds(state, out var expected) || !NativeMethods.GetWindowRect(handle, out var actual)
             || actual.Left != expected.Left || actual.Top != expected.Top
             || actual.Width != expected.Width || actual.Height != expected.Height)
@@ -518,6 +679,64 @@ public sealed class ExternalWindowHost : HwndHost
         return true;
     }
 
+    private bool VerifyHostedWindow(IntPtr handle, bool active)
+    {
+        if (!NativeMethods.IsWindow(handle) || !NativeMethods.IsWindowVisible(handle)
+            || !_hostedWindows.TryGetValue(handle, out var state)
+            || NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != GetOwnerRoot()
+            || NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE)
+                != CreateOverlayExtendedStyle(state.ExtendedStyle)
+            || !NativeMethods.GetWindowRect(handle, out var actual)) return false;
+        if (!active) return IsParkedOffScreen(handle);
+        if (_ownerMinimized || _modalDialogSuppressionCount != 0) return true;
+        if (!TryGetExpectedBounds(state, out var expected)
+            || actual.Left != expected.Left || actual.Top != expected.Top
+            || actual.Width != expected.Width || actual.Height != expected.Height) return false;
+        if (state.CenterInHost) return true;
+        if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)
+            || NativeMethods.GetWindowRgnBox(handle, out var region) == 0) return false;
+        return region.Left == state.Insets.Left && region.Top == state.Insets.Top
+            && region.Right == state.Insets.Left + Math.Max(1, hostRect.Width)
+            && region.Bottom == state.Insets.Top + Math.Max(1, hostRect.Height);
+    }
+
+    private static bool VerifyStandaloneWindow(IntPtr handle, HostedWindowState state)
+    {
+        if (!NativeMethods.IsWindow(handle) || !NativeMethods.IsWindowVisible(handle)
+            || NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != state.Owner
+            || NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE) != state.ExtendedStyle
+            || NativeMethods.GetWindowRgnBox(handle, out _) != 0
+            || !NativeMethods.GetWindowRect(handle, out var rect)) return false;
+        const long volatileStyle = NativeMethods.WS_VISIBLE | NativeMethods.WS_MINIMIZE
+            | NativeMethods.WS_MAXIMIZE;
+        if (((NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64()
+            ^ state.Style.ToInt64()) & ~volatileStyle) != 0) return false;
+        var monitor = NativeMethods.MonitorFromWindow(handle, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var info = new NativeMethods.MONITORINFO
+        {
+            cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>()
+        };
+        return monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref info)
+            && Math.Min(rect.Right, info.rcWork.Right) - Math.Max(rect.Left, info.rcWork.Left) >= 50
+            && Math.Min(rect.Bottom, info.rcWork.Bottom) - Math.Max(rect.Top, info.rcWork.Top) >= 50;
+    }
+
+    private static void TraceTransitionFailure(IntPtr handle, string action)
+    {
+        NativeMethods.GetWindowThreadProcessId(handle, out var pid);
+        var hasRect = NativeMethods.GetWindowRect(handle, out var rect);
+        var regionType = NativeMethods.GetWindowRgnBox(handle, out var region);
+        var owner = NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER);
+        DiagnosticLogService.WriteActivityEvent(
+            $"host-{action} hwnd=0x{handle.ToInt64():X} owner=0x{owner.ToInt64():X} "
+            + $"visible={NativeMethods.IsWindowVisible(handle)} "
+            + $"rect={(hasRect ? $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}" : "unavailable")} "
+            + $"region={regionType}:{region.Left},{region.Top},{region.Right},{region.Bottom} "
+            + $"style=0x{NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64():X} "
+            + $"exstyle=0x{NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE).ToInt64():X} "
+            + $"dpi={NativeMethods.GetDpiForWindow(handle)}", (int)pid);
+    }
+
     private void StartWindowLockMonitoring()
     {
         _moveSizeHook = NativeMethods.SetWinEventHook(NativeMethods.EVENT_SYSTEM_MOVESIZESTART,
@@ -535,7 +754,11 @@ public sealed class ExternalWindowHost : HwndHost
 
     private void StopWindowLockMonitoring()
     {
+        ++_ownerDpiChangeGeneration;
         _windowLockTimer.Stop();
+        _locationTrailingTimer.Stop();
+        _trailingLocationRechecks.Clear();
+        _lastLocationEventTicks.Clear();
         if (_dialogShowHook != IntPtr.Zero) { NativeMethods.UnhookWinEvent(_dialogShowHook); _dialogShowHook = IntPtr.Zero; }
         foreach (var owner in _hiddenDialogs.Keys.ToArray()) ReleaseOwnedLoginDialog(owner);
         if (_moveSizeHook != IntPtr.Zero) { NativeMethods.UnhookWinEvent(_moveSizeHook); _moveSizeHook = IntPtr.Zero; }
@@ -569,6 +792,14 @@ public sealed class ExternalWindowHost : HwndHost
             var now = Environment.TickCount64;
             if (_lastLocationEventTicks.TryGetValue(window, out var last) && now - last < 200)
             {
+                _trailingLocationRechecks.TryAdd(window, 0);
+                if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                    _ = Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                        new Action(() =>
+                        {
+                            if (!_locationTrailingTimer.IsEnabled)
+                                _locationTrailingTimer.Start();
+                        }));
                 return;
             }
             _lastLocationEventTicks[window] = now;
@@ -643,17 +874,18 @@ public sealed class ExternalWindowHost : HwndHost
     // 把非选中窗口"停靠"到屏幕外（-32000,-32000）并保持显示，而不是 SW_HIDE。
     // SW_HIDE 会移除窗口的标题栏与任务栏按钮，导致客户端 FlashWindowEx 无法闪烁、
     // HSHELL_FLASH 永远不触发；停靠后窗口对系统仍"可见"，标题栏闪烁能正常产生来消息通知。
-    private void ParkWindowOffScreen(IntPtr handle)
+    private bool ParkWindowOffScreen(IntPtr handle)
     {
-        if (!NativeMethods.IsWindow(handle)) return;
+        if (!NativeMethods.IsWindow(handle)) return false;
         NativeMethods.GetWindowThreadProcessId(handle, out var parkPid);
         PopupTrace($"wechat-popup-park-enter hwnd={handle} pid={parkPid} current={_currentHandle} minimized={_ownerMinimized}", (int)parkPid);
         HideOwnedLoginDialog(handle);
-        if (IsParkedOffScreen(handle)) return;
+        if (IsParkedOffScreen(handle)) return true;
         // 先移动到屏幕外再显示，避免窗口在原始（屏幕内）位置短暂闪现。
-        NativeMethods.SetWindowPos(handle, IntPtr.Zero, -32000, -32000, 0, 0,
+        var moved = NativeMethods.SetWindowPos(handle, IntPtr.Zero, -32000, -32000, 0, 0,
             NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOZORDER);
         NativeMethods.ShowWindow(handle, NativeMethods.SW_SHOWNOACTIVATE);
+        return moved && IsParkedOffScreen(handle);
     }
 
     // Only the verified compact Qt duplicate-login prompt owned by this HWND.

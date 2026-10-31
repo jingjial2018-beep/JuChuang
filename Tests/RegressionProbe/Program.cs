@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using System.Xml.Linq;
 using JuChuang;
 using JuChuang.Controls;
+using JuChuang.Models;
 using JuChuang.Services;
 
 internal static class Program
@@ -37,14 +38,21 @@ internal static class Program
                 await Run("Unlock gate and relock preserve the newer session lock", RelockAndGate);
                 await Run("Old restore failure cannot replace a newer lock", StaleRestoreFailure);
                 await Run("Settings write failure reports failure and later recovers", SettingsFailure);
+                await Run("Parked window detaches and reattaches without losing its desktop state", ParkedDetachAndReattach);
                 await Run("Owned primary discovery validates owner, HWND, PID and start", DiscoveryAndAttach);
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
+                await Run("Status clock has no separators and retains seconds", StatusClock);
+                await Run("Password dialog collapses empty error space", PasswordDialogSpacing);
+                await Run("Detached account removal leaves its process running", DetachedAccountRemoval);
+                await Run("Exit-all queues JNest close after the original Closing event", ExitAllDeferredClose);
                 await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
+                await Run("Guarded runner isolates asynchronous event failures", CoverageHarness.GuardedRunnerIsolation);
                 await Run("DND policy time-window matrix", CoverageHarness.DndPolicy);
                 await Run("WeChat database ownership decision matrix", CoverageHarness.OwnershipDecide);
                 await Run("Exit close policy truth tables", CoverageHarness.ExitPolicyTables);
+                await Run("Graceful client exit precedes Kill fallback and preserves process identity", CoverageHarness.ExitBatchLifecycle);
                 await Run("Settings persistence roundtrip, backup and merge", CoverageHarness.SettingsPersistence);
                 await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
             }
@@ -163,6 +171,48 @@ internal static class Program
         }
         finally { AppSettings.SaveProblem -= Notice; AppSettings.SettingsPathOverride = normal; }
         return Task.CompletedTask;
+    }
+
+    private static async Task ParkedDetachAndReattach()
+    {
+        using var fixture = StartFixture();
+        var hwnd = new IntPtr(long.Parse((await fixture.StandardOutput.ReadLineAsync()
+            .WaitAsync(TimeSpan.FromSeconds(10)))!));
+        try
+        {
+            using var source = new HwndSource(new HwndSourceParameters("JNest detach regression owner")
+                { Width = 1, Height = 1, PositionX = -32000, PositionY = -32000,
+                    WindowStyle = unchecked((int)0x80000000) });
+            using var host = new ExternalWindowHost();
+            source.RootVisual = host;
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                Assert(host.AttachWindow(hwnd, false), "background attach failed");
+                Assert(host.DetachWindow(hwnd, bringToFront: false), "parked client did not detach");
+                Assert(!host.Contains(hwnd), "detached client remained hosted");
+                Assert(NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) == IntPtr.Zero,
+                    "detached client retained manager owner");
+                Assert(NativeMethods.IsWindowVisible(hwnd), "detached client remained hidden");
+                Assert(NativeMethods.GetWindowRect(hwnd, out var rect)
+                    && rect.Left > -10000 && rect.Top > -10000,
+                    "detached client remained parked off screen");
+                Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) == 0,
+                    "detached client retained the host clipping region");
+            }
+            Assert(host.AttachWindow(hwnd, false), "selected client background attach failed");
+            Assert(host.ShowOnly(hwnd), "selected client did not reach the host bounds");
+            Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) != 0,
+                "selected client lost the host clipping region");
+            Assert(host.DetachWindow(hwnd, bringToFront: false),
+                "selected client did not return to the desktop");
+        }
+        finally
+        {
+            NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
+            await fixture.StandardInput.WriteLineAsync("quit");
+            await fixture.StandardInput.FlushAsync();
+            await fixture.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     private static async Task DiscoveryAndAttach()
@@ -314,6 +364,79 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task StatusClock()
+    {
+        EnsureResources();
+        var window = (Window)Activator.CreateInstance(typeof(App).Assembly.GetType("JuChuang.MainWindow")!)!;
+        try
+        {
+            Call(window, "UpdateLocalClock");
+            var date = (TextBlock)Field(window, "LocalDateText")!;
+            var time = (TextBlock)Field(window, "LocalTimeText")!;
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(date.Text, @"^\d{1,2}月\d{1,2}日  周[一二三四五六日]$"),
+                "status date or weekday format changed");
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(time.Text, @"^\d{2}:\d{2}:\d{2}$"),
+                "status time omitted seconds");
+            Assert(date.FontSize == time.FontSize && date.FontWeight == time.FontWeight
+                && date.FontFamily.Source == time.FontFamily.Source
+                && date.Foreground.ToString() == time.Foreground.ToString(),
+                "status clock typography is inconsistent");
+            Assert(window.FindName("LocalDateTimeSeparatorText") is null,
+                "status clock still contains a separator");
+        }
+        finally { CloseWithoutPrompt(window); }
+        return Task.CompletedTask;
+    }
+
+    private static Task PasswordDialogSpacing()
+    {
+        EnsureResources();
+        var dialog = new LockPasswordDialog();
+        try
+        {
+            var error = (TextBlock)Field(dialog, "ErrorText")!;
+            Assert(error.Visibility == Visibility.Collapsed,
+                "empty password error reserves space");
+            error.Text = "测试错误";
+            Assert(error.Visibility == Visibility.Visible,
+                "password error is hidden when populated");
+            error.Text = "";
+            Assert(error.Visibility == Visibility.Collapsed,
+                "cleared password error still reserves space");
+        }
+        finally { dialog.Close(); }
+        return Task.CompletedTask;
+    }
+
+    private static Task DetachedAccountRemoval()
+    {
+        EnsureResources();
+        var window = (Window)Activator.CreateInstance(typeof(App).Assembly.GetType("JuChuang.MainWindow")!)!;
+        using var process = Process.GetCurrentProcess();
+        var start = process.StartTime.ToUniversalTime().Ticks;
+        var entry = new ClientWindowEntry(new IntPtr(0x123456), process.Id, "Weixin", "Weixin",
+            ClientKind.WeChat, "测试账号")
+        {
+            ProcessStartUtcTicks = start,
+            IsManuallyDetached = true,
+            IsAttached = false
+        };
+        try
+        {
+            var entries = (System.Collections.ObjectModel.ObservableCollection<ClientWindowEntry>)
+                window.GetType().GetProperty("Entries")!.GetValue(window)!;
+            entries.Add(entry);
+            var button = new Button { CommandParameter = entry };
+            Call(window, "CloseEntry_Click", button, new RoutedEventArgs(Button.ClickEvent, button));
+            Assert(!entries.Contains(entry), "detached account remained in list");
+            var suppressed = (HashSet<(int ProcessId, long StartUtcTicks)>)Field(window, "_removedDetachedProcesses")!;
+            Assert(suppressed.Contains((process.Id, start)), "background scan could immediately reinsert detached process");
+            Assert(!process.HasExited, "detached account removal terminated its process");
+        }
+        finally { CloseWithoutPrompt(window); }
+        return Task.CompletedTask;
+    }
+
     private static Task MainWindowSettingsFailure()
     {
         EnsureResources();
@@ -366,6 +489,31 @@ internal static class Program
             new XAttribute(XNamespace.Xmlns + "x", "http://schemas.microsoft.com/winfx/2006/xaml"),
             document.Root!.Element(ns + "Application.Resources")!.Nodes());
         app.Resources = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(resources.ToString());
+    }
+
+    private static async Task ExitAllDeferredClose()
+    {
+        EnsureResources();
+        var window = new Window { ShowInTaskbar = false, Left = -32000, Top = -32000 };
+        Task? deferredClose = null;
+        var closingCount = 0;
+        var closed = false;
+        window.Closing += (_, e) =>
+        {
+            closingCount++;
+            if (closingCount != 1) return;
+            e.Cancel = true;
+            deferredClose = DeferredWindowClose.ScheduleAsync(window);
+        };
+        window.Closed += (_, _) => closed = true;
+        window.Show();
+        window.Close();
+        if (deferredClose is null)
+            throw new InvalidOperationException("Deferred close task was not scheduled.");
+        Assert(!closed && closingCount == 1,
+            "exit-all close ran inside the original Closing event");
+        await deferredClose.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert(closed && closingCount == 2, "deferred exit-all close did not finish");
     }
 
     private static object? Field(object target, string name)

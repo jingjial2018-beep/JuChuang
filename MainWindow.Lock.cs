@@ -16,6 +16,35 @@ public partial class MainWindow
     private bool _lockHostSuspended;
     private bool _unlockInProgress;
     private long _lockGeneration;
+    private int _windowsUnlockRecoveryGeneration;
+    private bool _windowsUnlockRecoveryPending;
+
+    private void QueueWindowsSessionUnlockRecovery()
+    {
+        _windowsUnlockRecoveryPending = true;
+        var generation = ++_windowsUnlockRecoveryGeneration;
+        _ = RecoverWindowsSessionUnlockAsync(generation);
+    }
+
+    private async Task RecoverWindowsSessionUnlockAsync(int generation)
+    {
+        // Wait until the desktop and the WPF host have resumed their layout.
+        await Task.Delay(350);
+        if (_isClosing || generation != _windowsUnlockRecoveryGeneration
+            || IsJNestProtected || WindowState == WindowState.Minimized
+            || SelectedEntry is not { IsAttached: true } entry) return;
+
+        _windowsUnlockRecoveryPending = false;
+        if (!WindowHost.RecoverAfterSessionUnlock(entry.Handle))
+            DiagnosticLogService.WriteActivityEvent("session-unlock-host-recovery-failed", entry.ProcessId);
+
+        // Let the client repaint its own content after the region/frame update.
+        await Task.Delay(900);
+        if (_isClosing || generation != _windowsUnlockRecoveryGeneration
+            || IsJNestProtected || WindowState == WindowState.Minimized
+            || !ReferenceEquals(entry, SelectedEntry) || !entry.IsAttached) return;
+        WindowHost.RefreshHostedWindow(entry.Handle);
+    }
 
     private void SuspendHostedWindowsForLock()
     {
@@ -95,11 +124,21 @@ public partial class MainWindow
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
-        _ = TryUnlockAsync();
+        _ = TryUnlockGuardedAsync();
     }
 
     private async void UnlockJNest_Click(object sender, RoutedEventArgs e)
-        => await TryUnlockAsync();
+        => await TryUnlockGuardedAsync();
+
+    private Task TryUnlockGuardedAsync()
+        => GuardedRunner.RunAsync(
+            TryUnlockAsync,
+            exception =>
+            {
+                DiagnosticLogService.WriteErrorEvent(nameof(UnlockJNest_Click), exception);
+                if (IsJNestProtected)
+                    LockErrorText.Text = "解锁过程中发生异常，请重试。";
+            });
 
     private async Task TryUnlockAsync()
     {
@@ -174,6 +213,7 @@ public partial class MainWindow
             // before allowing the parked native client to reappear.
             ShowSelectedEntry();
             ResumeHostedWindowsAfterLock();
+            if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
             _lockFailedAttempts = 0;
             _lockRetryAfterUtc = DateTime.MinValue;
 

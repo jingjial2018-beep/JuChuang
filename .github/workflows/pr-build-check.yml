@@ -1,15 +1,19 @@
 name: PR Build Check
 
 on:
+  push:
+    branches:
+      - maintenance/**
+      - fix/**
   pull_request:
     branches:
-      - main
+      - stable
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-build-${{ github.event.pull_request.number }}
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,12 +21,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore main app
         run: dotnet restore .\JuChuang.csproj
@@ -47,4 +51,11 @@ jobs:
 
       - name: Run ArchitectureProbe
         run: dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release --no-build
+
+      - name: Run RegressionProbe
+        run: dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
+
+      - name: Validate settings typography
+        shell: pwsh
+        run: .\Tests\ValidateSettingsTypography.ps1
 

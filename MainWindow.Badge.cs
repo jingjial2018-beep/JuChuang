@@ -26,6 +26,8 @@ public partial class MainWindow
     // A pending clear must be confirmed quickly rather than waiting for the
     // next 4-second foreground/background polling round.
     private readonly HashSet<ClientWindowEntry> _pendingClearRechecks = [];
+    private readonly Dictionary<ClientWindowEntry, (IntPtr Handle, int ProcessId, int Generation, DateTime Utc)>
+        _recentBadgeScans = [];
 
     // 每个账号的"上一次稳定结果"（用于"连续两次一致才更新"的状态同步）
     private readonly Dictionary<ClientWindowEntry, BadgeStableState> _badgeStableState = new();
@@ -51,6 +53,7 @@ public partial class MainWindow
         _badgePollTimer = null;
         _queuedImmediateBadgeScans.Clear();
         _pendingClearRechecks.Clear();
+        _recentBadgeScans.Clear();
         _foregroundCalibrationPending = false;
     }
 
@@ -128,6 +131,8 @@ public partial class MainWindow
         try
         {
             if (managerForeground) _foregroundCalibrationPending = false;
+            foreach (var stale in _recentBadgeScans.Keys.Where(entry => !Entries.Contains(entry)).ToArray())
+                _recentBadgeScans.Remove(stale);
             var targets = Entries
                 .Where(entry => entry.IsAttached && entry.Handle != IntPtr.Zero
                     && (managerForeground || entry.Kind == ClientKind.WeChat))
@@ -145,6 +150,15 @@ public partial class MainWindow
             foreach (var entry in selected)
             {
                 if (!NativeMethods.IsWindow(entry.Handle)) continue;
+                // An event scan just captured this exact account. Foreground
+                // calibration may wait for the next tick instead of rendering
+                // the same native window again immediately.
+                if (managerForeground
+                    && _recentBadgeScans.TryGetValue(entry, out var recent)
+                    && recent.Handle == entry.Handle
+                    && recent.ProcessId == entry.ProcessId
+                    && recent.Generation == entry.AccountGeneration
+                    && DateTime.UtcNow - recent.Utc < TimeSpan.FromSeconds(2)) continue;
                 await ScanSingleAsync(entry);
             }
         }
@@ -236,8 +250,7 @@ public partial class MainWindow
         var scannedGeneration = entry.AccountGeneration;
         var scannedExitVersion = GetProcessExitVersion(scannedProcessId);
 
-        var result = await Task.Run(() => _badgeDetector.Detect(scannedHandle, entry.Kind))
-            .ConfigureAwait(true);
+        var capture = await _badgeDetector.DetectAsync(scannedHandle, entry.Kind, scannedProcessId);
 
         // 截图期间账号可能退出、重新登录或重建 HWND。旧结果绝不能写入新账号。
         if (_isClosing || IsProcessExiting(scannedProcessId)
@@ -247,12 +260,24 @@ public partial class MainWindow
             || GetProcessExitVersion(scannedProcessId) != scannedExitVersion
             || !NativeMethods.IsWindow(scannedHandle)) return;
 
+        if (capture.Status is BadgeCaptureStatus.Skipped
+            or BadgeCaptureStatus.TimedOut
+            or BadgeCaptureStatus.WindowHung)
+        {
+            // A timeout, hung window or existing in-flight capture is not "no unread".
+            return;
+        }
+
+        var result = capture.Result;
         if (result is null)
         {
             // Unavailable captures must never be mistaken for "no unread".
             DiagnosticLogService.WriteActivityEvent("badge-scan-unavailable", scannedProcessId);
             return;
         }
+
+        _recentBadgeScans[entry] = (scannedHandle, scannedProcessId,
+            scannedGeneration, DateTime.UtcNow);
 
         var detection = result.Value;
         if (!_badgeStableState.TryGetValue(entry, out var stable))

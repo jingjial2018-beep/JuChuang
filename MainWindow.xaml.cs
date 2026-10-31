@@ -34,6 +34,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly Dictionary<int, DateTime> _accountResolutionRetryAfter = [];
     private readonly Dictionary<int, int> _accountResolutionFailures = [];
     private readonly HashSet<IntPtr> _dismissedWindowHandles = [];
+    private readonly HashSet<(int ProcessId, long StartUtcTicks)> _removedDetachedProcesses = [];
     private ClientWindowEntry? _selectedEntry;
     private ClientKind? _selectNextKind;
     private ClientLaunchContext? _pendingLaunchContext;
@@ -115,9 +116,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateLocalClock()
     {
         var now = DateTimeOffset.Now;
-        LocalDateText.Text = now.ToString("yyyy/MM/dd", System.Globalization.CultureInfo.InvariantCulture);
+        LocalDateText.Text = now.ToString("M月d日  ddd",
+            System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));
         LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
-        LocalTimeZoneText.Text = now.ToString("dddd", System.Globalization.CultureInfo.CurrentUICulture);
     }
     private string? _pendingStatusText;
     private ClientWindowEntry? _pendingMessageEntry;
@@ -294,6 +295,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
             WindowHost.UpdateOverlayBounds();
+            if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
             if (!_isTitleBarInteraction) WindowHost.ActivateCurrentWindow();
         }));
     }
@@ -306,7 +308,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 : "M 4,3 H 10 Q 11,3 11,4 V 10 Q 11,11 10,11 H 4 Q 3,11 3,10 V 4 Q 3,3 4,3 Z");
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    private async void Window_Loaded(object sender, RoutedEventArgs e) =>
+        await GuardedRunner.RunAsync(
+            () => InitializeWindowAsync(sender, e),
+            exception => ReportBackgroundFailure(nameof(Window_Loaded), exception));
+
+    private async Task InitializeWindowAsync(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
         RestoreSessionLockIfNeeded();
@@ -438,6 +445,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StopClientActivityMonitoring();
         if (_windowSource is not null)
         {
+            if (_sessionNotificationsRegistered)
+            {
+                NativeMethods.WTSUnRegisterSessionNotification(_windowSource.Handle);
+                _sessionNotificationsRegistered = false;
+            }
             _windowSource.RemoveHook(WindowMessageHook);
         }
 
@@ -495,7 +507,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _allExitInProgress = false;
             phase = "jnest-close";
             DiagnosticLogService.WriteActivityEvent("exit-all-clients-confirmed");
-            Close();
+            await DeferredWindowClose.ScheduleAsync(this);
         }
         catch (Exception exception)
         {
@@ -527,14 +539,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async void ScanTimer_Tick(object? sender, EventArgs e)
-    {
-        if (!_isClosing)
-        {
-            await TryScanAndAttachAsync();
-            SyncWeChatLoginPrompts();
-        }
-    }
+    private async void ScanTimer_Tick(object? sender, EventArgs e) =>
+        await GuardedRunner.RunAsync(
+            async () =>
+            {
+                if (_isClosing) return;
+                await TryScanAndAttachAsync();
+                SyncWeChatLoginPrompts();
+            },
+            exception => ReportBackgroundFailure(nameof(ScanTimer_Tick), exception));
 
     /// <summary>
     /// 后台扫描的兜底入口。定时器、Shell 事件和启动阶段都是 async void 或匿名回调，
@@ -963,8 +976,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             _dismissedWindowHandles.RemoveWhere(handle => !NativeMethods.IsWindow(handle));
+            _removedDetachedProcesses.RemoveWhere(key => TryGetProcessStartUtcTicks(key.ProcessId) is { } current
+                && current != key.StartUtcTicks);
 
             var dismissedHandles = _dismissedWindowHandles.ToHashSet();
+            var removedDetachedProcesses = _removedDetachedProcesses.ToHashSet();
             var selfTestTargetProcessId = _selfTestTargetProcessId;
             var managerOwner = new WindowInteropHelper(this).Handle;
             var managedWindows = CaptureManagedDiscoveryWindows();
@@ -972,7 +988,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(
                         selfTestTargetProcessId, managerOwner, managedWindows)
-                    .Where(candidate => !dismissedHandles.Contains(candidate.Handle))
+                    .Where(candidate => !dismissedHandles.Contains(candidate.Handle)
+                        && !((candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is { } start
+                            && removedDetachedProcesses.Contains((candidate.ProcessId, start))))
                     .ToArray();
                 if (selfTestTargetProcessId.HasValue)
                 {
@@ -991,7 +1009,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var candidates = scanResult.Candidates
-                .Where(candidate => !_dismissedWindowHandles.Contains(candidate.Handle))
+                .Where(candidate => !_dismissedWindowHandles.Contains(candidate.Handle)
+                    && !((candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is { } start
+                        && _removedDetachedProcesses.Contains((candidate.ProcessId, start))))
                 .ToArray();
             var weChatAccounts = scanResult.Accounts;
 
@@ -1622,13 +1642,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入");
+        CurrentStatusText.Text = BuildCurrentStatusText(entry,
+            entry.Status == "接入异常" ? "接入异常" : "已接入");
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
-        WindowHost.ShowOnly(entry.Handle);
+        if (!WindowHost.ShowOnly(entry.Handle))
+        {
+            entry.Status = "接入异常";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry, "窗口显示异常");
+        }
+        else if (entry.Status == "接入异常")
+        {
+            entry.Status = "已接入";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入");
+        }
+        UpdateWindowCount();
         SyncWeChatLoginPrompts();
         QueueHostedWindowRefresh(entry);
+        if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
     }
 
     private void PopOutButton_Click(object sender, RoutedEventArgs e)
@@ -1650,7 +1682,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 明确记录“用户主动弹出”，后台 5 秒扫描不得自动重新接入。
             _dismissedWindowHandles.Add(entry.Handle);
             entry.IsManuallyDetached = true;
-            WindowHost.DetachWindow(entry.Handle);
+            if (!WindowHost.DetachWindow(entry.Handle))
+            {
+                _dismissedWindowHandles.Remove(entry.Handle);
+                entry.IsManuallyDetached = false;
+                entry.Status = "弹出失败";
+                ShowTemporaryStatus("微信窗口未能安全弹出，请重试或退出 JNest 并保留微信运行。",
+                    TimeSpan.FromSeconds(12));
+                return;
+            }
             entry.IsAttached = false;
             entry.Status = "独立窗口";
             DiagnosticLogService.WriteAccountEvent(entry, "manual-detach");
@@ -1661,17 +1701,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;
-            entry.IsAttached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
+            var attached = WindowHost.AttachWindow(entry.Handle, makeActive: true,
                 disableMaximize: entry.Kind == ClientKind.WhatsApp,
                     centerInHost: entry.Kind == ClientKind.WeChat && entry.SessionState == ClientSessionState.Login);
-            entry.Status = entry.IsAttached ? "已接入" : "接入失败";
+            entry.IsAttached = attached || WindowHost.Contains(entry.Handle);
+            entry.Status = attached ? "已接入" : entry.IsAttached ? "接入异常" : "接入失败";
             DiagnosticLogService.WriteAccountEvent(
                 entry,
-                entry.IsAttached ? "manual-attach" : "manual-attach-failed");
+                attached ? "manual-attach" : "manual-attach-failed");
             ShowTemporaryStatus(entry.IsAttached
-                ? $"{entry.DisplayName} 已重新嵌入。"
+                ? attached ? $"{entry.DisplayName} 已重新嵌入。" : "接入状态异常，请弹出重试。"
                 : "窗口接入失败，JNest会继续后台重试，也可使用“全部接入”。",
-                entry.IsAttached ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
+                attached ? TimeSpan.FromSeconds(3) : TimeSpan.FromSeconds(12));
         }
 
         UpdateWindowCount();
@@ -1756,7 +1797,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 entry.SessionState == ClientSessionState.Login ? ClientWindowRole.Login
                     : entry.SessionState == ClientSessionState.Main ? ClientWindowRole.Main : ClientWindowRole.Unknown));
 
-    private async Task<(int DiscoveredCount, int NewCount)> ScanClientsCoreAsync()
+    private async Task<(int DiscoveredCount, int NewCount)> ScanClientsCoreAsync(bool includeRemoved = false)
     {
         if (_isClosing || _allExitInProgress) return (0, 0);
 
@@ -1771,7 +1812,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         });
 
         if (_isClosing || _allExitInProgress) return (0, 0);
-        var candidates = scanResult.Candidates.Where(IsVerifiedCandidate).ToArray();
+        var candidates = scanResult.Candidates.Where(candidate => IsVerifiedCandidate(candidate)
+            && (includeRemoved || !_dismissedWindowHandles.Contains(candidate.Handle))
+            && (includeRemoved || (candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is not { } start
+                || !_removedDetachedProcesses.Contains((candidate.ProcessId, start)))).ToArray();
         var scanUtc = DateTime.UtcNow;
         foreach (var entry in Entries.ToArray())
         {
@@ -1869,7 +1913,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// <summary>调用方持有扫描锁；仅“全部接入”执行窗口接入。</summary>
     private async Task<int> AttachAllDiscoveredClientsAsync()
     {
-        await ScanClientsCoreAsync();
+        await ScanClientsCoreAsync(includeRemoved: true);
         if (_isClosing || _allExitInProgress) return 0;
 
         var attachedCount = 0;
@@ -1882,6 +1926,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             _dismissedWindowHandles.Remove(entry.Handle);
+            if (entry.ProcessStartUtcTicks is { } start)
+                _removedDetachedProcesses.Remove((entry.ProcessId, start));
             entry.IsManuallyDetached = false;
             if (entry.IsAttached)
             {
@@ -1995,7 +2041,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            WindowHost.RefreshHostedWindow(entry.Handle);
+            var refreshed = WindowHost.RefreshHostedWindow(entry.Handle);
+            entry.Status = refreshed ? "已接入" : "接入异常";
+            CurrentStatusText.Text = BuildCurrentStatusText(entry,
+                refreshed ? "已接入" : "窗口显示异常");
+            UpdateWindowCount();
             if (attempt == 0)
             {
                 await Task.Delay(80);
@@ -2006,7 +2056,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateWindowCount()
     {
         var online = Entries.Count(IsVerifiedClientWindow);
-        var attached = Entries.Count(entry => entry.IsAttached && IsVerifiedClientWindow(entry));
+        var attached = Entries.Count(entry => entry.IsAttached
+            && entry.Status != "接入异常" && IsVerifiedClientWindow(entry));
         WindowCountText.Text = $"发现 {online} 个窗口，已接入 {attached} 个";
     }
 
@@ -2575,13 +2626,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (entry.IsManuallyDetached && !entry.IsAttached)
+        {
+            if ((entry.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(entry.ProcessId)) is { } start)
+                _removedDetachedProcesses.Add((entry.ProcessId, start));
+            _dismissedWindowHandles.Add(entry.Handle);
+            RemoveEntry(entry);
+            ShowTemporaryStatus($"已从 JNest 列表移除 {entry.DisplayName}，客户端继续独立运行。");
+            return;
+        }
+
         if (entry.Handle == IntPtr.Zero || !NativeMethods.IsWindow(entry.Handle))
         {
             RemoveEntry(entry);
             return;
         }
 
-        // WM_CLOSE may hide the application to tray; exit only the validated process.
+        // Send WM_CLOSE to the original verified HWND first. If the client remains
+        // alive after the grace window, the shared service revalidates process
+        // generation and HWND ownership before terminating only that process.
         var affected = Entries.Count(other => other.ProcessId == entry.ProcessId);
         var answer = ShowExitConfirmation(entry.DisplayName, entry.ProcessId, affected);
         if (!answer) return;
@@ -2610,46 +2673,37 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            // Only terminate this PID; do not kill other independent client processes.
             MarkProcessExitRequested(pid);
-            var killTask = Task.Run(() =>
+            var result = (await ExitBatchService.RunAsync(
+                [new SystemExitProcessTarget(process, handle)],
+                TimeSpan.FromMilliseconds(2500),
+                TimeSpan.FromSeconds(3))).Single();
+
+            bool originalProcessExited;
+            try { originalProcessExited = process.HasExited; }
+            catch (Exception observationException) when (observationException is InvalidOperationException
+                or System.ComponentModel.Win32Exception)
             {
-                // The worker owns its own Process wrapper. Returning on timeout must
-                // never dispose a wrapper that an unfinished worker is using.
-                using var live = Process.GetProcessById(pid);
-                if (live.HasExited || live.StartTime.ToUniversalTime().Ticks != expectedStart.Value
-                    || !WindowBelongsToProcess(handle, pid))
-                    throw new InvalidOperationException("Client process identity changed before exit.");
-                live.Kill(entireProcessTree: false);
-            });
-            if (await Task.WhenAny(killTask, Task.Delay(TimeSpan.FromSeconds(5))) != killTask)
+                DiagnosticLogService.WriteErrorEvent("sidebar-exit-process-observation", observationException);
+                originalProcessExited = false;
+            }
+            result = ExitCompletionPolicy.Reconcile(result, originalProcessExited);
+
+            ReconnectDiagnostics.Write($"sidebar exit kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X} graceful={result.GracefulRequested} kill={result.KillRequested} confirmed={result.Confirmed} error={result.Error ?? "none"}");
+            DiagnosticLogService.WriteActivityEvent($"client-exit-confirmation pid={pid} graceful={result.GracefulRequested} forced={result.KillRequested} confirmed={result.Confirmed}");
+
+            if (!result.Confirmed)
             {
-                // A timed-out OS call can complete later. Its worker rechecks the
-                // process generation before Kill, while future scans refresh UI.
-                _ = killTask.ContinueWith(task =>
-                    DiagnosticLogService.WriteErrorEvent("client-exit-late-worker", task.Exception!.GetBaseException()),
-                    CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-                DiagnosticLogService.WriteActivityEvent("client-exit-request-unconfirmed", pid);
-                ShowTemporaryStatus("客户端退出请求超时，尚未确认；后台将继续检查实际进程状态。", TimeSpan.FromSeconds(8));
+                ShowTemporaryStatus($"{ExitResultPresentation.Status(result)}，账号状态将由自动扫描继续核对。",
+                    TimeSpan.FromSeconds(8));
                 return;
             }
-            await killTask;
-            ReconnectDiagnostics.Write($"sidebar exit requested kind={entry.Kind} pid={pid} hwnd=0x{handle.ToInt64():X}");
-            using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                ReconnectDiagnostics.Write($"sidebar exit timeout pid={pid} confirmed=false");
-                ShowTemporaryStatus("进程尚未确认退出，账号状态将由自动扫描继续核对。", TimeSpan.FromSeconds(8));
-                return;
-            }
-            ReconnectDiagnostics.Write($"sidebar exit confirmed pid={pid}");
+
             foreach (var associated in Entries.Where(other => other.ProcessId == pid).ToArray())
                 RemoveEntry(associated);
-            ShowTemporaryStatus($"已退出 {entry.DisplayName}。");
+            ShowTemporaryStatus(result.KillRequested
+                ? $"客户端未能正常关闭，已强制退出 {entry.DisplayName}。"
+                : $"已退出 {entry.DisplayName}。");
         }
         catch (Exception exception) when (exception is InvalidOperationException
             or System.ComponentModel.Win32Exception or System.UnauthorizedAccessException)
@@ -2657,6 +2711,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReconnectDiagnostics.Write($"sidebar exit failed pid={pid} error={exception.GetType().Name}");
             ShowTemporaryStatus("无法结束该客户端进程，已保留列表项；请检查权限。",
                 TimeSpan.FromSeconds(10));
+        }
+        catch (Exception exception)
+        {
+            ReportBackgroundFailure(nameof(CloseEntry_Click), exception);
+            ShowTemporaryStatus("客户端退出过程中发生异常，已记录诊断日志。", TimeSpan.FromSeconds(8));
         }
         finally
         {

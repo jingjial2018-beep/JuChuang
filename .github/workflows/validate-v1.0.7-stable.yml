@@ -6,6 +6,9 @@ on:
       - feature/v1.0.7-stable-typography
       - fix/v1.0.7-review
   pull_request:
+    branches:
+      - feature/v1.0.7-stable-typography
+      - fix/v1.0.7-review
   workflow_dispatch:
 
 permissions:
