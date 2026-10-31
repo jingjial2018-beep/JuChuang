@@ -181,6 +181,10 @@ internal static class NativeMethods
     // 微信 4.x（Qt）与 WhatsApp（WebView2）的自绘窗口若不带此标志会截到黑屏。
     internal const uint PW_RENDERFULLCONTENT = 0x00000002;
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsHungAppWindow(IntPtr hWnd);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);

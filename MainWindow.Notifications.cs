@@ -170,6 +170,10 @@ public partial class MainWindow
                         await TryScanAndAttachAsync();
                     }
                 }
+                catch (Exception exception)
+                {
+                    ReportBackgroundFailure(nameof(QueueClientWindowReconcile), exception);
+                }
                 finally
                 {
                     Interlocked.Exchange(ref _shellWindowReconcilePending, 0);

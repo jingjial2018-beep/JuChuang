@@ -15,6 +15,29 @@ internal static class CoverageHarness
     private static void Assert(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
 
+    // ---------- 异步事件异常隔离 ----------
+
+    public static async Task GuardedRunnerIsolation()
+    {
+        var reported = new List<Exception>();
+        var failed = await GuardedRunner.RunAsync(
+            () => Task.FromException(new InvalidOperationException("expected action failure")),
+            reported.Add);
+        Assert(!failed && reported.Count == 1
+            && reported[0] is InvalidOperationException,
+            "action failure was not routed to the failure callback");
+
+        var reporterFailed = await GuardedRunner.RunAsync(
+            () => Task.FromException(new InvalidOperationException("expected action failure")),
+            _ => throw new InvalidOperationException("expected reporter failure"));
+        Assert(!reporterFailed, "failure callback exception escaped GuardedRunner");
+
+        var succeeded = await GuardedRunner.RunAsync(
+            () => Task.CompletedTask,
+            _ => throw new InvalidOperationException("success must not report failure"));
+        Assert(succeeded, "successful action was reported as failed");
+    }
+
     // ---------- 免打扰时间窗策略 ----------
 
     public static Task DndPolicy()

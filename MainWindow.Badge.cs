@@ -250,8 +250,7 @@ public partial class MainWindow
         var scannedGeneration = entry.AccountGeneration;
         var scannedExitVersion = GetProcessExitVersion(scannedProcessId);
 
-        var result = await Task.Run(() => _badgeDetector.Detect(scannedHandle, entry.Kind))
-            .ConfigureAwait(true);
+        var capture = await _badgeDetector.DetectAsync(scannedHandle, entry.Kind, scannedProcessId);
 
         // 截图期间账号可能退出、重新登录或重建 HWND。旧结果绝不能写入新账号。
         if (_isClosing || IsProcessExiting(scannedProcessId)
@@ -261,6 +260,15 @@ public partial class MainWindow
             || GetProcessExitVersion(scannedProcessId) != scannedExitVersion
             || !NativeMethods.IsWindow(scannedHandle)) return;
 
+        if (capture.Status is BadgeCaptureStatus.Skipped
+            or BadgeCaptureStatus.TimedOut
+            or BadgeCaptureStatus.WindowHung)
+        {
+            // A timeout, hung window or existing in-flight capture is not "no unread".
+            return;
+        }
+
+        var result = capture.Result;
         if (result is null)
         {
             // Unavailable captures must never be mistaken for "no unread".

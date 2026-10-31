@@ -124,11 +124,21 @@ public partial class MainWindow
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
-        _ = TryUnlockAsync();
+        _ = TryUnlockGuardedAsync();
     }
 
     private async void UnlockJNest_Click(object sender, RoutedEventArgs e)
-        => await TryUnlockAsync();
+        => await TryUnlockGuardedAsync();
+
+    private Task TryUnlockGuardedAsync()
+        => GuardedRunner.RunAsync(
+            TryUnlockAsync,
+            exception =>
+            {
+                ReportBackgroundFailure(nameof(UnlockJNest_Click), exception);
+                if (IsJNestProtected)
+                    LockErrorText.Text = "解锁过程中发生异常，请重试。";
+            });
 
     private async Task TryUnlockAsync()
     {

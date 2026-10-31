@@ -1,6 +1,9 @@
 name: JNest PR test package (no release)
 
 on:
+  push:
+    branches:
+      - maintenance/**
   pull_request:
     branches:
       - stable
@@ -13,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-test-package-${{ github.event.pull_request.number }}
+  group: pr-test-package-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

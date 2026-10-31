@@ -17,26 +17,79 @@ internal sealed class BadgeDetector
     private static readonly Lazy<IReadOnlyDictionary<char, GlyphTemplate[]>> Templates =
         new(CreateTemplates, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    public BadgeResult? Detect(IntPtr hwnd, ClientKind kind)
-    {
-        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd)
-            || !NativeMethods.GetWindowRect(hwnd, out var rect)
-            || rect.Width <= 0 || rect.Height <= 0)
-        {
-            return null;
-        }
+    private static readonly TimeSpan CaptureTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan CaptureRetryDelay = TimeSpan.FromSeconds(15);
+    private readonly BadgeCaptureGate _captureGate = new();
 
+    internal async Task<BadgeCaptureAttempt> DetectAsync(IntPtr hwnd, ClientKind kind, int processId)
+    {
+        var start = _captureGate.TryBegin(hwnd, processId, DateTime.UtcNow);
+        if (start != BadgeCaptureStartResult.Started)
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.Skipped, null);
+
+        Task<BadgeCaptureAttempt>? captureTask = null;
         try
         {
+            captureTask = Task.Run(() => DetectCore(hwnd, kind));
+            var attempt = await captureTask.WaitAsync(CaptureTimeout);
+            if (attempt.Status == BadgeCaptureStatus.WindowHung)
+            {
+                _captureGate.Defer(hwnd, processId, DateTime.UtcNow + CaptureRetryDelay);
+                DiagnosticLogService.WriteActivityEvent("badge-window-hung", processId);
+            }
+            return attempt;
+        }
+        catch (TimeoutException)
+        {
+            // WaitAsync bounds the caller, not the native PrintWindow call itself.
+            // Keep the HWND/PID in-flight gate until the worker really completes.
+            _captureGate.Defer(hwnd, processId, DateTime.UtcNow + CaptureRetryDelay);
+            DiagnosticLogService.WriteActivityEvent("badge-capture-timeout", processId);
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.TimedOut, null);
+        }
+        finally
+        {
+            if (captureTask is null || captureTask.IsCompleted)
+            {
+                _captureGate.Complete(hwnd, processId);
+            }
+            else
+            {
+                _ = captureTask.ContinueWith(
+                    _ => _captureGate.Complete(hwnd, processId),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+        }
+    }
+
+    private static BadgeCaptureAttempt DetectCore(IntPtr hwnd, ClientKind kind)
+    {
+        try
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
+            if (NativeMethods.IsHungAppWindow(hwnd))
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.WindowHung, null);
+            if (!NativeMethods.GetWindowRect(hwnd, out var rect)
+                || rect.Width <= 0 || rect.Height <= 0)
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
+
             using var bitmap = Capture(hwnd, rect.Width, rect.Height);
+            if (bitmap is null)
+                return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
+
             var dpi = NativeMethods.GetDpiForWindow(hwnd);
             var dpiScale = dpi > 0 ? Math.Clamp(dpi / 96.0, 0.75, 4.0) : 1.0;
-            return bitmap is null ? null : AnalyzeBitmap(bitmap, kind, dpiScale, null);
+            return new BadgeCaptureAttempt(
+                BadgeCaptureStatus.Completed,
+                AnalyzeBitmap(bitmap, kind, dpiScale, null));
         }
         catch
         {
             // 消息提示是辅助功能；截图或识别失败时不能影响窗口管理主流程。
-            return null;
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.Unavailable, null);
         }
     }
 

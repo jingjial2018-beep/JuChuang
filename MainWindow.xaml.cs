@@ -307,7 +307,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 : "M 4,3 H 10 Q 11,3 11,4 V 10 Q 11,11 10,11 H 4 Q 3,11 3,10 V 4 Q 3,3 4,3 Z");
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    private async void Window_Loaded(object sender, RoutedEventArgs e) =>
+        await GuardedRunner.RunAsync(
+            () => InitializeWindowAsync(sender, e),
+            exception => ReportBackgroundFailure(nameof(Window_Loaded), exception));
+
+    private async Task InitializeWindowAsync(object sender, RoutedEventArgs e)
     {
         InitializeTrayIcon();
         RestoreSessionLockIfNeeded();
@@ -533,14 +538,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async void ScanTimer_Tick(object? sender, EventArgs e)
-    {
-        if (!_isClosing)
-        {
-            await TryScanAndAttachAsync();
-            SyncWeChatLoginPrompts();
-        }
-    }
+    private async void ScanTimer_Tick(object? sender, EventArgs e) =>
+        await GuardedRunner.RunAsync(
+            async () =>
+            {
+                if (_isClosing) return;
+                await TryScanAndAttachAsync();
+                SyncWeChatLoginPrompts();
+            },
+            exception => ReportBackgroundFailure(nameof(ScanTimer_Tick), exception));
 
     /// <summary>
     /// 后台扫描的兜底入口。定时器、Shell 事件和启动阶段都是 async void 或匿名回调，
@@ -2689,6 +2695,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReconnectDiagnostics.Write($"sidebar exit failed pid={pid} error={exception.GetType().Name}");
             ShowTemporaryStatus("无法结束该客户端进程，已保留列表项；请检查权限。",
                 TimeSpan.FromSeconds(10));
+        }
+        catch (Exception exception)
+        {
+            ReportBackgroundFailure(nameof(CloseEntry_Click), exception);
+            ShowTemporaryStatus("客户端退出过程中发生异常，已记录诊断日志。", TimeSpan.FromSeconds(8));
         }
         finally
         {
