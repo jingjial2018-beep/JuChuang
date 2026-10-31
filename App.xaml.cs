@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Pipes;
+using System.Text;
 using System.Diagnostics;
 using System.Threading;
 using Microsoft.Toolkit.Uwp.Notifications;
@@ -21,7 +22,14 @@ public partial class App : Application
     private static string? GetActivationArgument(IEnumerable<string> args)
     {
         var argument = args.FirstOrDefault(a => a.StartsWith("jnest-activate=", StringComparison.OrdinalIgnoreCase));
-        return argument is null ? null : Uri.UnescapeDataString(argument["jnest-activate=".Length..]);
+        if (argument is null || argument.Length > ActivationMessagePolicy.MaximumCharacters * 3)
+            return null;
+        try
+        {
+            var value = Uri.UnescapeDataString(argument["jnest-activate=".Length..]);
+            return ActivationMessagePolicy.IsSafe(value) ? value : null;
+        }
+        catch (UriFormatException) { return null; }
     }
 
     private static bool ForwardActivation(string? argument)
@@ -30,14 +38,16 @@ public partial class App : Application
         {
             try
             {
-                using var pipe = new NamedPipeClientStream(".", ActivationPipeName, PipeDirection.Out);
+                using var pipe = new NamedPipeClientStream(".", ActivationPipeName, PipeDirection.Out,
+                    PipeOptions.CurrentUserOnly);
                 pipe.Connect(250);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                writer.WriteLine(argument ?? "activate");
+                writer.WriteLine(ActivationMessagePolicy.IsSafe(argument) ? argument : "activate");
                 return true;
             }
             catch (IOException) { Thread.Sleep(100); }
             catch (TimeoutException) { Thread.Sleep(100); }
+            catch (UnauthorizedAccessException) { return false; }
         }
         return false;
     }
@@ -84,14 +94,19 @@ public partial class App : Application
             try
             {
                 using var server = new NamedPipeServerStream(ActivationPipeName, PipeDirection.In, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await server.WaitForConnectionAsync(token);
-                using var reader = new StreamReader(server);
-                var argument = await reader.ReadLineAsync(token);
-                if (argument is not null)
+                using var readDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                readDeadline.CancelAfter(TimeSpan.FromSeconds(3));
+                var argument = await ActivationMessagePolicy.ReadBoundedLineAsync(server, readDeadline.Token);
+                if (argument is not null && !token.IsCancellationRequested)
                     await Dispatcher.InvokeAsync(() => DispatchActivation(argument));
             }
-            catch (OperationCanceledException) { break; }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (OperationCanceledException)
+            {
+                DiagnosticLogService.WriteDebugEvent("activation-pipe-read-timeout");
+            }
             catch (Exception exception)
             {
                 JuChuang.Services.DiagnosticLogService.WriteActivityEvent("activation-pipe-" + exception.GetType().Name);
@@ -103,10 +118,16 @@ public partial class App : Application
 
     private void DispatchActivation(string argument)
     {
+        if (!ActivationMessagePolicy.IsSafe(argument)) return;
         if (MainWindow is MainWindow window && window.IsLoaded)
             window.ActivateFromToast(argument);
         else
+        {
+            // A large burst of second launches must not grow the pre-load queue.
+            if (_pendingActivations.Count >= ActivationMessagePolicy.MaximumPending)
+                _pendingActivations.Dequeue();
             _pendingActivations.Enqueue(argument);
+        }
     }
 
     private void MainWindowLoaded(object sender, RoutedEventArgs e)
@@ -136,7 +157,7 @@ public partial class App : Application
         try { JNestLockPersistence.DeleteLegacyMarker(); }
         catch (Exception exception) { DiagnosticLogService.WriteActivityEvent("legacy-lock-marker-cleanup-" + exception.GetType().Name); }
         if (GetActivationArgument(e.Args) is { } initialArgument)
-            _pendingActivations.Enqueue(initialArgument);
+            DispatchActivation(initialArgument);
         try
         {
             ToastNotificationManagerCompat.OnActivated += args =>

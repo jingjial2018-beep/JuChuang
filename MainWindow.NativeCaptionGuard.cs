@@ -154,13 +154,27 @@ public partial class MainWindow
             ShowTemporaryStatus("窗口按钮保护测试未启用");
             return;
         }
-        _captionGuardRefreshTimer.Tick += (_, _) =>
+        // A named handler can be removed on shutdown/restart; an anonymous
+        // subscription accumulated handlers after repeated Start/Stop cycles.
+        _captionGuardRefreshTimer.Tick -= CaptionGuardRefreshTimer_Tick;
+        _captionGuardRefreshTimer.Tick += CaptionGuardRefreshTimer_Tick;
+        _captionGuardRefreshTimer.Start();
+        CaptionGuardRefreshTimer_Tick(this, EventArgs.Empty);
+    }
+
+    private void CaptionGuardRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_isClosing) return;
+        try
         {
             RefreshNativeCaptionGuard();
             RefreshModalClickShield();
-        };
-        _captionGuardRefreshTimer.Start();
-        RefreshNativeCaptionGuard();
+        }
+        catch (Exception exception)
+        {
+            _guardedClient = IntPtr.Zero; // Fail open for input.
+            DiagnosticLogService.WriteErrorEvent("caption-guard-refresh", exception);
+        }
     }
 
     private void RefreshNativeCaptionGuard()
@@ -191,6 +205,27 @@ public partial class MainWindow
     }
 
     private IntPtr OnNativeCaptionMouse(int code, IntPtr msg, IntPtr data)
+    {
+        try
+        {
+            return ProcessNativeCaptionMouse(code, msg, data);
+        }
+        catch (Exception exception)
+        {
+            // Never let a managed exception escape a global low-level mouse
+            // hook. Do not perform file I/O or logging on the hook callback.
+            try
+            {
+                if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                    _ = Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                        new Action(() => DiagnosticLogService.WriteErrorEvent("caption-mouse-hook", exception)));
+            }
+            catch { /* A shutting-down dispatcher cannot accept diagnostics. */ }
+            return CallNextHookEx(_captionMouseHook, code, msg, data);
+        }
+    }
+
+    private IntPtr ProcessNativeCaptionMouse(int code, IntPtr msg, IntPtr data)
     {
         if (code >= 0 && !_isClosing)
         {
@@ -288,11 +323,18 @@ public partial class MainWindow
         _modalGuardDialogHwnd = IntPtr.Zero;
         _modalActivationQueued = false;
         _captionGuardRefreshTimer.Stop();
+        _captionGuardRefreshTimer.Tick -= CaptionGuardRefreshTimer_Tick;
         if (_captionMouseHook != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(_captionMouseHook);
-            _captionMouseHook = IntPtr.Zero;
+            if (UnhookWindowsHookEx(_captionMouseHook))
+                _captionMouseHook = IntPtr.Zero;
+            else
+                DiagnosticLogService.WriteActivityEvent(
+                    "caption-guard-unhook-failed-" + Marshal.GetLastWin32Error());
         }
-        _captionHookCallback = null;
+        // If UnhookWindowsHookEx fails, keep the delegate rooted until the
+        // process ends; releasing it could crash another mouse-hook callback.
+        if (_captionMouseHook == IntPtr.Zero)
+            _captionHookCallback = null;
     }
 }
