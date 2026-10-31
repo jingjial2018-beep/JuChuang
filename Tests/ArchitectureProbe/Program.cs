@@ -729,10 +729,13 @@ Run("Activation pipe uses bounded input and current-user named pipe", () =>
         ".", pipeName, System.IO.Pipes.PipeDirection.Out,
         System.IO.Pipes.PipeOptions.CurrentUserOnly);
     client.Connect(2000);
-    accepted.GetAwaiter().GetResult();
-    using (var writer = new StreamWriter(client, leaveOpen: true) { AutoFlush = true })
+    accepted.WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
+    using (var writer = new StreamWriter(client, new System.Text.UTF8Encoding(false), 1024, leaveOpen: true)
+        { AutoFlush = true })
         writer.WriteLine("activate");
-    var received = ActivationMessagePolicy.ReadBoundedLineAsync(server, CancellationToken.None)
+    // CI must never hang indefinitely on a malfunctioning pipe frame.
+    using var readDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+    var received = ActivationMessagePolicy.ReadBoundedLineAsync(server, readDeadline.Token)
         .GetAwaiter().GetResult();
     Assert(received == "activate", "same-user pipe connection and framing failed");
 });
