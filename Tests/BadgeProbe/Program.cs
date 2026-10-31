@@ -25,6 +25,41 @@ if (args.Length == 7 && args[0].Equals("--crop", StringComparison.OrdinalIgnoreC
 
 var failures = new List<string>();
 
+// A timed-out native capture must not be launched again while still in flight,
+// and a completed timed-out capture must observe its per-window cooldown.
+var captureGate = new BadgeCaptureGate();
+var captureNow = DateTime.UtcNow;
+var captureHandle = new IntPtr(1234);
+const int capturePid = 5678;
+var firstCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
+var duplicateCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
+// A timed-out native worker remains gated even after its retry cooldown expires.
+captureGate.Defer(captureHandle, capturePid, captureNow.AddSeconds(15));
+var afterCooldownStillInFlight = captureGate.TryBegin(
+    captureHandle, capturePid, captureNow.AddSeconds(16));
+
+// A separate completed capture verifies that the cooldown is applied after its worker exits.
+var cooldownHandle = new IntPtr(1235);
+var cooldownCapture = captureGate.TryBegin(cooldownHandle, capturePid, captureNow);
+captureGate.Defer(cooldownHandle, capturePid, captureNow.AddSeconds(15));
+captureGate.Complete(cooldownHandle, capturePid);
+var duringCooldown = captureGate.TryBegin(cooldownHandle, capturePid, captureNow.AddSeconds(14));
+var afterCooldown = captureGate.TryBegin(cooldownHandle, capturePid, captureNow.AddSeconds(16));
+var otherProcessCapture = captureGate.TryBegin(captureHandle, capturePid + 1, captureNow);
+captureGate.Complete(captureHandle, capturePid);
+captureGate.Complete(cooldownHandle, capturePid);
+captureGate.Complete(captureHandle, capturePid + 1);
+var captureGatePassed =
+    firstCapture == BadgeCaptureStartResult.Started
+    && duplicateCapture == BadgeCaptureStartResult.AlreadyRunning
+    && afterCooldownStillInFlight == BadgeCaptureStartResult.AlreadyRunning
+    && cooldownCapture == BadgeCaptureStartResult.Started
+    && duringCooldown == BadgeCaptureStartResult.CoolingDown
+    && afterCooldown == BadgeCaptureStartResult.Started
+    && otherProcessCapture == BadgeCaptureStartResult.Started;
+Console.WriteLine($"Badge capture gate isolation: {(captureGatePassed ? "PASS" : "FAIL")}");
+if (!captureGatePassed) failures.Add("badge capture in-flight and cooldown isolation");
+
 // The shell/window activity event is a scan trigger, not proof of unread.
 // Protect no-badge baseline and transitions from spurious notifications.
 var notificationCases = new (string Name, BadgeResult? Previous, BadgeResult Current, bool Expected)[]

@@ -1,6 +1,9 @@
 name: JNest PR test package (no release)
 
 on:
+  push:
+    branches:
+      - maintenance/**
   pull_request:
     branches:
       - stable
@@ -13,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-test-package-${{ github.event.pull_request.number }}
+  group: pr-test-package-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,11 +33,15 @@ jobs:
 
       - name: Read preview version
         shell: pwsh
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           [xml]$project = Get-Content .\JuChuang.csproj
           $baseVersion = $project.Project.PropertyGroup.Version
-          "PREVIEW_VERSION=$baseVersion-preview.pr${{ github.event.pull_request.number }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PACKAGE_NAME=JNest-v$baseVersion-preview-PR${{ github.event.pull_request.number }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $previewSuffix = if ([string]::IsNullOrWhiteSpace($env:PR_NUMBER)) { "build$($env:RUN_NUMBER)" } else { "pr$($env:PR_NUMBER)" }
+          "PREVIEW_VERSION=$baseVersion-preview.$previewSuffix" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PACKAGE_NAME=JNest-v$baseVersion-preview-$previewSuffix" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore
         run: dotnet restore .\JuChuang.csproj -r win-x64

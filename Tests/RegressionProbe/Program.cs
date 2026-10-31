@@ -44,6 +44,7 @@ internal static class Program
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
                 await Run("Exit-all queues JNest close after the original Closing event", ExitAllDeferredClose);
                 await Run("Main-window save failures never report success and settings retry persists pending changes", MainWindowSettingsFailure);
+                await Run("Guarded runner isolates asynchronous event failures", CoverageHarness.GuardedRunnerIsolation);
                 await Run("DND policy time-window matrix", CoverageHarness.DndPolicy);
                 await Run("WeChat database ownership decision matrix", CoverageHarness.OwnershipDecide);
                 await Run("Exit close policy truth tables", CoverageHarness.ExitPolicyTables);
