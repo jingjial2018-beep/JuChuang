@@ -325,6 +325,7 @@ public sealed class ExternalWindowHost : HwndHost
         if (!NativeMethods.IsWindow(handle))
         {
             _hostedWindows.TryRemove(handle, out _);
+            _lastLocationEventTicks.TryRemove(handle, out _);
             if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
             return true;
         }
@@ -355,6 +356,7 @@ public sealed class ExternalWindowHost : HwndHost
 
         ReleaseOwnedLoginDialog(handle);
         _hostedWindows.TryRemove(handle, out _);
+        _lastLocationEventTicks.TryRemove(handle, out _);
         if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         if (bringToFront) NativeMethods.SetForegroundWindow(handle);
         return true;
@@ -364,6 +366,7 @@ public sealed class ExternalWindowHost : HwndHost
     public bool ForgetWindow(IntPtr handle)
     {
         if (!_hostedWindows.TryRemove(handle, out _)) return false;
+        _lastLocationEventTicks.TryRemove(handle, out _);
         if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
         return true;
     }
@@ -492,6 +495,7 @@ public sealed class ExternalWindowHost : HwndHost
             if (!NativeMethods.IsWindow(handle))
             {
                 _hostedWindows.TryRemove(handle, out _);
+                _lastLocationEventTicks.TryRemove(handle, out _);
                 if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
                 continue;
             }
