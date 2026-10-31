@@ -27,6 +27,8 @@ public static class ExitResultPresentation
             return "强制退出请求超时";
         if (result.Error == "KillTimeout")
             return "强制退出未确认";
+        if (result.Error?.StartsWith("KillConfirmationFailed:", StringComparison.Ordinal) == true)
+            return "强制退出确认失败";
         if (result.Error?.StartsWith("KillFailed:", StringComparison.Ordinal) == true)
             return "强制退出失败";
 
