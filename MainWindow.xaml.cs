@@ -34,6 +34,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly Dictionary<int, DateTime> _accountResolutionRetryAfter = [];
     private readonly Dictionary<int, int> _accountResolutionFailures = [];
     private readonly HashSet<IntPtr> _dismissedWindowHandles = [];
+    private readonly HashSet<(int ProcessId, long StartUtcTicks)> _removedDetachedProcesses = [];
     private ClientWindowEntry? _selectedEntry;
     private ClientKind? _selectNextKind;
     private ClientLaunchContext? _pendingLaunchContext;
@@ -115,10 +116,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateLocalClock()
     {
         var now = DateTimeOffset.Now;
-        LocalDateText.Text = now.ToString("M月d日 · dddd",
+        LocalDateText.Text = now.ToString("M月d日  ddd",
             System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));
-        LocalDateTimeSeparatorText.Text = "#";
-        LocalTimeText.Text = now.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
     }
     private string? _pendingStatusText;
     private ClientWindowEntry? _pendingMessageEntry;
@@ -976,8 +976,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             _dismissedWindowHandles.RemoveWhere(handle => !NativeMethods.IsWindow(handle));
+            _removedDetachedProcesses.RemoveWhere(key => TryGetProcessStartUtcTicks(key.ProcessId) is { } current
+                && current != key.StartUtcTicks);
 
             var dismissedHandles = _dismissedWindowHandles.ToHashSet();
+            var removedDetachedProcesses = _removedDetachedProcesses.ToHashSet();
             var selfTestTargetProcessId = _selfTestTargetProcessId;
             var managerOwner = new WindowInteropHelper(this).Handle;
             var managedWindows = CaptureManagedDiscoveryWindows();
@@ -985,7 +988,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(
                         selfTestTargetProcessId, managerOwner, managedWindows)
-                    .Where(candidate => !dismissedHandles.Contains(candidate.Handle))
+                    .Where(candidate => !dismissedHandles.Contains(candidate.Handle)
+                        && !((candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is { } start
+                            && removedDetachedProcesses.Contains((candidate.ProcessId, start))))
                     .ToArray();
                 if (selfTestTargetProcessId.HasValue)
                 {
@@ -1004,7 +1009,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var candidates = scanResult.Candidates
-                .Where(candidate => !_dismissedWindowHandles.Contains(candidate.Handle))
+                .Where(candidate => !_dismissedWindowHandles.Contains(candidate.Handle)
+                    && !((candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is { } start
+                        && _removedDetachedProcesses.Contains((candidate.ProcessId, start))))
                 .ToArray();
             var weChatAccounts = scanResult.Accounts;
 
@@ -1790,7 +1797,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 entry.SessionState == ClientSessionState.Login ? ClientWindowRole.Login
                     : entry.SessionState == ClientSessionState.Main ? ClientWindowRole.Main : ClientWindowRole.Unknown));
 
-    private async Task<(int DiscoveredCount, int NewCount)> ScanClientsCoreAsync()
+    private async Task<(int DiscoveredCount, int NewCount)> ScanClientsCoreAsync(bool includeRemoved = false)
     {
         if (_isClosing || _allExitInProgress) return (0, 0);
 
@@ -1805,7 +1812,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         });
 
         if (_isClosing || _allExitInProgress) return (0, 0);
-        var candidates = scanResult.Candidates.Where(IsVerifiedCandidate).ToArray();
+        var candidates = scanResult.Candidates.Where(candidate => IsVerifiedCandidate(candidate)
+            && (includeRemoved || (candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is not { } start
+                || !_removedDetachedProcesses.Contains((candidate.ProcessId, start)))).ToArray();
         var scanUtc = DateTime.UtcNow;
         foreach (var entry in Entries.ToArray())
         {
@@ -1903,7 +1912,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// <summary>调用方持有扫描锁；仅“全部接入”执行窗口接入。</summary>
     private async Task<int> AttachAllDiscoveredClientsAsync()
     {
-        await ScanClientsCoreAsync();
+        await ScanClientsCoreAsync(includeRemoved: true);
         if (_isClosing || _allExitInProgress) return 0;
 
         var attachedCount = 0;
@@ -1916,6 +1925,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             _dismissedWindowHandles.Remove(entry.Handle);
+            if (entry.ProcessStartUtcTicks is { } start)
+                _removedDetachedProcesses.Remove((entry.ProcessId, start));
             entry.IsManuallyDetached = false;
             if (entry.IsAttached)
             {
@@ -2611,6 +2622,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_isPreviewMode)
         {
             ShowTemporaryStatus("预览模式不会关闭本地客户端。");
+            return;
+        }
+
+        if (entry.IsManuallyDetached && !entry.IsAttached)
+        {
+            if ((entry.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(entry.ProcessId)) is { } start)
+                _removedDetachedProcesses.Add((entry.ProcessId, start));
+            _dismissedWindowHandles.Add(entry.Handle);
+            RemoveEntry(entry);
+            ShowTemporaryStatus($"已从 JNest 列表移除 {entry.DisplayName}，客户端继续独立运行。");
             return;
         }
 
