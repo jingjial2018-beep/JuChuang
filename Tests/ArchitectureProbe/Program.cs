@@ -710,7 +710,7 @@ Run("Activation pipe uses bounded input and current-user named pipe", () =>
     {
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(line));
         return ActivationMessagePolicy.ReadBoundedLineAsync(stream, CancellationToken.None)
-            .GetAwaiter().GetResult();
+            .WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
     }
     Assert(Read("activate\\r\\n".Replace("\\r", "\r").Replace("\\n", "\n")) == "activate",
         "CRLF-delimited activation frame should decode");
@@ -736,7 +736,7 @@ Run("Activation pipe uses bounded input and current-user named pipe", () =>
     // CI must never hang indefinitely on a malfunctioning pipe frame.
     using var readDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
     var received = ActivationMessagePolicy.ReadBoundedLineAsync(server, readDeadline.Token)
-        .GetAwaiter().GetResult();
+        .WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
     Assert(received == "activate", "same-user pipe connection and framing failed");
 });
 

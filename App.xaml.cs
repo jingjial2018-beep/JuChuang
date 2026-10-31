@@ -98,7 +98,23 @@ public partial class App : Application
                 await server.WaitForConnectionAsync(token);
                 using var readDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 readDeadline.CancelAfter(TimeSpan.FromSeconds(3));
-                var argument = await ActivationMessagePolicy.ReadBoundedLineAsync(server, readDeadline.Token);
+                // Explicit outer bound: if OS pipe cancellation is delayed,
+                // dispose the server and resume accepting future connections.
+                var readTask = ActivationMessagePolicy.ReadBoundedLineAsync(server, readDeadline.Token);
+                string? argument;
+                try
+                {
+                    argument = await readTask.WaitAsync(TimeSpan.FromSeconds(3), token);
+                }
+                catch (TimeoutException)
+                {
+                    readDeadline.Cancel();
+                    _ = readTask.ContinueWith(completed => _ = completed.Exception,
+                        CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Default);
+                    DiagnosticLogService.WriteDebugEvent("activation-pipe-read-deadline");
+                    continue;
+                }
                 if (argument is not null && !token.IsCancellationRequested)
                     await Dispatcher.InvokeAsync(() => DispatchActivation(argument));
             }
