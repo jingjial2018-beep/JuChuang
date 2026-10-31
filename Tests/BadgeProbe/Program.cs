@@ -34,6 +34,10 @@ const int capturePid = 5678;
 var firstCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
 var duplicateCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
 captureGate.Defer(captureHandle, capturePid, captureNow.AddSeconds(15));
+// Even after the cooldown expires, the original native capture may still be in flight.
+// The gate must continue blocking duplicates until that worker actually completes.
+var afterCooldownStillInFlight = captureGate.TryBegin(
+    captureHandle, capturePid, captureNow.AddSeconds(16));
 captureGate.Complete(captureHandle, capturePid);
 var duringCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(14));
 var afterCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(16));
@@ -43,6 +47,7 @@ captureGate.Complete(captureHandle, capturePid + 1);
 var captureGatePassed =
     firstCapture == BadgeCaptureStartResult.Started
     && duplicateCapture == BadgeCaptureStartResult.AlreadyRunning
+    && afterCooldownStillInFlight == BadgeCaptureStartResult.AlreadyRunning
     && duringCooldown == BadgeCaptureStartResult.CoolingDown
     && afterCooldown == BadgeCaptureStartResult.Started
     && otherProcessCapture == BadgeCaptureStartResult.Started;
