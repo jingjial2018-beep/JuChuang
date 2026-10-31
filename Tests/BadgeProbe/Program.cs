@@ -34,12 +34,12 @@ const int capturePid = 5678;
 var firstCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
 var duplicateCapture = captureGate.TryBegin(captureHandle, capturePid, captureNow);
 captureGate.Defer(captureHandle, capturePid, captureNow.AddSeconds(15));
+var duringCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(14));
 // Even after the cooldown expires, the original native capture may still be in flight.
 // The gate must continue blocking duplicates until that worker actually completes.
 var afterCooldownStillInFlight = captureGate.TryBegin(
     captureHandle, capturePid, captureNow.AddSeconds(16));
 captureGate.Complete(captureHandle, capturePid);
-var duringCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(14));
 var afterCooldown = captureGate.TryBegin(captureHandle, capturePid, captureNow.AddSeconds(16));
 var otherProcessCapture = captureGate.TryBegin(captureHandle, capturePid + 1, captureNow);
 captureGate.Complete(captureHandle, capturePid);
