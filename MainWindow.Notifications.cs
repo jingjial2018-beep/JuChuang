@@ -68,6 +68,15 @@ public partial class MainWindow
         IntPtr lParam,
         ref bool handled)
     {
+        if (message == NativeMethods.WM_DPICHANGED)
+        {
+            // WPF continues to process WM_DPICHANGED; the native-window host
+            // only observes the transition by default. No stale HWND resize or
+            // clipping reset is performed on the notification callback.
+            if (WindowHost is { IsReady: true })
+                WindowHost.ObserveOwnerDpiTransition((uint)(wParam.ToInt64() & 0xFFFF));
+            return IntPtr.Zero;
+        }
         if (message == NativeMethods.WM_WTSSESSION_CHANGE
             && wParam.ToInt32() == NativeMethods.WTS_SESSION_UNLOCK)
         {

@@ -111,3 +111,32 @@ for destructive security testing.** Retain the Stage B exit checks.
 ACL failure, any unexpected access by another Windows user, incorrect account
 binding, a stuck activation pipe, or mouse input blocked outside the hosted
 modal context. Do not merge pending an investigation.
+
+
+## v2.0.2-beta.4 — consolidated remediation preview
+
+Preview only, stacked on the Stage C+D beta.3 branch. Never merge to stable
+without real-device acceptance.
+
+1. Confirm 100%/200% cold-start hosting of two WeChat + one WhatsApp,
+   including badge updates, notification, lock/unlock, modal dialogs,
+   pop-out/reattach and client exit.
+2. Exercise repeated WinEvent location bursts while resizing/restoring
+   hosted windows. Trailing 200-ms rechecks must not cause excess movement
+   or block input in unrelated applications.
+3. Under Settings → 微信本地资料 disable automatic local profile reads,
+   restart, and verify manual labels and existing verified identities are
+   preserved while no *new* profile reads start. Re-enable to resume
+   resolution of previously unresolved accounts.
+4. Launch with `JNEST_DIAGNOSTIC_DETAIL=1`. Change DPI 200→100→200 and
+   examine `host-dpi-snapshot` (host/client DPI, window/frame/host/region
+   rectangles and cached insets). Read-only observations are the default;
+   they do **not** imply runtime DPI compatibility.
+5. Expert-only: `JNEST_EXPERIMENTAL_DPI_RECALIBRATION=1` enables guarded
+   selected-window insets remeasurement. Stop on any new clipping or focus
+   regression and relaunch without this variable. This is not the
+   production acceptance path.
+6. Confirm Windows Build Check, ArchitectureProbe, BadgeProbe,
+   RegressionProbe, typography validation and both x64 ZIP modes.
+
+The official `stable` baseline remains unchanged.

@@ -431,7 +431,9 @@ internal static class Program
         window.Closed += (_, _) => closed = true;
         window.Show();
         window.Close();
-        Assert(deferredClose is not null && !closed && closingCount == 1,
+        if (deferredClose is null)
+            throw new InvalidOperationException("Deferred close task was not scheduled.");
+        Assert(!closed && closingCount == 1,
             "exit-all close ran inside the original Closing event");
         await deferredClose.WaitAsync(TimeSpan.FromSeconds(5));
         Assert(closed && closingCount == 2, "deferred exit-all close did not finish");
