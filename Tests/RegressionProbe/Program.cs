@@ -427,7 +427,7 @@ internal static class Program
                 window.GetType().GetProperty("Entries")!.GetValue(window)!;
             entries.Add(entry);
             var button = new Button { CommandParameter = entry };
-            Call(window, "CloseEntry_Click", button, new RoutedEventArgs());
+            Call(window, "CloseEntry_Click", button, new RoutedEventArgs(Button.ClickEvent, button));
             Assert(!entries.Contains(entry), "detached account remained in list");
             var suppressed = (HashSet<(int ProcessId, long StartUtcTicks)>)Field(window, "_removedDetachedProcesses")!;
             Assert(suppressed.Contains((process.Id, start)), "background scan could immediately reinsert detached process");
