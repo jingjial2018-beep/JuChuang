@@ -1813,6 +1813,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_isClosing || _allExitInProgress) return (0, 0);
         var candidates = scanResult.Candidates.Where(candidate => IsVerifiedCandidate(candidate)
+            && (includeRemoved || !_dismissedWindowHandles.Contains(candidate.Handle))
             && (includeRemoved || (candidate.ProcessStartUtcTicks ?? TryGetProcessStartUtcTicks(candidate.ProcessId)) is not { } start
                 || !_removedDetachedProcesses.Contains((candidate.ProcessId, start)))).ToArray();
         var scanUtc = DateTime.UtcNow;
