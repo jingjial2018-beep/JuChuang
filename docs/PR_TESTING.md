@@ -32,6 +32,8 @@ ZIP 同目录的 `SHA256SUMS.txt` 包含两种测试包的 SHA-256。请对下�
 
 ## v2.0.0 后续维护候选验收
 
+> 说明：以下是 v2.0.0 历史维护候选的记录。当前 v2.0.2-beta.1 的 DPI 验收口径以文末 Stage A 的 100% / 200% 冷启动要求为准；运行中 DPI 切换不在当前范围。
+
 以下项目逐项记录 Windows 版本、微信和 WhatsApp 版本、显示器分辨率与缩放、构建提交、操作步骤、预期和实际结果。测试截图先遮挡账号及聊天内容。自动探针通过后仍须完成对应实机项；不通过不得合并或发布。
 
 1. **.NET 10 / 两种 x64 包：** Release 编译、ArchitectureProbe、BadgeProbe、RegressionProbe 和设置字体检查全部通过；分别运行 FrameworkDependent（安装 .NET 10 Desktop Runtime x64）与 SelfContained 包。启动、WPF 对话框、Win32 托管、Toast 点击恢复均正常。
@@ -59,7 +61,7 @@ ZIP 同目录的 `SHA256SUMS.txt` 包含两种测试包的 SHA-256。请对下�
 2. **正常未读提醒：** 分别验证微信数字角标、红点、WhatsApp 聊天角标。新增未读仍按现有规则提醒；角标消失仍需连续两次确认；截图不可用不得被当成“无未读”。
 3. **无响应隔离：** 若能安全复现某个客户端进入 Windows “未响应（Not Responding）”状态，观察 JNest 主界面是否仍可操作、其他账号是否仍可切换。无响应客户端已有的数字/红点不得因截图超时而清零。不要为了测试而结束其他账号进程。
 4. **恢复重试：** 客户端恢复响应后，等待原生截图任务结束及冷却时间到期，确认角标扫描能够恢复。不要要求立即重试：超时后有 15 秒冷却；若原生调用仍未结束，同一 HWND/PID 不会启动第二个截图任务。
-5. **异常日志：** 如发生无响应或截图超时，检查 `%LOCALAPPDATA%\\JuChuang\\logs\\diagnostics-YYYYMMDD.log`，留意 `badge-window-hung`、`badge-capture-timeout` 和 `badge-scan-unavailable`。分享日志前请遮挡个人路径及账号相关内容。
+5. **异常日志：** 如发生无响应或截图超时，检查 `%LOCALAPPDATA%\JuChuang\logs\diagnostics-YYYYMMDD.log`，留意 `badge-window-hung`、`badge-capture-timeout` 和 `badge-scan-unavailable`。分享日志前请遮挡个人路径及账号相关内容。
 6. **DPI 冷启动：** 分别在 Windows 100% 和 200% 缩放下完全退出 JNest 后重新启动，检查窗口托管、账号切换、角标和 WhatsApp 显示。运行中切换 DPI 不属于本次验收范围。
 
 **判定标准：** 一个客户端截图异常不能清除其现有未读状态、不能使 JNest 主界面卡死，也不能造成同一 HWND/PID 的重复截图任务；其他客户端的托管和通知规则保持不变。
