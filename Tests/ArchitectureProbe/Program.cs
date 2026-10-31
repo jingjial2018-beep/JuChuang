@@ -237,7 +237,7 @@ Run("Blocked OS request returns an uncertain result by deadline while other requ
     }, () => throw new InvalidOperationException("must not wait on a pending request"));
     var second = new FakeExitTarget(702, () => otherRequested.Set(), () => Task.FromResult(true));
     var timer = Stopwatch.StartNew();
-    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromMilliseconds(300));
+    var task = ExitBatchService.RunAsync([first, second], TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(300));
     try
     {
         Assert(entered.Wait(TimeSpan.FromSeconds(2)), "blocked request did not start");
