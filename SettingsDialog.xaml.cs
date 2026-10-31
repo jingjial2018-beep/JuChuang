@@ -15,18 +15,21 @@ public partial class SettingsDialog : Window
     private readonly AppSettings _settings;
     private readonly Action _notificationSettingsChanged;
     private readonly Action _startupSettingsChanged;
+    private readonly Action _profileSettingsChanged;
     private bool _loading = true;
 
-    public SettingsDialog(AppSettings settings, Action notificationSettingsChanged, Action startupSettingsChanged)
+    public SettingsDialog(AppSettings settings, Action notificationSettingsChanged, Action startupSettingsChanged, Action profileSettingsChanged)
     {
         InitializeComponent();
         _settings = settings;
         _notificationSettingsChanged = notificationSettingsChanged;
         _startupSettingsChanged = startupSettingsChanged;
+        _profileSettingsChanged = profileSettingsChanged;
         StartupCheck.IsChecked = StartupService.IsEnabled();
         FlashCheck.IsChecked = settings.EnableTaskbarFlash;
         ToastCheck.IsChecked = settings.EnableToastNotifications;
         SoundCheck.IsChecked = settings.EnableNotificationSound;
+        LocalProfileCheck.IsChecked = settings.EnableLocalProfileRead;
         DndStartTime.ItemsSource = DndTimeOptions;
         DndEndTime.ItemsSource = DndTimeOptions;
         DndStartTime.SelectedValue = settings.DndStartMinutes;
@@ -55,6 +58,16 @@ public partial class SettingsDialog : Window
         _settings.EnableNotificationSound = SoundCheck.IsChecked == true;
         SaveSettings();
         _notificationSettingsChanged();
+    }
+
+    private void LocalProfileChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var enabled = LocalProfileCheck.IsChecked == true;
+        if (_settings.EnableLocalProfileRead == enabled) return;
+        _settings.EnableLocalProfileRead = enabled;
+        SaveSettings();
+        _profileSettingsChanged();
     }
 
     private void DndChanged(object sender, RoutedEventArgs e) => SaveDoNotDisturb();

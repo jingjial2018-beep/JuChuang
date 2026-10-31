@@ -30,6 +30,11 @@ public sealed class AppSettings
 
     public bool EnableNotificationSound { get; set; } = true;
 
+    // Preserve existing automatic identity/profile behavior on upgrade.
+    // Disabling stops new private WeChat memory/database reads and can leave
+    // unverified accounts unnamed; it does not delete user-selected labels.
+    public bool EnableLocalProfileRead { get; set; } = true;
+
     public bool DndEnabled { get; set; }
 
     public int DndStartMinutes { get; set; } = 22 * 60;

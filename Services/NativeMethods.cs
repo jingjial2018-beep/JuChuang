@@ -81,6 +81,7 @@ internal static class NativeMethods
     internal const uint WM_CANCELMODE = 0x001F;
     internal const uint WM_EXITSIZEMOVE = 0x0232;
     internal const int WM_WTSSESSION_CHANGE = 0x02B1;
+    internal const int WM_DPICHANGED = 0x02E0;
     internal const int WTS_SESSION_UNLOCK = 0x8;
     internal const int NOTIFY_FOR_THIS_SESSION = 0;
     internal const int WA_ACTIVE = 1;
