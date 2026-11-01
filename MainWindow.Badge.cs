@@ -286,6 +286,19 @@ public partial class MainWindow
             _badgeStableState[entry] = stable;
         }
 
+        // Diagnostic opt-in: report only count transitions and badge coordinates,
+        // never full window pixels, account identifiers or chat content.
+        if (capture.Diagnostic is { Length: > 0 } diagnostic
+            && (!stable.Stable.HasValue || !IsResultEqual(stable.Stable.Value, detection)))
+        {
+            var previous = stable.Stable.HasValue
+                ? $"{stable.Stable.Value.Number}/{stable.Stable.Value.Confidence}"
+                : "unknown";
+            DiagnosticLogService.WriteActivityEvent(
+                $"badge-ocr-change before={previous} after={detection.Number}/{detection.Confidence};{diagnostic}",
+                scannedProcessId);
+        }
+
         if (detection.Confidence != BadgeConfidenceLevel.NoBadge)
         {
             // 首次扫描只建立基线；后续从无到有或可靠数字增长才是新未读。
