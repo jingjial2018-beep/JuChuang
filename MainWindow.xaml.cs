@@ -38,6 +38,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ClientWindowEntry? _selectedEntry;
     private ClientKind? _selectNextKind;
     private ClientLaunchContext? _pendingLaunchContext;
+    private WeChatLaunchTrace? _activeWeChatLaunchTrace;
     private int _wechatNumber;
     private bool _isClosing;
     private bool _exitChoiceApproved;
@@ -864,6 +865,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _pendingLaunchContext = null;
         _selectNextKind = null;
+        if (candidate.Kind == ClientKind.WeChat)
+        {
+            _activeWeChatLaunchTrace?.Record("window-claimed", candidate.ProcessId);
+        }
         SelectedEntry = entry;
         AccountsList.SelectedItem = entry;
         ShowTemporaryStatus($"已接入 {entry.DisplayName}。");
@@ -984,6 +989,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var selfTestTargetProcessId = _selfTestTargetProcessId;
             var managerOwner = new WindowInteropHelper(this).Handle;
             var managedWindows = CaptureManagedDiscoveryWindows();
+            var launchTrace = _activeWeChatLaunchTrace;
             var scanResult = await Task.Run(() =>
             {
                 var discoveredCandidates = ClientWindowDiscovery.FindClientWindows(
@@ -997,6 +1003,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     discoveredCandidates = discoveredCandidates
                         .Where(candidate => candidate.ProcessId == selfTestTargetProcessId.Value)
                         .ToArray();
+                }
+
+                foreach (var candidate in discoveredCandidates)
+                {
+                    if (candidate.Kind == ClientKind.WeChat)
+                    {
+                        launchTrace?.RecordWindowEnumerated(candidate.ProcessId);
+                    }
                 }
 
                 var resolvedAccounts = ClientMetadataService.ResolveWeChatAccounts(discoveredCandidates);
@@ -1207,6 +1221,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var launchTrace = new WeChatLaunchTrace();
+        _activeWeChatLaunchTrace = launchTrace;
+        launchTrace.Record("click");
         try
         {
             ShowTemporaryStatus("正在准备微信客户端…");
@@ -1216,6 +1233,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // processes. Keep it off the UI thread so the click feedback is instant.
             var executablePath = await Task.Run(() =>
                 ClientLauncher.FindWeChatExecutable(_settings.WeChatExecutablePath));
+            launchTrace.Record("executable-resolved");
             if (executablePath is null)
             {
                 var dialog = new OpenFileDialog
@@ -1227,6 +1245,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 if (dialog.ShowDialog(this) != true)
                 {
+                    launchTrace.Record("file-selection-cancelled");
                     ShowTemporaryStatus("未选择微信客户端。");
                     return;
                 }
@@ -1238,10 +1257,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             _dismissedWindowHandles.Clear();
             _pendingLaunchContext = await CaptureLaunchContextAsync(ClientKind.WeChat);
+            launchTrace.Record("baseline-captured");
             ClientMetadataService.InvalidateLoginAccountCache();
             _selectNextKind = ClientKind.WeChat;
 
-            var launchResult = await Task.Run(() => ClientLauncher.StartWeChat(executablePath));
+            var launchResult = await Task.Run(() =>
+            {
+                try
+                {
+                    return ClientLauncher.StartWeChat(executablePath, launchTrace);
+                }
+                finally
+                {
+                    launchTrace.Flush();
+                }
+            });
+            launchTrace.Record("launch-returned", launchResult.ProcessId ?? 0);
             if (_pendingLaunchContext is not null
                 && launchResult.ProcessId is { } createdProcessId
                 && (launchResult.UsedMultiInstanceBypass
@@ -1259,13 +1290,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
+            launchTrace.Record("launch-error");
             ClearPendingLaunch(ClientKind.WeChat);
             ShowOwnedMessageBox($"无法启动微信：\n{exception.Message}", "JNest",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
+            launchTrace.Record("complete");
+            _activeWeChatLaunchTrace = null;
             EndClientLaunch();
+            launchTrace.Flush();
         }
     }
 
@@ -1345,6 +1380,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_selectNextKind == kind)
         {
+            if (kind == ClientKind.WeChat)
+            {
+                _activeWeChatLaunchTrace?.Record("window-timeout");
+            }
             ClearPendingLaunch(kind);
             ShowTemporaryStatus("客户端可能仍在启动；窗口出现后会自动接入。");
         }

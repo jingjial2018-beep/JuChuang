@@ -353,6 +353,45 @@ internal static class CoverageHarness
 
     // ---------- 诊断日志：轮转 / 保留期 / 总量上限 / 追踪门控 ----------
 
+    public static Task WeChatLaunchTimeline()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jnest-launch-probe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        DiagnosticLogService.DirectoryPathOverride = root;
+        try
+        {
+            var trace = new WeChatLaunchTrace();
+            trace.Record("click");
+            trace.RecordProcessCreated(12345);
+            trace.RecordWindowEnumerated(54321);
+            trace.RecordWindowEnumerated(12345);
+            trace.RecordWindowEnumerated(12345);
+            trace.Record("complete");
+            trace.Flush();
+
+            var lines = File.ReadAllLines(DiagnosticLogService.CurrentLogPath)
+                .Where(line => line.Contains("wechat-launch attempt=", StringComparison.Ordinal))
+                .ToArray();
+            Assert(lines.Length == 4, "launch timeline missed a stage or accepted an unrelated window");
+            Assert(lines.Count(line => line.Contains("stage=window-enumerated", StringComparison.Ordinal)) == 1,
+                "one process window was recorded more than once");
+            Assert(lines.All(line => !line.Contains("54321", StringComparison.Ordinal)
+                && !line.Contains(".exe", StringComparison.OrdinalIgnoreCase)),
+                "launch timeline exposed an unrelated process or executable path");
+
+            var attempts = lines.Select(line => line.Split("attempt=")[1].Split(' ')[0]).Distinct().ToArray();
+            Assert(attempts.Length == 1, "launch stages lost their per-click correlation ID");
+            var elapsed = lines.Select(line => long.Parse(line.Split("elapsedMs=")[1].Split('\t')[0])).ToArray();
+            Assert(elapsed.SequenceEqual(elapsed.Order()), "launch elapsed times are not monotonic");
+        }
+        finally
+        {
+            DiagnosticLogService.DirectoryPathOverride = null;
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+        }
+        return Task.CompletedTask;
+    }
+
     public static Task LogRotationAndBounds()
     {
         var root = Path.Combine(Path.GetTempPath(), "jnest-log-probe-" + Guid.NewGuid().ToString("N"));

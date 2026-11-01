@@ -91,17 +91,21 @@ public static class ClientLauncher
     ///
     /// 此处不修改微信 EXE、不注入 DLL、不修改登录配置。
     /// </summary>
-    public static WeChatLaunchResult StartWeChat(string executablePath)
+    public static WeChatLaunchResult StartWeChat(string executablePath) => StartWeChat(executablePath, null);
+
+    internal static WeChatLaunchResult StartWeChat(string executablePath, WeChatLaunchTrace? trace)
     {
+        trace?.Record("launch-begin");
         if (!IsExecutable(executablePath))
         {
             throw new FileNotFoundException("微信客户端不存在。", executablePath);
         }
 
         var hasExistingWeChat = HasRunningWeChatProcess();
+        trace?.Record(hasExistingWeChat ? "existing-process-found" : "first-process");
         if (hasExistingWeChat)
         {
-            var bypassResult = TryStartWeChatWithMutexBypass(executablePath);
+            var bypassResult = TryStartWeChatWithMutexBypass(executablePath, trace);
             if (bypassResult is not null)
             {
                 return bypassResult;
@@ -111,7 +115,8 @@ public static class ClientLauncher
         return StartWeChatProcess(
             executablePath,
             usedMultiInstanceBypass: false,
-            strategy: hasExistingWeChat ? "CreateProcessW-Fallback" : "CreateProcessW-Normal");
+            strategy: hasExistingWeChat ? "CreateProcessW-Fallback" : "CreateProcessW-Normal",
+            trace: trace);
     }
 
     public static void StartWhatsApp()
@@ -143,7 +148,7 @@ public static class ClientLauncher
         return null;
     }
 
-    private static WeChatLaunchResult? TryStartWeChatWithMutexBypass(string executablePath)
+    private static WeChatLaunchResult? TryStartWeChatWithMutexBypass(string executablePath, WeChatLaunchTrace? trace)
     {
         IntPtr mutexHandle = IntPtr.Zero;
         IntPtr originalSecurityDescriptor = IntPtr.Zero;
@@ -217,15 +222,17 @@ public static class ClientLauncher
             }
 
             daclChanged = true;
+            trace?.Record("mutex-ready");
 
-            // EV 1.1.9 在修改 Mutex 后有短暂等待。保留一个较小但明确的窗口，
-            // 避免 ACL 更新与新进程单实例检测发生竞态。
-            Thread.Sleep(500);
+            // SetSecurityInfo has completed the DACL change before returning.
+            // Start immediately; the post-create hold still protects WeChat's
+            // early single-instance check until its new process has initialized.
 
             var result = StartWeChatProcess(
                 executablePath,
                 usedMultiInstanceBypass: true,
-                strategy: "MutexDacl+CreateProcessW");
+                strategy: "MutexDacl+CreateProcessW",
+                trace: trace);
 
             // 给 Weixin.exe 足够时间越过非常早期的单实例检查，然后恢复系统对象。
             Thread.Sleep(1200);
@@ -255,6 +262,10 @@ public static class ClientLauncher
                     if (restoreResult != 0)
                     {
                         DiagnosticLogService.WriteActivityEvent($"mutex-bypass-restore-failed:{restoreResult}");
+                    }
+                    else
+                    {
+                        trace?.Record("mutex-restored");
                     }
                 }
                 catch
@@ -290,7 +301,8 @@ public static class ClientLauncher
     private static WeChatLaunchResult StartWeChatProcess(
         string executablePath,
         bool usedMultiInstanceBypass,
-        string strategy)
+        string strategy,
+        WeChatLaunchTrace? trace)
     {
         var startupInfo = new STARTUPINFO
         {
@@ -316,6 +328,7 @@ public static class ClientLauncher
 
         try
         {
+            trace?.RecordProcessCreated(unchecked((int)processInformation.dwProcessId));
             return new WeChatLaunchResult(
                 true,
                 unchecked((int)processInformation.dwProcessId),

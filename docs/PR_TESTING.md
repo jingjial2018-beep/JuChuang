@@ -1,5 +1,13 @@
 # JNest Pull Request 测试包说明
 
+## v2.0.3-beta.1 — 开机自启后第二个微信启动验收
+
+1. 记录 Windows、微信和 JNest 版本，以及当前缩放比例。JNest 与微信均设置为开机自启；完全重启 Windows 后，等第一个微信登录或主窗口稳定，再点击“添加微信”。
+2. 在 100% 与 200% 缩放各重复至少 5 次，记录点击时刻、第二个登录页可见时刻、是否出现双开失败、JNest 其他控件能否响应。两种 x64 测试包各完成至少一次。
+3. 验证两个微信窗口各自的登录、输入、切换、弹出与重新接入，确认没有认错账号或关闭原有微信。普通首次启动微信也要成功。
+4. 在 `%LOCALAPPDATA%\JuChuang\logs\diagnostics-YYYYMMDD.log` 查找同一 `wechat-launch attempt=` 的记录，比较 `click`、`baseline-captured`、`mutex-ready`、`process-created`、`window-enumerated` 和 `window-claimed` 的 `elapsedMs`。先判断延迟发生在创建进程前还是微信进程启动后。
+5. 与 v2.0.2 在相同机器、相同微信版本下的点击到登录页时间对照。如双开失败、耗时没有改善或诊断中出现 `mutex-bypass-failed` / `mutex-bypass-restore-failed`，请在 PR 附上脱敏日志与复现步骤；不要合入正式版。
+
 这份说明用于 GitHub Actions 的 **JNest PR test package (no release)** 预览构建。此压缩包仅供测试，不是正式 Release，不代表兼容性与安全性已经人工验收。
 
 ## 下载与运行
@@ -32,7 +40,7 @@ ZIP 同目录的 `SHA256SUMS.txt` 包含两种测试包的 SHA-256。请对下�
 
 ## v2.0.0 后续维护候选验收
 
-> 说明：以下是 v2.0.0 历史维护候选的记录。当前 v2.0.2-beta.1 的 DPI 验收口径以文末 Stage A 的 100% / 200% 冷启动要求为准；运行中 DPI 切换不在当前范围。
+> 说明：以下是 v2.0.0 后续历史维护候选的记录。当前 v2.0.3-beta.1 的启动延迟验收口径以上述专节为准；运行中 DPI 切换不在当前范围。
 
 以下项目逐项记录 Windows 版本、微信和 WhatsApp 版本、显示器分辨率与缩放、构建提交、操作步骤、预期和实际结果。测试截图先遮挡账号及聊天内容。自动探针通过后仍须完成对应实机项；不通过不得合并或发布。
 

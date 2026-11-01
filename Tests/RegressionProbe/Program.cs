@@ -55,6 +55,7 @@ internal static class Program
                 await Run("Graceful client exit precedes Kill fallback and preserves process identity", CoverageHarness.ExitBatchLifecycle);
                 await Run("Settings persistence roundtrip, backup and merge", CoverageHarness.SettingsPersistence);
                 await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
+                await Run("WeChat launch timeline correlates only its new process", CoverageHarness.WeChatLaunchTimeline);
             }
             finally
             {
