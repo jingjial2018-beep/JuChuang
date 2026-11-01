@@ -237,6 +237,19 @@ internal sealed class BadgeDetector
             var normalized = NormalizeMask(digitMask, badge.Width, badge.Height, segment);
             recognized.Add(RecognizeCharacter(normalized));
         }
+        // High-DPI thin vertical "1" can match '+' in normalized glyph templates.
+        // A leading '+' is invalid in a count; only reinterpret it as "1" when
+        // the original stroke is narrow and tall and remaining glyphs are digits.
+        // Keep trailing "99+" semantics and all other OCR paths unchanged.
+        if (kind == ClientKind.WeChat
+            && recognized.Count >= 2
+            && recognized[0].Character == '+'
+            && IsNarrowWhatsAppOne(segments[0], badge)
+            && recognized.Skip(1).All(match => char.IsDigit(match.Character)))
+        {
+            recognized[0] = new CharacterMatch('1', 0.90, 0.06);
+            trace?.Invoke("narrow leading WeChat glyph resolved as 1");
+        }
         trace?.Invoke($"matches={string.Join(';', recognized)}");
 
         if (recognized.Any(match => match.Character == '\0'))
