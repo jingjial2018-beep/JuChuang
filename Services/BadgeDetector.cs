@@ -82,9 +82,14 @@ internal sealed class BadgeDetector
 
             var dpi = NativeMethods.GetDpiForWindow(hwnd);
             var dpiScale = dpi > 0 ? Math.Clamp(dpi / 96.0, 0.75, 4.0) : 1.0;
-            return new BadgeCaptureAttempt(
-                BadgeCaptureStatus.Completed,
-                AnalyzeBitmap(bitmap, kind, dpiScale, null));
+            // Optional diagnostics: only numeric OCR/rectangle metadata; no pixels,
+            // message content, contact names or account identifiers are recorded.
+            var trace = Environment.GetEnvironmentVariable("JNEST_BADGE_DIAGNOSTIC") == "1"
+                ? new StringBuilder() : null;
+            var result = AnalyzeBitmap(bitmap, kind, dpiScale,
+                trace is null ? null : line => trace.Append(line).Append(';'));
+            return new BadgeCaptureAttempt(BadgeCaptureStatus.Completed,
+                result, trace?.ToString());
         }
         catch
         {
@@ -189,7 +194,7 @@ internal sealed class BadgeDetector
         var region = GetSearchRegion(width, height, kind, dpiScale);
 
         var candidates = FindBadgeCandidates(pixels, width, height, stride, region, kind, dpiScale);
-        trace?.Invoke($"candidates={candidates.Count}");
+        trace?.Invoke($"candidates={candidates.Count};boxes={string.Join("|", candidates.Select(c => $"({c.Left},{c.Top},{c.Width},{c.Height})"))}");
         if (candidates.Count == 0)
         {
             return BadgeResult.NoBadge;
@@ -199,7 +204,7 @@ internal sealed class BadgeDetector
         // 优先选择尺寸、填充率和椭圆比例最接近角标的候选。
         BadgeBox? selectedBadge = kind == ClientKind.WhatsApp
             ? SelectWhatsAppChatBadge(candidates, pixels, width, height, stride, dpiScale, trace)
-            : candidates.MaxBy(ScoreCandidate);
+            : SelectWeChatNavigationBadge(candidates);
         if (!selectedBadge.HasValue)
         {
             trace?.Invoke("no candidate belongs to the WhatsApp chat entry");
@@ -391,6 +396,19 @@ internal sealed class BadgeDetector
         }
 
         return candidates;
+    }
+
+    /// <summary>
+    /// A wide WeChat window can include chat-list badges in its historical
+    /// search region. The navigation total is the leftmost badge; restrict
+    /// candidate ranking to its lane before applying the existing score.
+    /// </summary>
+    private static BadgeBox? SelectWeChatNavigationBadge(IReadOnlyList<BadgeBox> candidates)
+    {
+        if (candidates.Count == 0) return null;
+        var leftmostX = candidates.Min(candidate => candidate.Left);
+        return candidates.Where(candidate => candidate.Left - leftmostX <= 10)
+            .MaxBy(ScoreCandidate);
     }
 
     private static BadgeBox? SelectWhatsAppChatBadge(

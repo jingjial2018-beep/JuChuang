@@ -168,3 +168,27 @@ without real-device acceptance.
    again after correction. Verify password creation, change and unlock.
 
 The official `stable` baseline remains unchanged.
+
+## v2.0.3-beta.2 — WeChat unread-badge regression test
+
+This preview is stacked on v2.0.3-beta.1 (PR #70); do not overwrite v2.0.2 stable.
+Only the WeChat badge candidate selection and opt-in numeric diagnostics change.
+All prior Toast, nickname/avatar, window hosting and WeChat launch behavior remain.
+
+1. Extract to a separate folder. With two WeChat 4.2.0.12 accounts, cold-start
+   first at 100% display scaling, then separately at 200% display scaling.
+2. Optional diagnostic mode from PowerShell in the extracted folder:
+   `$env:JNEST_BADGE_DIAGNOSTIC='1'; .\JNest.exe`
+3. With a WeChat navigation total of 16 and a nearby chat-list badge of 15,
+   keep unread counts unchanged for at least 45 seconds. JNest must stay at 16;
+   no new-notification alerts should be generated without actual new messages.
+4. Inspect %LOCALAPPDATA%\JuChuang\logs\diagnostics-YYYYMMDD.log for
+   badge-ocr-change events. Only numeric counts/rectangles and OCR confidence
+   are logged; do not send message contents or unredacted account metadata.
+5. Send an actual new unread message with JNest minimized. Confirm the total
+   increases correctly, and the existing Toast, sound and flash rules work.
+6. Also verify WhatsApp badges, window reattach, nickname/avatar and lock.
+   Dynamic DPI switching is intentionally unsupported.
+7. Remove JNEST_BADGE_DIAGNOSTIC after testing.
+
+Do not merge this preview or issue a stable Release before real-device acceptance.

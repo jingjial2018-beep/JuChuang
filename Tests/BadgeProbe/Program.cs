@@ -144,6 +144,9 @@ var samples = new (string Name, ClientKind Kind, Bitmap Bitmap, double DpiScale,
 {
     ("WeChat 1", ClientKind.WeChat, CreateWeChatSample("1", 32), 1.0, true, 1),
     ("WeChat 15", ClientKind.WeChat, CreateWeChatSample("15", 42), 1.0, true, 15),
+    ("WeChat 16", ClientKind.WeChat, CreateWeChatSample("16", 42), 1.0, true, 16),
+    ("WeChat total 16 vs chat 15 100%", ClientKind.WeChat, CreateWeChatCompetingSample(1.0), 1.0, true, 16),
+    ("WeChat total 16 vs chat 15 200%", ClientKind.WeChat, CreateWeChatCompetingSample(2.0), 2.0, true, 16),
     ("WeChat 31", ClientKind.WeChat, CreateWeChatSample("31", 42), 1.0, true, 31),
     ("WeChat none", ClientKind.WeChat, CreateBlank(1130, 762), 1.0, false, 0),
     ("WhatsApp chats 5", ClientKind.WhatsApp, CreateWhatsAppChatSample("5"), 1.0, true, 5),
@@ -199,6 +202,23 @@ static Bitmap CreateWeChatSample(string text, int badgeWidth)
     var bitmap = CreateBlank(1130, 762);
     using var graphics = Graphics.FromImage(bitmap);
     DrawBadge(graphics, new Rectangle(75, 197, badgeWidth, 32), Color.FromArgb(250, 81, 81), text);
+    return bitmap;
+}
+
+// Synthetic version of the reported case: the navigation total remains 16
+// while a nearby chat's badge displays 15. The navigation total must win.
+static Bitmap CreateWeChatCompetingSample(double scale)
+{
+    var bitmap = CreateBlank((int)(1400 * scale), (int)(762 * scale));
+    using var graphics = Graphics.FromImage(bitmap);
+    DrawBadge(graphics,
+        new Rectangle((int)(75 * scale), (int)(197 * scale),
+            (int)(42 * scale), (int)(32 * scale)),
+        Color.FromArgb(250, 81, 81), "16", (float)(15 * scale));
+    DrawBadge(graphics,
+        new Rectangle((int)(139 * scale), (int)(197 * scale),
+            (int)(54 * scale), (int)(36 * scale)),
+        Color.FromArgb(250, 81, 81), "15", (float)(16 * scale));
     return bitmap;
 }
 
