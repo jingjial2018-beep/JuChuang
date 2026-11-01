@@ -21,6 +21,7 @@ public static class DiagnosticLogService
         new(TimeSpan.FromSeconds(30), maximumEntries: 256);
     private static readonly bool DetailedTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("JNEST_DIAGNOSTIC_DETAIL"), "1", StringComparison.Ordinal);
+    internal static bool IsDetailedTraceEnabled => DetailedTraceEnabled;
     private const int MaximumDetailLength = 600;
     private sealed record RmSnapshot(int Generation, string Status, string Code, string Token, string Detail);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, RmSnapshot> RmSnapshots = new();
@@ -46,6 +47,11 @@ public static class DiagnosticLogService
     public static void WriteDebugEvent(string eventName, int processId = 0)
     {
         if (DetailedTraceEnabled) WriteActivityEvent(eventName, processId);
+    }
+
+    internal static void WriteDebugEvent(Func<string> createEventName, int processId = 0)
+    {
+        if (DetailedTraceEnabled) WriteActivityEvent(createEventName(), processId);
     }
 
     public static void WriteActivityEvent(string eventName, int processId = 0)
@@ -262,14 +268,30 @@ public static class DiagnosticLogService
 
     private static DateTime _lastCleanupUtc = DateTime.MinValue;
     private static string? _lastActiveLogPath;
+    private static string? _preparedLogRoot;
 
     private static void AppendLine(string line)
     {
         lock (SyncRoot)
         {
-            Directory.CreateDirectory(LogRoot);
+            var root = LogRoot;
+            if (!string.Equals(root, _preparedLogRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.CreateDirectory(root);
+                _preparedLogRoot = root;
+            }
             var path = ResolveActiveLogPath(Encoding.UTF8.GetByteCount(line));
-            File.AppendAllText(path, line, Encoding.UTF8);
+            try
+            {
+                File.AppendAllText(path, line, Encoding.UTF8);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // A user or cleanup tool may remove the directory during this
+                // process. Recreate it once without adding a check to every write.
+                Directory.CreateDirectory(root);
+                File.AppendAllText(path, line, Encoding.UTF8);
+            }
             var rotated = !string.Equals(path, _lastActiveLogPath, StringComparison.OrdinalIgnoreCase);
             _lastActiveLogPath = path;
             if (rotated || DateTime.UtcNow - _lastCleanupUtc >= TimeSpan.FromMinutes(10))
@@ -289,7 +311,8 @@ public static class DiagnosticLogService
         {
             var path = index == 0 ? basePath
                 : Path.Combine(LogRoot, $"diagnostics-{DateTime.UtcNow:yyyyMMdd}-{index:D3}.log");
-            if (!File.Exists(path) || new FileInfo(path).Length + bytesToAppend <= MaximumFileBytes)
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length + bytesToAppend <= MaximumFileBytes)
                 return path;
         }
         throw new IOException("Diagnostic log rotation index exhausted.");

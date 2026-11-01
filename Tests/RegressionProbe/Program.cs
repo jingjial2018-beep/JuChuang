@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -56,6 +57,10 @@ internal static class Program
                 await Run("Settings persistence roundtrip, backup and merge", CoverageHarness.SettingsPersistence);
                 await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
                 await Run("WeChat launch timeline correlates only its new process", CoverageHarness.WeChatLaunchTimeline);
+                await Run("Popup snapshot keeps client processes separate", PopupSnapshotIsolation);
+                await Run("Diagnostic log directory is recreated after removal", CoverageHarness.LogRootRecreation);
+                await Run("Disabled detailed trace does not build messages", CoverageHarness.LazyDebugTrace);
+                await Run("Existing mutex opener never creates a missing object", ExistingMutexOpen);
             }
             finally
             {
@@ -70,6 +75,35 @@ internal static class Program
         }));
         Dispatcher.Run();
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static Task PopupSnapshotIsolation()
+    {
+        var snapshot = new PopupWindowSnapshot();
+        snapshot.Add(new IntPtr(11), 101);
+        snapshot.Add(new IntPtr(22), 202);
+        snapshot.Add(new IntPtr(33), 101);
+        snapshot.Add(IntPtr.Zero, 101);
+        Assert(snapshot.ForProcess(101).SequenceEqual(new[] { new IntPtr(11), new IntPtr(33) }),
+            "a desktop snapshot lost order or included another process's dialog");
+        Assert(snapshot.ForProcess(202).SequenceEqual(new[] { new IntPtr(22) }),
+            "a second client's dialog was mixed into the first client's scan");
+        Assert(snapshot.ForProcess(303).Count == 0, "missing process returned unrelated windows");
+        return Task.CompletedTask;
+    }
+
+    private static Task ExistingMutexOpen()
+    {
+        var name = "jnest-regression-" + Guid.NewGuid().ToString("N");
+        Assert(ClientLauncher.OpenExistingMutex(name) == IntPtr.Zero,
+            "opening a missing mutex unexpectedly created it");
+        Assert(!Mutex.TryOpenExisting(name, out _),
+            "opening a missing mutex left a named object behind");
+        using var owned = new Mutex(false, name);
+        var handle = ClientLauncher.OpenExistingMutex(name);
+        Assert(handle != IntPtr.Zero, "existing mutex could not be opened for DACL work");
+        using var opened = new SafeWaitHandle(handle, ownsHandle: true);
+        return Task.CompletedTask;
     }
 
     private static Task Credentials()

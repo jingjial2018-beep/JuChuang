@@ -392,6 +392,40 @@ internal static class CoverageHarness
         return Task.CompletedTask;
     }
 
+    public static Task LazyDebugTrace()
+    {
+        if (DiagnosticLogService.IsDetailedTraceEnabled) return Task.CompletedTask;
+        var built = false;
+        DiagnosticLogService.WriteDebugEvent(() =>
+        {
+            built = true;
+            return "trace-should-stay-disabled";
+        });
+        Assert(!built, "disabled detailed tracing still constructed its message");
+        return Task.CompletedTask;
+    }
+
+    public static Task LogRootRecreation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jnest-log-recreate-" + Guid.NewGuid().ToString("N"));
+        DiagnosticLogService.DirectoryPathOverride = root;
+        try
+        {
+            DiagnosticLogService.WriteActivityEvent("before-directory-removal");
+            Directory.Delete(root, recursive: true);
+            DiagnosticLogService.WriteActivityEvent("after-directory-removal");
+            Assert(File.ReadAllText(DiagnosticLogService.CurrentLogPath)
+                    .Contains("after-directory-removal", StringComparison.Ordinal),
+                "diagnostics did not recover after its directory was removed externally");
+        }
+        finally
+        {
+            DiagnosticLogService.DirectoryPathOverride = null;
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+        }
+        return Task.CompletedTask;
+    }
+
     public static Task LogRotationAndBounds()
     {
         var root = Path.Combine(Path.GetTempPath(), "jnest-log-probe-" + Guid.NewGuid().ToString("N"));

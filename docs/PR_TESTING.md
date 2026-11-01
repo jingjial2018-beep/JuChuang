@@ -7,6 +7,8 @@
 3. 验证两个微信窗口各自的登录、输入、切换、弹出与重新接入，确认没有认错账号或关闭原有微信。普通首次启动微信也要成功。
 4. 在 `%LOCALAPPDATA%\JuChuang\logs\diagnostics-YYYYMMDD.log` 查找同一 `wechat-launch attempt=` 的记录，比较 `click`、`baseline-captured`、`mutex-ready`、`process-created`、`window-enumerated` 和 `window-claimed` 的 `elapsedMs`。先判断延迟发生在创建进程前还是微信进程启动后。
 5. 与 v2.0.2 在相同机器、相同微信版本下的点击到登录页时间对照。如双开失败、耗时没有改善或诊断中出现 `mutex-bypass-failed` / `mutex-bypass-restore-failed`，请在 PR 附上脱敏日志与复现步骤；不要合入正式版。
+6. 双微信加 WhatsApp 保持运行，反复切换前后台账号并触发微信的独立弹窗；检查弹窗隐藏和恢复、未读角标与通知、输入焦点、弹出与“全部接入”、锁定与解锁。日志中若有 `host-native-slow`，记录对应操作与进程；无实测阻塞点时不改变原生窗口调用规则。
+7. 核对诊断日志仍按 10 MB 单文件、50 MB 总量、7 天保留且不含昵称、聊天内容或程序路径。普通运行不应出现详细弹窗追踪文本，只有主动设置 `JNEST_DIAGNOSTIC_DETAIL=1` 才会输出。
 
 这份说明用于 GitHub Actions 的 **JNest PR test package (no release)** 预览构建。此压缩包仅供测试，不是正式 Release，不代表兼容性与安全性已经人工验收。
 
