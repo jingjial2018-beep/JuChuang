@@ -91,17 +91,21 @@ public static class ClientLauncher
     ///
     /// 此处不修改微信 EXE、不注入 DLL、不修改登录配置。
     /// </summary>
-    public static WeChatLaunchResult StartWeChat(string executablePath)
+    public static WeChatLaunchResult StartWeChat(string executablePath) => StartWeChat(executablePath, null);
+
+    internal static WeChatLaunchResult StartWeChat(string executablePath, WeChatLaunchTrace? trace)
     {
+        trace?.Record("launch-begin");
         if (!IsExecutable(executablePath))
         {
             throw new FileNotFoundException("微信客户端不存在。", executablePath);
         }
 
         var hasExistingWeChat = HasRunningWeChatProcess();
+        trace?.Record(hasExistingWeChat ? "existing-process-found" : "first-process");
         if (hasExistingWeChat)
         {
-            var bypassResult = TryStartWeChatWithMutexBypass(executablePath);
+            var bypassResult = TryStartWeChatWithMutexBypass(executablePath, trace);
             if (bypassResult is not null)
             {
                 return bypassResult;
@@ -111,7 +115,8 @@ public static class ClientLauncher
         return StartWeChatProcess(
             executablePath,
             usedMultiInstanceBypass: false,
-            strategy: hasExistingWeChat ? "CreateProcessW-Fallback" : "CreateProcessW-Normal");
+            strategy: hasExistingWeChat ? "CreateProcessW-Fallback" : "CreateProcessW-Normal",
+            trace: trace);
     }
 
     public static void StartWhatsApp()
@@ -143,7 +148,7 @@ public static class ClientLauncher
         return null;
     }
 
-    private static WeChatLaunchResult? TryStartWeChatWithMutexBypass(string executablePath)
+    private static WeChatLaunchResult? TryStartWeChatWithMutexBypass(string executablePath, WeChatLaunchTrace? trace)
     {
         IntPtr mutexHandle = IntPtr.Zero;
         IntPtr originalSecurityDescriptor = IntPtr.Zero;
@@ -151,15 +156,17 @@ public static class ClientLauncher
         IntPtr everyoneSid = IntPtr.Zero;
         IntPtr denyAcl = IntPtr.Zero;
         var daclChanged = false;
+        WeChatLaunchResult? launchedResult = null;
+        uint restoreFailure = 0;
 
         try
         {
-            // Existing WeChat should already own this named object. CreateMutexW opens
-            // the existing object when present and gives us the handle needed for DACL work.
-            mutexHandle = CreateMutexW(IntPtr.Zero, false, WeChatInstanceMutexName);
+            // Only touch an existing WeChat mutex. CreateMutexW could create a
+            // new object during a boot race and change the wrong DACL.
+            mutexHandle = OpenExistingMutex(WeChatInstanceMutexName);
             if (mutexHandle == IntPtr.Zero)
             {
-                return LogBypassFailure("CreateMutexW");
+                return LogBypassFailure($"OpenMutexW:{Marshal.GetLastWin32Error()}");
             }
 
             var getSecurityResult = GetSecurityInfo(
@@ -217,23 +224,27 @@ public static class ClientLauncher
             }
 
             daclChanged = true;
+            trace?.Record("mutex-ready");
 
-            // EV 1.1.9 在修改 Mutex 后有短暂等待。保留一个较小但明确的窗口，
-            // 避免 ACL 更新与新进程单实例检测发生竞态。
-            Thread.Sleep(500);
+            // SetSecurityInfo has completed the DACL change before returning.
+            // Start immediately; the post-create hold still protects WeChat's
+            // early single-instance check until its new process has initialized.
 
-            var result = StartWeChatProcess(
+            launchedResult = StartWeChatProcess(
                 executablePath,
                 usedMultiInstanceBypass: true,
-                strategy: "MutexDacl+CreateProcessW");
+                strategy: "MutexDacl+CreateProcessW",
+                trace: trace);
 
             // 给 Weixin.exe 足够时间越过非常早期的单实例检查，然后恢复系统对象。
             Thread.Sleep(1200);
-            return result;
+            return launchedResult;
         }
         catch (Exception exception)
         {
-            // 多开策略失败时由调用方回退到普通 CreateProcessW。
+            // Once a process exists, never silently create another one through
+            // the normal fallback after a later error.
+            if (launchedResult is not null) throw;
             return LogBypassFailure($"exception:{exception.GetType().Name}");
         }
         finally
@@ -242,26 +253,31 @@ public static class ClientLauncher
                 && mutexHandle != IntPtr.Zero
                 && originalSecurityDescriptor != IntPtr.Zero)
             {
-                try
+                for (var attempt = 1; attempt <= 3; attempt++)
                 {
-                    var restoreResult = SetSecurityInfo(
-                        mutexHandle,
-                        SeKernelObject,
-                        DaclSecurityInformation,
-                        IntPtr.Zero,
-                        IntPtr.Zero,
-                        originalDacl,
-                        IntPtr.Zero);
-                    if (restoreResult != 0)
+                    try
                     {
-                        DiagnosticLogService.WriteActivityEvent($"mutex-bypass-restore-failed:{restoreResult}");
+                        restoreFailure = SetSecurityInfo(
+                            mutexHandle,
+                            SeKernelObject,
+                            DaclSecurityInformation,
+                            IntPtr.Zero,
+                            IntPtr.Zero,
+                            originalDacl,
+                            IntPtr.Zero);
                     }
-                }
-                catch
-                {
-                    // Handle rights are fixed when opened; restore should normally succeed.
-                    // Failure is non-fatal for JuChuang, and the mutex disappears when all
-                    // WeChat handles close.
+                    catch (Exception exception)
+                    {
+                        restoreFailure = 1;
+                        DiagnosticLogService.WriteActivityEvent(
+                            $"mutex-bypass-restore-exception:{exception.GetType().Name}");
+                    }
+                    if (restoreFailure == 0)
+                    {
+                        trace?.Record(attempt == 1 ? "mutex-restored" : "mutex-restored-after-retry");
+                        break;
+                    }
+                    if (attempt < 3) Thread.Sleep(25);
                 }
             }
 
@@ -284,13 +300,21 @@ public static class ClientLauncher
             {
                 _ = CloseHandle(mutexHandle);
             }
+
+            if (restoreFailure != 0)
+            {
+                DiagnosticLogService.WriteActivityEvent($"mutex-bypass-restore-failed:{restoreFailure}");
+                throw new Win32Exception(unchecked((int)restoreFailure),
+                    "微信多开已启动，但单实例对象的访问控制未能恢复；请退出微信后重试。");
+            }
         }
     }
 
     private static WeChatLaunchResult StartWeChatProcess(
         string executablePath,
         bool usedMultiInstanceBypass,
-        string strategy)
+        string strategy,
+        WeChatLaunchTrace? trace)
     {
         var startupInfo = new STARTUPINFO
         {
@@ -316,6 +340,7 @@ public static class ClientLauncher
 
         try
         {
+            trace?.RecordProcessCreated(unchecked((int)processInformation.dwProcessId));
             return new WeChatLaunchResult(
                 true,
                 unchecked((int)processInformation.dwProcessId),
@@ -335,6 +360,9 @@ public static class ClientLauncher
             }
         }
     }
+
+    internal static IntPtr OpenExistingMutex(string name)
+        => OpenMutexW(MutexAllAccess, false, name);
 
     private static bool HasRunningWeChatProcess()
     {
@@ -455,9 +483,9 @@ public static class ClientLauncher
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern IntPtr CreateMutexW(
-        IntPtr lpMutexAttributes,
-        [MarshalAs(UnmanagedType.Bool)] bool bInitialOwner,
+    private static extern IntPtr OpenMutexW(
+        uint dwDesiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
         string lpName);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
