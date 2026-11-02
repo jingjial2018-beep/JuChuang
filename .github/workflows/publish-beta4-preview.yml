@@ -1,0 +1,115 @@
+name: Publish JNest v2.0.3-beta.4 prerelease (tested candidate only)
+
+on:
+  push:
+    branches:
+      - release/v2.0.3-beta.4
+    paths:
+      - .github/workflows/publish-beta3-preview.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: jnest-v2.0.3-beta.4-prerelease
+  cancel-in-progress: false
+
+jobs:
+  publish-tested-preview:
+    if: github.repository == 'jingjial2018-beep/JuChuang'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact tested source, Windows check results, and absent release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SOURCE_SHA=a725706dc59299c7117bfab08030b5558726da64
+          BUILD_RUN=41392945472
+          PACKAGE_RUN=41392945548
+          TAG=v2.0.3-beta.4
+          for RUN in "$BUILD_RUN" "$PACKAGE_RUN"; do
+            ACTUAL_SHA="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" --jq '.head_sha')"
+            RESULT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" --jq '.conclusion')"
+            [[ "$ACTUAL_SHA" == "$SOURCE_SHA" && "$RESULT" == success ]] || {
+              echo "::error::Windows CI run $RUN did not pass on exact source"; exit 1;
+            }
+          done
+          gh api "repos/$GITHUB_REPOSITORY/git/commits/$SOURCE_SHA" --jq '.sha' | grep -qx "$SOURCE_SHA"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Beta release already exists; refusing overwrite"; exit 1;
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag already exists; refusing to move it"; exit 1;
+          fi
+
+      - name: Download exact successful Windows x64 build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 41392945548 --repo "$GITHUB_REPOSITORY" \
+            --name JNest-v2.0.3-beta.4-preview-build195 --dir packages
+          ls -lah packages
+
+      - name: Verify checksums and prepare immutable beta3 assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd packages && sed 's/\r$//' SHA256SUMS.txt | sha256sum --check -)
+          FW="$(find packages -maxdepth 1 -type f -name '*-FrameworkDependent-win-x64.zip' -print -quit)"
+          SC="$(find packages -maxdepth 1 -type f -name '*-SelfContained-win-x64.zip' -print -quit)"
+          test -n "$FW" && test -n "$SC"
+          unzip -Z1 "$SC" | grep -qx 'JNest.exe'
+          mv "$FW" packages/JNest-v2.0.3-beta.4-FrameworkDependent-win-x64.zip
+          mv "$SC" packages/JNest-v2.0.3-beta.4-SelfContained-win-x64.zip
+          (cd packages && sha256sum JNest-v2.0.3-beta.4-*-win-x64.zip > SHA256SUMS.txt)
+
+      - name: Publish standalone beta Release (never stable)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'EOF'
+          ## JNest v2.0.3-beta.4 — 侧栏收缩态选中框修复测试版
+
+          **Pre-release，仅供实机验收。没有合并 stable，也不是正式稳定版。**
+
+          - 修复 beta.3 实机发现的缺陷：收缩侧栏后选中高亮消失。
+          - 收缩态选中头像周围恢复独立 52 × 52 DIP 浅蓝色圆角方块，圆角 14 DIP；未读红点位置和 40 DIP 头像保持不变。
+          - 将选中和悬停颜色绑定到 ListBoxItem 原有 IsSelected 与 IsMouseOver 模板属性触发器，移除失效的祖先绑定 MultiDataTrigger。
+          - 展开状态继续保留原有横向浅蓝色选中卡片，样式与布局不变。
+          - 继承 beta.3 已包含的消息识别、Region 恢复、接入状态和 WPF 统一底色修复；本次不改托管、Toast、角标识别、昵称头像和 WhatsApp 逻辑。
+          - .NET 10 Windows CI 主程序编译、ArchitectureProbe、BadgeProbe、RegressionProbe、设置检查与 x64 双包构建全部通过。
+          - 尚需实机验收：收缩/展开切换、两个微信与 WhatsApp、未读角标、100% 和 200% DPI 冷启动、微信扫码登录页。
+
+          FrameworkDependent（轻量版）需要 .NET 10 Desktop Runtime x64；SelfContained（完整版）包含运行时。
+          建议解压到独立目录测试，不覆盖已有 v2.0.3-beta.3。
+
+          代码：[Draft PR #74](https://github.com/jingjial2018-beep/JuChuang/pull/74)
+          精确测试提交：a725706dc59299c7117bfab08030b5558726da64。
+          EOF
+          gh release create v2.0.3-beta.4 \
+            packages/JNest-v2.0.3-beta.4-FrameworkDependent-win-x64.zip \
+            packages/JNest-v2.0.3-beta.4-SelfContained-win-x64.zip \
+            packages/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target a725706dc59299c7117bfab08030b5558726da64 \
+            --title 'JNest v2.0.3-beta.4 — 侧栏收缩态选中框修复测试版' \
+            --notes-file notes.md --prerelease
+
+      - name: Verify prerelease source and assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v2.0.3-beta.4 --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,assets \
+            --jq 'if (.isDraft == false and .isPrerelease == true and (.assets | length) == 3) then "PASS" else error("Unexpected prerelease state") end'
+          SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v2.0.3-beta.4" --jq '.object.sha')"
+          [[ "$SHA" == a725706dc59299c7117bfab08030b5558726da64 ]] || exit 1
