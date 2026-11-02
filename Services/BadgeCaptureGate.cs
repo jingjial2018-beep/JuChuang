@@ -20,7 +20,8 @@ internal enum BadgeCaptureStatus
 
 internal readonly record struct BadgeCaptureAttempt(
     BadgeCaptureStatus Status,
-    BadgeResult? Result);
+    BadgeResult? Result,
+    string? Diagnostic = null);
 
 /// <summary>
 /// Prevents repeated capture attempts for a client window while a native capture

@@ -41,7 +41,11 @@ jobs:
           [xml]$project = Get-Content .\JuChuang.csproj
           $baseVersion = $project.Project.PropertyGroup.Version
           $previewSuffix = if ([string]::IsNullOrWhiteSpace($env:PR_NUMBER)) { "build$($env:RUN_NUMBER)" } else { "pr$($env:PR_NUMBER)" }
-          "PREVIEW_VERSION=$baseVersion-preview.$previewSuffix" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # A source beta already has its immutable product version. Keep the
+          # PR suffix only in the artifact name; stable candidates still get
+          # a temporary preview version inside the executable.
+          $binaryVersion = if ($baseVersion -match '-beta\.[0-9]+$') { $baseVersion } else { "$baseVersion-preview.$previewSuffix" }
+          "PREVIEW_VERSION=$binaryVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           "PACKAGE_NAME=JNest-v$baseVersion-preview-$previewSuffix" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore
