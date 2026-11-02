@@ -5,7 +5,7 @@ on:
     branches:
       - release/v2.0.3-beta.4
     paths:
-      - .github/workflows/publish-beta3-preview.yml
+      - .github/workflows/publish-beta4-preview.yml
 
 permissions:
   contents: write
@@ -55,7 +55,7 @@ jobs:
             --name JNest-v2.0.3-beta.4-preview-build195 --dir packages
           ls -lah packages
 
-      - name: Verify checksums and prepare immutable beta3 assets
+      - name: Verify checksums and prepare immutable beta4 assets
         shell: bash
         run: |
           set -euo pipefail
