@@ -2105,6 +2105,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var verified = HostedWindowHealthPolicy.IsVerified(
             showVerified, firstRefreshVerified, secondRefreshVerified);
+        if (!verified && WindowHost.IsSelectedWindowVisibleWithMissingClip(entry.Handle))
+        {
+            // The window is still hosted and interactive; a lost Qt clip is a
+            // visual containment fault, not a detached client. Repair runs
+            // independently in the host enforcement loop.
+            verified = true;
+            DiagnosticLogService.WriteDebugEvent("host-clip-missing-but-attached");
+        }
         if (!verified && entry.Status != "接入异常")
             DiagnosticLogService.WriteAccountEvent(entry, "host-refresh-confirmed-failure");
         entry.Status = verified ? "已接入" : "接入异常";

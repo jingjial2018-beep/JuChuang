@@ -12,4 +12,13 @@ internal static class HostedWindowHealthPolicy
         bool firstRefreshVerified,
         bool secondRefreshVerified)
         => showVerified || firstRefreshVerified || secondRefreshVerified;
+
+    internal static bool IsClipOnlyFailure(bool hostIdentityAndBoundsValid, int regionKind)
+        => hostIdentityAndBoundsValid && regionKind == 0;
+
+    internal static bool HasExpectedClip(
+        int regionKind, NativeMethods.RECT actual, NativeMethods.RECT expected)
+        => regionKind != 0
+            && actual.Left == expected.Left && actual.Top == expected.Top
+            && actual.Right == expected.Right && actual.Bottom == expected.Bottom;
 }

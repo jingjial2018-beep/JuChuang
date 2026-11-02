@@ -88,6 +88,20 @@ internal static class Program
             "recovery on the second refresh must preserve the attached state");
         Assert(!HostedWindowHealthPolicy.IsVerified(false, false, false),
             "two failed refreshes without a verified show must report a real failure");
+        Assert(HostedWindowHealthPolicy.IsClipOnlyFailure(true, 0),
+            "visible hosted window with missing clip should not be reported detached");
+        Assert(!HostedWindowHealthPolicy.IsClipOnlyFailure(false, 0),
+            "missing owner or invalid bounds cannot be treated as clip-only");
+        Assert(!HostedWindowHealthPolicy.IsClipOnlyFailure(true, 2),
+            "an existing region is not a missing-clip fallback");
+        var expected = new NativeMethods.RECT { Left = 11, Top = 0, Right = 2011, Bottom = 1450 };
+        Assert(HostedWindowHealthPolicy.HasExpectedClip(2, expected, expected),
+            "matching native region must pass validation");
+        Assert(!HostedWindowHealthPolicy.HasExpectedClip(0, expected, expected),
+            "a missing region must fail strict validation");
+        Assert(!HostedWindowHealthPolicy.HasExpectedClip(2,
+            new NativeMethods.RECT { Left = 11, Top = 0, Right = 2011, Bottom = 1440 }, expected),
+            "incorrectly cropped region must fail strict validation");
         return Task.CompletedTask;
     }
 

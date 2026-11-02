@@ -18,6 +18,9 @@ public sealed class ExternalWindowHost : HwndHost
 {
     private readonly ConcurrentDictionary<IntPtr, HostedWindowState> _hostedWindows = [];
     private readonly ConcurrentDictionary<IntPtr, long> _lastLocationEventTicks = [];
+    // Qt can discard a region after native show/repaint. Limit repeated repair
+    // attempts without weakening the real owner, HWND or geometry checks.
+    private readonly ConcurrentDictionary<IntPtr, long> _lastClipRepairTicks = [];
     // Keep one final correction after a high-frequency burst; otherwise the
     // leading-edge 200ms throttle can drop the last native position event.
     private readonly ConcurrentDictionary<IntPtr, byte> _trailingLocationRechecks = [];
@@ -293,6 +296,7 @@ public sealed class ExternalWindowHost : HwndHost
             RestoreOwnedLoginDialog(handle);
         }
         RefreshHostedWindow(handle);
+        RepairSelectedClipIfNeeded(handle);
         var visible = VerifyHostedWindow(handle, active: true);
         if (!visible) TraceTransitionFailure(handle, "show-verification");
         return visible;
@@ -319,6 +323,8 @@ public sealed class ExternalWindowHost : HwndHost
                 | NativeMethods.RDW_FRAME);
             LogSlowNativeCall("refresh-redraw", redrawStarted, (int)refreshPid);
             if (!redrawn) TraceTransitionFailure(handle, "redraw-failed");
+            // Redraw of Qt's top-level HWND can clear a previously valid region.
+            RepairSelectedClipIfNeeded(handle);
             return redrawn && VerifyHostedWindow(handle, active: true);
         }
         return true;
@@ -624,6 +630,7 @@ public sealed class ExternalWindowHost : HwndHost
             {
                 _hostedWindows.TryRemove(handle, out _);
                 _lastLocationEventTicks.TryRemove(handle, out _);
+                _lastClipRepairTicks.TryRemove(handle, out _);
                 _trailingLocationRechecks.TryRemove(handle, out _);
                 if (_currentHandle == handle) _currentHandle = IntPtr.Zero;
                 continue;
@@ -694,6 +701,66 @@ public sealed class ExternalWindowHost : HwndHost
         {
             ResizeCurrentWindow();
         }
+        // Geometry may stay correct while Qt discards only the SetWindowRgn
+        // clip. The old enforcement loop never repaired that state.
+        RepairSelectedClipIfNeeded(handle);
+    }
+
+    private void RepairSelectedClipIfNeeded(IntPtr handle)
+    {
+        if (_currentHandle != handle || _ownerMinimized || _modalDialogSuppressionCount != 0
+            || _hostHandle == IntPtr.Zero || !NativeMethods.IsWindow(handle)
+            || !_hostedWindows.TryGetValue(handle, out var state) || state.CenterInHost
+            || !NativeMethods.GetClientRect(_hostHandle, out var hostRect))
+            return;
+
+        var regionKind = NativeMethods.GetWindowRgnBox(handle, out var actualRegion);
+        var expectedRegion = new NativeMethods.RECT
+        {
+            Left = state.Insets.Left,
+            Top = state.Insets.Top,
+            Right = state.Insets.Left + Math.Max(1, hostRect.Width),
+            Bottom = state.Insets.Top + Math.Max(1, hostRect.Height)
+        };
+        if (HostedWindowHealthPolicy.HasExpectedClip(regionKind, actualRegion, expectedRegion))
+        {
+            _lastClipRepairTicks.TryRemove(handle, out _);
+            return;
+        }
+
+        if (_lastClipRepairTicks.TryGetValue(handle, out var lastAttempt)
+            && Stopwatch.GetElapsedTime(lastAttempt) < TimeSpan.FromSeconds(2))
+            return;
+        _lastClipRepairTicks[handle] = Stopwatch.GetTimestamp();
+        ApplyClipRegion(handle, hostRect.Width, hostRect.Height, state.Insets, cornerRadius: 0);
+
+        var afterKind = NativeMethods.GetWindowRgnBox(handle, out var afterRegion);
+        NativeMethods.GetWindowThreadProcessId(handle, out var processId);
+        DiagnosticLogService.WriteDebugEvent(
+            () => $"host-clip-repair before={regionKind} after={afterKind} "
+                + $"expected={FormatRect(expectedRegion)} actual={FormatRect(afterRegion)}",
+            (int)processId);
+    }
+
+    // Distinguish failed clipping from a missing/disconnected native window.
+    // This is deliberately restricted to a visible selected HWND with valid
+    // ownership, extended style and exact host geometry, and only no-region.
+    // A mismatched owner, HWND, style or position is still an attach failure.
+    public bool IsSelectedWindowVisibleWithMissingClip(IntPtr handle)
+    {
+        if (_currentHandle != handle || _ownerMinimized || _modalDialogSuppressionCount != 0
+            || !_hostedWindows.TryGetValue(handle, out var state) || state.CenterInHost
+            || !NativeMethods.IsWindow(handle) || !NativeMethods.IsWindowVisible(handle)
+            || NativeMethods.GetWindow(handle, NativeMethods.GW_OWNER) != GetOwnerRoot()
+            || NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_EXSTYLE)
+                != CreateOverlayExtendedStyle(state.ExtendedStyle)
+            || !NativeMethods.GetWindowRect(handle, out var actual)
+            || !TryGetExpectedBounds(state, out var expected)
+            || actual.Left != expected.Left || actual.Top != expected.Top
+            || actual.Width != expected.Width || actual.Height != expected.Height)
+            return false;
+        var regionKind = NativeMethods.GetWindowRgnBox(handle, out _);
+        return HostedWindowHealthPolicy.IsClipOnlyFailure(true, regionKind);
     }
 
     private static NativeMethods.RECT CalculateHostedBounds(
@@ -733,11 +800,16 @@ public sealed class ExternalWindowHost : HwndHost
             || actual.Left != expected.Left || actual.Top != expected.Top
             || actual.Width != expected.Width || actual.Height != expected.Height) return false;
         if (state.CenterInHost) return true;
-        if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)
-            || NativeMethods.GetWindowRgnBox(handle, out var region) == 0) return false;
-        return region.Left == state.Insets.Left && region.Top == state.Insets.Top
-            && region.Right == state.Insets.Left + Math.Max(1, hostRect.Width)
-            && region.Bottom == state.Insets.Top + Math.Max(1, hostRect.Height);
+        if (!NativeMethods.GetClientRect(_hostHandle, out var hostRect)) return false;
+        var regionKind = NativeMethods.GetWindowRgnBox(handle, out var region);
+        var expectedRegion = new NativeMethods.RECT
+        {
+            Left = state.Insets.Left,
+            Top = state.Insets.Top,
+            Right = state.Insets.Left + Math.Max(1, hostRect.Width),
+            Bottom = state.Insets.Top + Math.Max(1, hostRect.Height)
+        };
+        return HostedWindowHealthPolicy.HasExpectedClip(regionKind, region, expectedRegion);
     }
 
     private static bool VerifyStandaloneWindow(IntPtr handle, HostedWindowState state)
