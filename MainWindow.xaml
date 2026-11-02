@@ -129,14 +129,16 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Grid>
-                            <!-- Collapsed-only 52-DIP tile: draws behind the original
+                            <!-- Collapsed-only 50-DIP tile: draws behind the original
                                  Card and content, without changing the 72-DIP row
                                  or the expanded horizontal selection. -->
                             <Border x:Name="CollapsedSelectionTile"
-                                    Width="52" Height="52"
+                                    Width="50" Height="50"
                                     Background="Transparent"
-                                    BorderBrush="Transparent" BorderThickness="1"
-                                    CornerRadius="14"
+                                    BorderThickness="0"
+                                    CornerRadius="12"
+                                    SnapsToDevicePixels="True"
+                                    UseLayoutRounding="True"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     IsHitTestVisible="False"
@@ -160,7 +162,6 @@
                                 <!-- Use the templated ListBoxItem's own IsSelected property,
                                      not an ancestor-binding that can fail inside a template. -->
                                 <Setter TargetName="CollapsedSelectionTile" Property="Background" Value="{StaticResource SelectionBrush}" />
-                                <Setter TargetName="CollapsedSelectionTile" Property="BorderBrush" Value="#C9DAEF" />
                             </Trigger>
                             <!-- Collapsed mode overrides only the large Card fill.
                                  All expanded-state appearance remains untouched. -->

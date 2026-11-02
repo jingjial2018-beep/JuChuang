@@ -79,10 +79,14 @@ if ($selectedCard.Count -ne 1 -or
 $compactTile = @($itemTemplate.SelectNodes(".//*[local-name()='Border']") |
     Where-Object { $_.GetAttribute('Name',$ns) -eq 'CollapsedSelectionTile' })
 if ($compactTile.Count -ne 1 -or
-    $compactTile[0].GetAttribute('Width') -ne '52' -or
-    $compactTile[0].GetAttribute('Height') -ne '52' -or
-    $compactTile[0].GetAttribute('Visibility') -ne 'Collapsed') {
-    throw 'Missing 52-DIP collapsed-only selection tile'
+    $compactTile[0].GetAttribute('Width') -ne '50' -or
+    $compactTile[0].GetAttribute('Height') -ne '50' -or
+    $compactTile[0].GetAttribute('CornerRadius') -ne '12' -or
+    $compactTile[0].GetAttribute('BorderThickness') -ne '0' -or
+    $compactTile[0].GetAttribute('Visibility') -ne 'Collapsed' -or
+    $compactTile[0].GetAttribute('SnapsToDevicePixels') -ne 'True' -or
+    $compactTile[0].GetAttribute('UseLayoutRounding') -ne 'True') {
+    throw 'Missing 50-DIP borderless collapsed-only selection tile'
 }
 $collapsedTriggers = @($itemTemplate.SelectNodes("./*[local-name()='ControlTemplate.Triggers']/*[local-name()='DataTrigger']") |
     Where-Object { $_.GetAttribute('Binding') -match 'IsSidebarCollapsed' })
@@ -101,14 +105,10 @@ if (@($collapsedTriggers[0].SelectNodes("./*[local-name()='Setter']") |
 # ListBoxItem. Do not use FindAncestor=ListBoxItem inside trigger bindings.
 $tileSelectedSetters = @($selectedCard[0].SelectNodes("./*[local-name()='Setter']") |
     Where-Object { $_.GetAttribute('TargetName') -eq 'CollapsedSelectionTile' })
-if ($tileSelectedSetters.Count -ne 2 -or
+if ($tileSelectedSetters.Count -ne 1 -or
     @($tileSelectedSetters | Where-Object {
         $_.GetAttribute('Property') -eq 'Background' -and
         $_.GetAttribute('Value') -eq '{StaticResource SelectionBrush}'
-    }).Count -ne 1 -or
-    @($tileSelectedSetters | Where-Object {
-        $_.GetAttribute('Property') -eq 'BorderBrush' -and
-        $_.GetAttribute('Value') -eq '#C9DAEF'
     }).Count -ne 1) {
     throw 'Collapsed selected tile is not bound to owning ListBoxItem.IsSelected'
 }
@@ -143,7 +143,7 @@ $gridRows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[l
 if ($gridRows.Count -lt 2 -or $gridRows[0].GetAttribute('Height') -ne 'Auto') {
     throw 'Settings content must use natural height'
 }
-if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2', '2.0.1-beta.3', '2.0.2-beta.1', '2.0.2-beta.2', '2.0.2-beta.3', '2.0.2-beta.4', '2.0.2', '2.0.3-beta.1', '2.0.3-beta.2', '2.0.3-beta.3', '2.0.3-beta.4')) {
+if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2', '2.0.1-beta.3', '2.0.2-beta.1', '2.0.2-beta.2', '2.0.2-beta.3', '2.0.2-beta.4', '2.0.2', '2.0.3-beta.1', '2.0.3-beta.2', '2.0.3-beta.3', '2.0.3-beta.4', '2.0.3')) {
     throw 'Project must identify an approved stable or maintenance version'
 }
 if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
