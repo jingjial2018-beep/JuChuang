@@ -35,6 +35,9 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <!-- One continuous WPF surface: the sidebar, account header and
+             workspace no longer use incompatible gradients or a seam line. -->
+        <SolidColorBrush x:Key="UnifiedWorkspaceBrush" Color="#F1F3F7" />
         <Style x:Key="ToolbarButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="34" />
             <Setter Property="Padding" Value="15,0" />
@@ -336,14 +339,8 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Layered desktop: continuous matte sidebar surface (zone A). -->
-                <Border Grid.Column="0" BorderThickness="0">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#F3F5F8" Offset="0"/>
-                            <GradientStop Color="#EBEFF4" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
+                <!-- One flat surface shared with the status header and workspace. -->
+                <Border Grid.Column="0" Background="{StaticResource UnifiedWorkspaceBrush}" BorderThickness="0">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="48" />
@@ -521,28 +518,16 @@
 
                 <!-- No sidebar/workspace divider; the zero-width column preserves Grid placement. -->
 
-                <!-- Zone B/C: a calm recessed workspace surface behind native windows.
-                     No hosting bounds, clipping, window styles or input behavior change. -->
-                <Grid Grid.Column="2">
-                    <Grid.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#E9EDF2" Offset="0"/>
-                            <GradientStop Color="#E3E8EE" Offset="0.88"/>
-                            <GradientStop Color="#DEE5ED" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Grid.Background>
+                <!-- Zone B/C continues the same WPF surface; native HWND bounds
+                     and the two existing Grid rows are unchanged. -->
+                <Grid Grid.Column="2" Background="{StaticResource UnifiedWorkspaceBrush}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="32" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <!-- Compact 32-DIP account status header (zone B). -->
-                    <Border Grid.Row="0" BorderBrush="#CBD3DE" BorderThickness="0,0,0,1">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#F5F7FA" Offset="0"/>
-                                <GradientStop Color="#EAEFF5" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Border.Background>
+                    <!-- Keep the 32-DIP status header, remove only its visual
+                         bottom stroke and mismatched gradient. -->
+                    <Border Grid.Row="0" Background="{StaticResource UnifiedWorkspaceBrush}" BorderThickness="0">
                         <Grid Margin="20,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -559,19 +544,13 @@
                         </Grid>
                     </Border>
                     <Grid x:Name="ClientArea" Grid.Row="1" ClipToBounds="True"
-                          SnapsToDevicePixels="True">
-                        <Grid.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#E9EDF2" Offset="0"/>
-                                <GradientStop Color="#E4E9F0" Offset="0.93"/>
-                                <GradientStop Color="#DBE2EA" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Grid.Background>
+                          SnapsToDevicePixels="True"
+                          Background="{StaticResource UnifiedWorkspaceBrush}">
                         <!-- 通铺式嵌入：原生窗口直接铺满整个工作区，不做卡片包装
                              （无留白/无边框/无圆角/无投影）。窗口左右紧贴侧栏与外壳，
                              视觉上作为界面的一部分存在，而非悬浮的独立卡片。 -->
                         <controls:ExternalWindowHost x:Name="WindowHost" Visibility="Collapsed" />
-                        <Grid x:Name="EmptyState" Background="{StaticResource WorkspaceSurfaceBrush}">
+                        <Grid x:Name="EmptyState" Background="{StaticResource UnifiedWorkspaceBrush}">
                             <StackPanel Width="420" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border Width="56" Height="56" Background="#EAF2FF" CornerRadius="16">
                                     <Path Width="22" Height="22" Stretch="Uniform" Stroke="{StaticResource AccentBrush}"
