@@ -87,9 +87,43 @@ if ($compactTile.Count -ne 1 -or
 $collapsedTriggers = @($itemTemplate.SelectNodes("./*[local-name()='ControlTemplate.Triggers']/*[local-name()='DataTrigger']") |
     Where-Object { $_.GetAttribute('Binding') -match 'IsSidebarCollapsed' })
 if ($collapsedTriggers.Count -ne 1) { throw 'Missing collapsed selection override' }
-$collapsedSelected = @($itemTemplate.SelectNodes("./*[local-name()='ControlTemplate.Triggers']/*[local-name()='MultiDataTrigger']") |
-    Where-Object { $_.OuterXml -match 'IsSidebarCollapsed' -and $_.OuterXml -match 'IsSelected' })
-if ($collapsedSelected.Count -ne 1) { throw 'Missing isolated collapsed selected style' }
+if (@($collapsedTriggers[0].SelectNodes("./*[local-name()='Setter']") |
+    Where-Object { $_.GetAttribute('TargetName') -eq 'Card' -and
+        $_.GetAttribute('Property') -eq 'Background' -and
+        $_.GetAttribute('Value') -eq 'Transparent' }).Count -ne 1 -or
+    @($collapsedTriggers[0].SelectNodes("./*[local-name()='Setter']") |
+    Where-Object { $_.GetAttribute('TargetName') -eq 'CollapsedSelectionTile' -and
+        $_.GetAttribute('Property') -eq 'Visibility' -and
+        $_.GetAttribute('Value') -eq 'Visible' }).Count -ne 1) {
+    throw 'Collapsed tile visibility and large-card override must be paired'
+}
+# A ControlTemplate's IsSelected and IsMouseOver are properties of the templated
+# ListBoxItem. Do not use FindAncestor=ListBoxItem inside trigger bindings.
+$tileSelectedSetters = @($selectedCard[0].SelectNodes("./*[local-name()='Setter']") |
+    Where-Object { $_.GetAttribute('TargetName') -eq 'CollapsedSelectionTile' })
+if ($tileSelectedSetters.Count -ne 2 -or
+    @($tileSelectedSetters | Where-Object {
+        $_.GetAttribute('Property') -eq 'Background' -and
+        $_.GetAttribute('Value') -eq '{StaticResource SelectionBrush}'
+    }).Count -ne 1 -or
+    @($tileSelectedSetters | Where-Object {
+        $_.GetAttribute('Property') -eq 'BorderBrush' -and
+        $_.GetAttribute('Value') -eq '#C9DAEF'
+    }).Count -ne 1) {
+    throw 'Collapsed selected tile is not bound to owning ListBoxItem.IsSelected'
+}
+$hoverTrigger = @($itemTemplate.SelectNodes("./*[local-name()='ControlTemplate.Triggers']/*[local-name()='Trigger']") |
+    Where-Object { $_.GetAttribute('Property') -eq 'IsMouseOver' -and $_.GetAttribute('Value') -eq 'True' })
+if ($hoverTrigger.Count -ne 1 -or
+    @($hoverTrigger[0].SelectNodes("./*[local-name()='Setter']") |
+        Where-Object { $_.GetAttribute('TargetName') -eq 'CollapsedSelectionTile' -and
+            $_.GetAttribute('Property') -eq 'Background' -and
+            $_.GetAttribute('Value') -eq '#E9EDF5' }).Count -ne 1) {
+    throw 'Collapsed tile hover state missing'
+}
+if (@($itemTemplate.SelectNodes("./*[local-name()='ControlTemplate.Triggers']/*[local-name()='MultiDataTrigger']")).Count -ne 0) {
+    throw 'Unreliable ancestor-binding collapsed selection triggers reintroduced'
+}
 
 foreach ($gesture in @('PreviewMouseRightButtonDown', 'PreviewMouseRightButtonUp')) {
     if ($list[0].GetAttribute($gesture) -ne 'AccountsList_IgnoreRightClick') {
@@ -109,7 +143,7 @@ $gridRows = @($settings.SelectNodes("//*[local-name()='Grid.RowDefinitions']/*[l
 if ($gridRows.Count -lt 2 -or $gridRows[0].GetAttribute('Height') -ne 'Auto') {
     throw 'Settings content must use natural height'
 }
-if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2', '2.0.1-beta.3', '2.0.2-beta.1', '2.0.2-beta.2', '2.0.2-beta.3', '2.0.2-beta.4', '2.0.2', '2.0.3-beta.1', '2.0.3-beta.2', '2.0.3-beta.3')) {
+if ($project.Project.PropertyGroup.Version -notin @('2.0.0', '2.0.1-beta.1', '2.0.1-beta.2', '2.0.1-beta.3', '2.0.2-beta.1', '2.0.2-beta.2', '2.0.2-beta.3', '2.0.2-beta.4', '2.0.2', '2.0.3-beta.1', '2.0.3-beta.2', '2.0.3-beta.3', '2.0.3-beta.4')) {
     throw 'Project must identify an approved stable or maintenance version'
 }
 if ($settings.OuterXml -match 'ChangeLockPasswordButton|ChangeLockPassword_Click|隐私与安全') { throw 'Obsolete password settings UI remains' }
