@@ -1686,19 +1686,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         PopOutButtonText.Text = "弹出窗口";
         EmptyState.Visibility = Visibility.Collapsed;
         WindowHost.Visibility = Visibility.Visible;
-        if (!WindowHost.ShowOnly(entry.Handle))
-        {
-            entry.Status = "接入异常";
-            CurrentStatusText.Text = BuildCurrentStatusText(entry, "窗口显示异常");
-        }
-        else if (entry.Status == "接入异常")
+        // A single strict HWND verification may fail while the native window
+        // is still settling into the host. Do not report a disconnection here:
+        // confirm through the existing two delayed refresh attempts instead.
+        var showVerified = WindowHost.ShowOnly(entry.Handle);
+        if (showVerified && entry.Status == "接入异常")
         {
             entry.Status = "已接入";
             CurrentStatusText.Text = BuildCurrentStatusText(entry, "已接入");
         }
         UpdateWindowCount();
         SyncWeChatLoginPrompts();
-        QueueHostedWindowRefresh(entry);
+        QueueHostedWindowRefresh(entry, showVerified);
         if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
     }
 
@@ -2058,17 +2057,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         EmptyState.Visibility = Visibility.Visible;
     }
 
-    private void QueueHostedWindowRefresh(ClientWindowEntry entry)
+    private void QueueHostedWindowRefresh(ClientWindowEntry entry, bool showVerified = false)
     {
         var generation = ++_renderRefreshGeneration;
-        _ = RefreshHostedWindowAsync(entry, generation);
+        _ = RefreshHostedWindowAsync(entry, generation, showVerified);
     }
 
-    private async Task RefreshHostedWindowAsync(ClientWindowEntry entry, int generation)
+    private async Task RefreshHostedWindowAsync(ClientWindowEntry entry, int generation, bool showVerified)
     {
-        // Let WPF complete layout, then perform one delayed native refresh. More
-        // synchronous redraws noticeably stall the UI without improving rendering.
+        // Preserve the existing two native refreshes (and the 80ms interval).
+        // Only update the status after the verification window: a transient
+        // failed redraw must not flash "接入异常" over a functioning chat.
         await Dispatcher.Yield(DispatcherPriority.Loaded);
+        var firstRefreshVerified = false;
+        var secondRefreshVerified = false;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             if (_isClosing
@@ -2081,15 +2083,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var refreshed = WindowHost.RefreshHostedWindow(entry.Handle);
-            entry.Status = refreshed ? "已接入" : "接入异常";
-            CurrentStatusText.Text = BuildCurrentStatusText(entry,
-                refreshed ? "已接入" : "窗口显示异常");
-            UpdateWindowCount();
             if (attempt == 0)
             {
+                firstRefreshVerified = refreshed;
                 await Task.Delay(80);
             }
+            else
+            {
+                secondRefreshVerified = refreshed;
+            }
         }
+
+        if (_isClosing
+            || generation != _renderRefreshGeneration
+            || !ReferenceEquals(entry, SelectedEntry)
+            || !entry.IsAttached
+            || !NativeMethods.IsWindow(entry.Handle))
+        {
+            return;
+        }
+
+        var verified = HostedWindowHealthPolicy.IsVerified(
+            showVerified, firstRefreshVerified, secondRefreshVerified);
+        if (!verified && entry.Status != "接入异常")
+            DiagnosticLogService.WriteAccountEvent(entry, "host-refresh-confirmed-failure");
+        entry.Status = verified ? "已接入" : "接入异常";
+        CurrentStatusText.Text = BuildCurrentStatusText(entry,
+            verified ? "已接入" : "窗口显示异常");
+        UpdateWindowCount();
     }
 
     private void UpdateWindowCount()

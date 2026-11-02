@@ -58,6 +58,7 @@ internal static class Program
                 await Run("Diagnostic log rotation, retention and bounds", CoverageHarness.LogRotationAndBounds);
                 await Run("WeChat launch timeline correlates only its new process", CoverageHarness.WeChatLaunchTimeline);
                 await Run("Popup snapshot keeps client processes separate", PopupSnapshotIsolation);
+                await Run("Native host refresh distinguishes transient and confirmed failures", HostedWindowHealth);
                 await Run("Diagnostic log directory is recreated after removal", CoverageHarness.LogRootRecreation);
                 await Run("Disabled detailed trace does not build messages", CoverageHarness.LazyDebugTrace);
                 await Run("Existing mutex opener never creates a missing object", ExistingMutexOpen);
@@ -75,6 +76,19 @@ internal static class Program
         }));
         Dispatcher.Run();
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static Task HostedWindowHealth()
+    {
+        Assert(HostedWindowHealthPolicy.IsVerified(true, false, false),
+            "a verified ShowOnly must not be invalidated by later redraw failures");
+        Assert(HostedWindowHealthPolicy.IsVerified(false, true, false),
+            "a later transient redraw failure must not report a detach");
+        Assert(HostedWindowHealthPolicy.IsVerified(false, false, true),
+            "recovery on the second refresh must preserve the attached state");
+        Assert(!HostedWindowHealthPolicy.IsVerified(false, false, false),
+            "two failed refreshes without a verified show must report a real failure");
+        return Task.CompletedTask;
     }
 
     private static Task PopupSnapshotIsolation()
