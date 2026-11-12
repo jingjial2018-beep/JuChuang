@@ -1,5 +1,15 @@
 # JNest Pull Request 测试包说明
 
+## PR #76 — 休眠唤醒后微信边缘与重新嵌入验收
+
+此包是 v2.0.3 的修复预览，不是正式版。使用 PR #76 最新成功的构建产物；优先解压运行 `SelfContained-win-x64.zip`，不要覆盖现有正式版目录。先正常退出正在运行的 JNest，再运行测试包。
+
+1. 记录 Windows、微信与测试包版本、显示缩放比例。接入两个微信，确认输入、通知和账户切换正常，并拍摄嵌入区域左、右、底部的初始状态。
+2. 保持 JNest 和微信运行，锁定电脑并让电脑休眠过夜。次日唤醒、解锁后，不重启微信，先拍摄同一账户的左、右、底部边缘；应无越过 JNest 工作区的灰色阴影。
+3. 切换到第二个微信并返回；分别弹出、重新嵌入一个微信。独立微信应保留自身正常边框，重新嵌入后不应出现灰影、1×1 裁剪、接入失败或内容偏移。
+4. 再检查输入、通知和 JNest 锁定/解锁；如使用 100% 与 200% 两种缩放，每次变更缩放后先重新启动测试包和微信，再验证冷启动嵌入，不把运行中 DPI 切换算作本修复的验收项。
+5. 如出现异常，保存截图和 `%LOCALAPPDATA%\JuChuang\logs\diagnostics-YYYYMMDD.log`。关注 `power-resume-observed`、`session-unlock-observed`、`session-unlock-host-recovered`、`host-shadow-suppression-failed` 与 `manual-attach-failed`。日志时间使用 UTC，比北京时间早 8 小时。
+
 ## v2.0.3-beta.1 — 开机自启后第二个微信启动验收
 
 1. 记录 Windows、微信和 JNest 版本，以及当前缩放比例。JNest 与微信均设置为开机自启；完全重启 Windows 后，等第一个微信登录或主窗口稳定，再点击“添加微信”。
