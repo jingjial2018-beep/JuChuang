@@ -44,7 +44,7 @@ internal static class Program
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
-                await Run("Main window keeps the native client at the 1.618 design ratio", MainWindowAspectRatio);
+                await Run("Main window uses the 1.618 outer-frame ratio", MainWindowAspectRatio);
                 await Run("Status clock shows equal-spaced date, weekday and seconds", StatusClock);
                 await Run("Password dialog collapses empty error space", PasswordDialogSpacing);
                 await Run("Detached account removal leaves its process running", DetachedAccountRemoval);
@@ -456,9 +456,12 @@ internal static class Program
             var root = (FrameworkElement)window.Content;
             root.Measure(new Size(window.Width, window.Height));
             root.Arrange(new Rect(0, 0, window.Width, window.Height));
-            var ratio = client.ActualWidth / client.ActualHeight;
-            Assert(Math.Abs(ratio - 1.618) < 0.002,
-                $"native client ratio is {ratio:F4}, expected 1.618");
+            var outerRatio = window.Width / window.Height;
+            Assert(Math.Abs(outerRatio - 1.618) < 0.001,
+                $"main window ratio is {outerRatio:F4}, expected 1.618");
+            var clientRatio = client.ActualWidth / client.ActualHeight;
+            Assert(clientRatio is > 1.47 and < 1.49,
+                $"native client ratio is {clientRatio:F4}; the workspace is unexpectedly wide");
             Assert(sidebar.Width.Value == 280, "the account sidebar lost its readable width");
         }
         finally { CloseWithoutPrompt(window); }

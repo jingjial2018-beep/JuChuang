@@ -11,7 +11,7 @@
         Title="JNest"
         Icon="Assets/taskbar.ico"
         ShowInTaskbar="True"
-        Width="1466.4"
+        Width="1362.4"
         Height="842"
         MinWidth="1060"
         MinHeight="842"
