@@ -14,7 +14,6 @@ public partial class LockPasswordDialog : Window
         FixedModalWindow.Attach(this);
         if (changeExisting)
         {
-            Heading.Text = "修改 JNest 锁定密码";
             Title = "修改 JNest 锁定密码";
             OldPasswordPanel.Visibility = Visibility.Visible;
             UpdateRemovalPlaceholders();

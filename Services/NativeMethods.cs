@@ -70,6 +70,10 @@ internal static class NativeMethods
     internal const int DWMWA_CAPTION_COLOR = 35;
     internal const int DWMWCP_ROUND = 2;
     internal const int DWMNCRP_USEWINDOWSTYLE = 0;
+    internal const int DWMNCRP_DISABLED = 1;
+    internal const int WM_POWERBROADCAST = 0x0218;
+    internal const int PBT_APMRESUMESUSPEND = 0x0007;
+    internal const int PBT_APMRESUMEAUTOMATIC = 0x0012;
     internal const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
     // v0.2.1 forced #E1E1E6. Treat that value as a legacy override and return
     // it to DWM's native theme so an already-running client also recovers.

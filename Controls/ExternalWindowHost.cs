@@ -59,6 +59,9 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     public bool IsReady => _hostHandle != IntPtr.Zero;
+    public bool HasUsableWorkspace => _hostHandle != IntPtr.Zero
+        && NativeMethods.GetClientRect(_hostHandle, out var rect)
+        && rect.Width > 64 && rect.Height > 64;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
 
     // Observe WPF's per-monitor DPI transition without taking over native
@@ -181,7 +184,8 @@ public sealed class ExternalWindowHost : HwndHost
     public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
     {
         if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"host attach request hwnd=0x{handle.ToInt64():X} ready={IsReady} makeActive={makeActive} valid={NativeMethods.IsWindow(handle)}");
-        if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
+        if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle)
+            || (makeActive && !HasUsableWorkspace))
         {
             return false;
         }
@@ -325,6 +329,7 @@ public sealed class ExternalWindowHost : HwndHost
             if (!redrawn) TraceTransitionFailure(handle, "redraw-failed");
             // Redraw of Qt's top-level HWND can clear a previously valid region.
             RepairSelectedClipIfNeeded(handle);
+            SuppressHostedShadow(handle);
             return redrawn && VerifyHostedWindow(handle, active: true);
         }
         return true;
@@ -333,7 +338,8 @@ public sealed class ExternalWindowHost : HwndHost
     public bool RecoverAfterSessionUnlock(IntPtr handle)
     {
         if (handle != _currentHandle || _ownerMinimized || _modalDialogSuppressionCount != 0
-            || !_hostedWindows.ContainsKey(handle) || !NativeMethods.IsWindow(handle)) return false;
+            || !HasUsableWorkspace || !_hostedWindows.ContainsKey(handle)
+            || !NativeMethods.IsWindow(handle)) return false;
         // A long Windows session lock can leave the clipped native surface stale.
         // Rebuild only the selected window's region after WPF has laid out the host.
         if (!NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true))
@@ -587,6 +593,23 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
         ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, 0);
+        SuppressHostedShadow(_currentHandle);
+    }
+
+    private static void SuppressHostedShadow(IntPtr handle)
+    {
+        // SetWindowRgn clips the client surface, but DWM can recreate the
+        // top-level window shadow outside that region after sleep/resume.
+        // The original non-client policy is restored by DetachWindow.
+        var policy = NativeMethods.DWMNCRP_DISABLED;
+        var result = NativeMethods.DwmSetWindowAttribute(handle,
+            NativeMethods.DWMWA_NCRENDERING_POLICY, ref policy, sizeof(int));
+        if (result != 0)
+        {
+            NativeMethods.GetWindowThreadProcessId(handle, out var processId);
+            DiagnosticLogService.WriteDebugEvent(
+                () => $"host-shadow-suppression-failed hresult=0x{result:X8}", (int)processId);
+        }
     }
 
     /// <summary>

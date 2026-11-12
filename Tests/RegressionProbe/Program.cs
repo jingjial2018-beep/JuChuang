@@ -44,7 +44,8 @@ internal static class Program
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
-                await Run("Status clock has no separators and retains seconds", StatusClock);
+                await Run("Main window uses the 1.618 outer-frame ratio", MainWindowAspectRatio);
+                await Run("Status clock shows equal-spaced date, weekday and seconds", StatusClock);
                 await Run("Password dialog collapses empty error space", PasswordDialogSpacing);
                 await Run("Detached account removal leaves its process running", DetachedAccountRemoval);
                 await Run("Exit-all queues JNest close after the original Closing event", ExitAllDeferredClose);
@@ -248,6 +249,19 @@ internal static class Program
                     WindowStyle = unchecked((int)0x80000000) });
             using var host = new ExternalWindowHost();
             source.RootVisual = host;
+            Assert(!host.HasUsableWorkspace, "one-pixel host was treated as a usable workspace");
+            Assert(!host.AttachWindow(hwnd, true), "one-pixel host attached a visible client");
+            Assert(!host.Contains(hwnd) && NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) == IntPtr.Zero,
+                "failed one-pixel attach changed the client's native ownership");
+            Assert(NativeMethods.SetWindowPos(source.Handle, IntPtr.Zero,
+                -32000, -32000, 1200, 800,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE),
+                "test workspace did not resize");
+            host.UpdateLayout();
+            Assert(host.HasUsableWorkspace, "resized host remained a one-pixel workspace");
+            Assert(host.AttachWindow(hwnd, true), "visible attach failed after workspace layout");
+            Assert(host.DetachWindow(hwnd, bringToFront: false),
+                "client did not detach after a valid visible attach");
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 Assert(host.AttachWindow(hwnd, false), "background attach failed");
@@ -266,6 +280,10 @@ internal static class Program
             Assert(host.ShowOnly(hwnd), "selected client did not reach the host bounds");
             Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) != 0,
                 "selected client lost the host clipping region");
+            Assert(host.RecoverAfterSessionUnlock(hwnd),
+                "session resume did not preserve the selected native window");
+            Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) != 0,
+                "session resume lost the selected client's clipping region");
             Assert(host.DetachWindow(hwnd, bringToFront: false),
                 "selected client did not return to the desktop");
         }
@@ -427,6 +445,29 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task MainWindowAspectRatio()
+    {
+        EnsureResources();
+        var window = (Window)Activator.CreateInstance(typeof(App).Assembly.GetType("JuChuang.MainWindow")!)!;
+        try
+        {
+            var sidebar = (System.Windows.Controls.ColumnDefinition)Field(window, "SidebarColumn")!;
+            var client = (FrameworkElement)Field(window, "ClientArea")!;
+            var root = (FrameworkElement)window.Content;
+            root.Measure(new Size(window.Width, window.Height));
+            root.Arrange(new Rect(0, 0, window.Width, window.Height));
+            var outerRatio = window.Width / window.Height;
+            Assert(Math.Abs(outerRatio - 1.618) < 0.001,
+                $"main window ratio is {outerRatio:F4}, expected 1.618");
+            var clientRatio = client.ActualWidth / client.ActualHeight;
+            Assert(clientRatio is > 1.47 and < 1.49,
+                $"native client ratio is {clientRatio:F4}; the workspace is unexpectedly wide");
+            Assert(sidebar.Width.Value == 280, "the account sidebar lost its readable width");
+        }
+        finally { CloseWithoutPrompt(window); }
+        return Task.CompletedTask;
+    }
+
     private static Task StatusClock()
     {
         EnsureResources();
@@ -435,15 +476,23 @@ internal static class Program
         {
             Call(window, "UpdateLocalClock");
             var date = (TextBlock)Field(window, "LocalDateText")!;
+            var weekday = (TextBlock)Field(window, "LocalWeekdayText")!;
             var time = (TextBlock)Field(window, "LocalTimeText")!;
-            Assert(System.Text.RegularExpressions.Regex.IsMatch(date.Text, @"^\d{1,2}月\d{1,2}日  周[一二三四五六日]$"),
-                "status date or weekday format changed");
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(date.Text, @"^\d{1,2}月\d{1,2}日$"),
+                "status date format changed");
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(weekday.Text, @"^星期[一二三四五六日]$"),
+                "status weekday should use 星期几");
             Assert(System.Text.RegularExpressions.Regex.IsMatch(time.Text, @"^\d{2}:\d{2}:\d{2}$"),
                 "status time omitted seconds");
-            Assert(date.FontSize == time.FontSize && date.FontWeight == time.FontWeight
-                && date.FontFamily.Source == time.FontFamily.Source
-                && date.Foreground.ToString() == time.Foreground.ToString(),
+            Assert(date.FontSize == weekday.FontSize && weekday.FontSize == time.FontSize
+                && date.FontWeight == weekday.FontWeight && weekday.FontWeight == time.FontWeight
+                && date.FontFamily.Source == weekday.FontFamily.Source
+                && weekday.FontFamily.Source == time.FontFamily.Source
+                && date.Foreground.ToString() == weekday.Foreground.ToString()
+                && weekday.Foreground.ToString() == time.Foreground.ToString(),
                 "status clock typography is inconsistent");
+            Assert(weekday.Margin.Left == time.Margin.Left && weekday.Margin.Left == 16,
+                "status clock spacing differs between date, weekday and time");
             Assert(window.FindName("LocalDateTimeSeparatorText") is null,
                 "status clock still contains a separator");
         }
@@ -457,6 +506,13 @@ internal static class Program
         var dialog = new LockPasswordDialog();
         try
         {
+            Assert(dialog.FindName("Heading") is null,
+                "password dialog repeats its title inside the content");
+            var label = (TextBlock)Field(dialog, "NewPasswordLabel")!;
+            Assert(label.Text == "设置锁定密码（至少 6 位）",
+                "first password label is incorrect");
+            Assert(dialog.SizeToContent == SizeToContent.Height,
+                "password dialog height no longer fits its content");
             var error = (TextBlock)Field(dialog, "ErrorText")!;
             Assert(error.Visibility == Visibility.Collapsed,
                 "empty password error reserves space");

@@ -34,8 +34,9 @@ public partial class MainWindow
             || IsJNestProtected || WindowState == WindowState.Minimized
             || SelectedEntry is not { IsAttached: true } entry) return;
 
-        _windowsUnlockRecoveryPending = false;
-        if (!WindowHost.RecoverAfterSessionUnlock(entry.Handle))
+        var recovered = WindowHost.RecoverAfterSessionUnlock(entry.Handle);
+        if (recovered) _windowsUnlockRecoveryPending = false;
+        else
             DiagnosticLogService.WriteActivityEvent("session-unlock-host-recovery-failed", entry.ProcessId);
 
         // Let the client repaint its own content after the region/frame update.
@@ -43,7 +44,13 @@ public partial class MainWindow
         if (_isClosing || generation != _windowsUnlockRecoveryGeneration
             || IsJNestProtected || WindowState == WindowState.Minimized
             || !ReferenceEquals(entry, SelectedEntry) || !entry.IsAttached) return;
-        WindowHost.RefreshHostedWindow(entry.Handle);
+        var refreshed = recovered
+            ? WindowHost.RefreshHostedWindow(entry.Handle)
+            : WindowHost.RecoverAfterSessionUnlock(entry.Handle);
+        _windowsUnlockRecoveryPending = !(recovered || refreshed);
+        DiagnosticLogService.WriteActivityEvent(
+            refreshed ? "session-unlock-host-recovered" : "session-unlock-host-refresh-failed",
+            entry.ProcessId);
     }
 
     private void SuspendHostedWindowsForLock()
