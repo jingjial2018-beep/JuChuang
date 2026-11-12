@@ -11,7 +11,7 @@
         Title="JNest"
         Icon="Assets/taskbar.ico"
         ShowInTaskbar="True"
-        Width="1296"
+        Width="1285"
         Height="842"
         MinWidth="1060"
         MinHeight="842"
@@ -613,6 +613,9 @@
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="LocalDateText" FontSize="13" FontWeight="Normal"
                                    Foreground="#667085" FontFamily="Microsoft YaHei UI" VerticalAlignment="Center" />
+                        <TextBlock x:Name="LocalWeekdayText" Margin="16,0,0,0" FontSize="13"
+                                   FontWeight="Normal" Foreground="#667085" FontFamily="Microsoft YaHei UI"
+                                   VerticalAlignment="Center" />
                         <TextBlock x:Name="LocalTimeText" Margin="16,0,0,0" FontSize="13"
                                    FontWeight="Normal" Foreground="#667085" FontFamily="Microsoft YaHei UI"
                                    VerticalAlignment="Center" />

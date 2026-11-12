@@ -29,9 +29,9 @@ JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端�
 
 **正式版下载：** [GitHub 最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest)（Windows 11 x64）。历史回滚基线：[v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10)。
 
-**当前已发布正式版：** [v2.0.2](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.2)。**下一正式版候选：v2.0.3**（基于 [v2.0.3-beta.4](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.3-beta.4)，正在验证）。正式版发布状态始终以 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 为准。
+**已发布正式版基线：** [v2.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.3)。本源码分支准备 **v2.0.4**；正式版发布状态始终以 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 为准。
 
-> **源码与开发基线：** 仓库默认分支为 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，当前与正式版 v2.0.2 对齐。历史回滚可使用固定的 [`v1.0.10` Git Tag](https://github.com/jingjial2018-beep/JuChuang/tree/v1.0.10)；后续功能开发从 `stable` 新建分支，不要使用仅供历史保存的旧 `main`。
+> **源码与开发基线：** 仓库默认分支为 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，本分支从正式版 v2.0.3 对应的 stable 提交建立。历史回滚可使用固定的 [`v1.0.10` Git Tag](https://github.com/jingjial2018-beep/JuChuang/tree/v1.0.10)；后续功能开发从 `stable` 新建分支，不要使用仅供历史保存的旧 `main`。
 
 ## 软件界面
 
@@ -82,24 +82,24 @@ JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端�
 | 操作系统 | Windows 11 x64 |
 | 微信 | 微信 4.x；主要测试版本为 4.2.0.5 |
 | WhatsApp | Windows 桌面客户端 |
-| 轻量版运行库 | v2.0.3 候选需要 .NET 10 Desktop Runtime x64；完整版自带运行时 |
+| 轻量版运行库 | v2.0.4 需要 .NET 10 Desktop Runtime x64；完整版自带运行时 |
 | 权限 | 建议 JNest 与客户端均以普通用户权限运行 |
 
 如果客户端以管理员身份运行，JNest 也需要使用相同权限，否则 Windows 可能阻止跨进程窗口操作。
 
 ## 下载与使用
 
-请从 [最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 下载 Windows x64 压缩包；本次发布版本为 [v2.0.0](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.0)。旧 Beta / RC 测试包并非当前稳定发行渠道；不要从不明来源获取修改版程序。
+请从 [最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 下载 Windows x64 压缩包；此源码目标版本为 v2.0.4。旧 Beta / RC 测试包并非当前稳定发行渠道；不要从不明来源获取修改版程序。
 
 | 发布包 | 适用场景 |
 | --- | --- |
-| `JNest-v2.0.0-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 8 Desktop Runtime x64 |
-| `JNest-v2.0.0-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库，普通用户优先选择 |
+| `JNest-v2.0.4-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 10 Desktop Runtime x64 |
+| `JNest-v2.0.4-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库，普通用户优先选择 |
 
 下载后可用 SHA-256 验证文件完整性（请对下载到本机的 ZIP 计算哈希）：
 
 ```powershell
-Get-FileHash .\JNest-v2.0.0-SelfContained-win-x64.zip -Algorithm SHA256
+Get-FileHash .\JNest-v2.0.4-SelfContained-win-x64.zip -Algorithm SHA256
 ```
 
 两种 ZIP 的 SHA-256 校验值见对应版本的 Release 发布说明。
@@ -189,10 +189,10 @@ JNest 通过 Win32 和 WPF 管理外部客户端窗口。嵌入状态下会同�
 - .NET 10 SDK
 - Visual Studio 2022（可选，需安装 .NET 桌面开发组件）
 
-复现 v2.0.0 正式版时，使用 .NET 8 SDK 并在仓库本地副本中检出**固定 Tag**（不会因后续开发而移动）：
+复现 v2.0.3 正式版时，使用 .NET 10 SDK 并在仓库本地副本中检出**固定 Tag**（不会因后续开发而移动）：
 
 ```powershell
-git switch --detach v2.0.0
+git switch --detach v2.0.3
 dotnet build .\JuChuang.csproj -c Release
 ```
 
@@ -252,6 +252,8 @@ JuChuang/
 
 | 正式版 | 主要变化 |
 | --- | --- |
+| [v2.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.3) | 优化侧栏视觉、未读角标和窗口接入状态。 |
+| [v2.0.2](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.2) | 完善账号列表行为、密码锁与本地隐私保护。 |
 | [v2.0.0](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.0) | 修正微信 4.2.0.5 主界面在固定 100% / 200% 缩放下被误判为登录小窗的问题；保留真正登录窗居中。 |
 | [v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10) | 精简设置页、完善诊断日志、全部退出完成状态复核。 |
 | [v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9) | 锁屏密码与锁定状态仅在当前会话内有效；加入两处提示并清理旧版锁文件。 |

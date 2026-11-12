@@ -2,8 +2,6 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
-using System.Windows.Input;
 using System.Windows.Interop;
 using JuChuang.Models;
 using JuChuang.Services;
@@ -70,47 +68,16 @@ public partial class MainWindow
         return dialog;
     }
 
-    // Mirrors AboutDialog.xaml / AboutConfirmStyle, including hover and pressed states.
-    private static Button CreateExitButton(string label, bool destructive = false, bool filled = false)
+    // Use the same template and interaction as the About dialog button.
+    private static Button CreateExitButton(string label, bool destructive = false)
     {
-        var button = new Button
+        return new Button
         {
             Content = label, Width = 112,
             Height = 40, Margin = new Thickness(0),
-            Background = filled ? new SolidColorBrush(Color.FromRgb(255, 77, 79)) : new SolidColorBrush(destructive ? Colors.White : Color.FromRgb(248, 249, 251)),
-            Foreground = filled ? Brushes.White : new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(38, 48, 65)),
-            BorderBrush = new SolidColorBrush(destructive ? Color.FromRgb(255, 77, 79) : Color.FromRgb(217, 222, 229)),
-            BorderThickness = new Thickness(1),
-            FontSize = 13, FontWeight = FontWeights.Medium,
-            Cursor = Cursors.Hand, FocusVisualStyle = null
+            Style = (Style)Application.Current.FindResource(
+                destructive ? "JNestDangerDialogButtonStyle" : "JNestDialogButtonStyle")
         };
-        var template = new ControlTemplate(typeof(Button));
-        var border = new FrameworkElementFactory(typeof(Border));
-        border.Name = "Surface";
-        border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
-        border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Button.BorderBrushProperty));
-        border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Button.BorderThicknessProperty));
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
-        border.SetValue(Border.EffectProperty, new DropShadowEffect
-        {
-            Color = Color.FromRgb(51, 65, 85),
-            Opacity = 0.12, BlurRadius = 5, ShadowDepth = 1
-        });
-        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-        presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-        border.AppendChild(presenter);
-        template.VisualTree = border;
-        var hover = new Trigger { Property = Button.IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty,
-            new SolidColorBrush(filled ? Color.FromRgb(230, 57, 59) : destructive ? Color.FromRgb(255, 244, 244) : Color.FromRgb(238, 242, 246)), "Surface"));
-        template.Triggers.Add(hover);
-        var pressed = new Trigger { Property = Button.IsPressedProperty, Value = true };
-        pressed.Setters.Add(new Setter(Border.BackgroundProperty,
-            new SolidColorBrush(filled ? Color.FromRgb(204, 43, 45) : destructive ? Color.FromRgb(255, 231, 231) : Color.FromRgb(227, 233, 240)), "Surface"));
-        template.Triggers.Add(pressed);
-        button.Template = template;
-        return button;
     }
 
     private bool ShowExitConfirmation(string name, int pid, int affected)
@@ -126,7 +93,7 @@ public partial class MainWindow
         var reconsider = CreateExitButton("我再想想");
         reconsider.Margin = stacked ? new Thickness(0, 0, 0, ExitDialogLayout.ButtonGap(dialog.Width)) : new Thickness(0, 0, ExitDialogLayout.ButtonGap(dialog.Width), 0);
         reconsider.Click += (_, _) => dialog.Close();
-        var confirm = CreateExitButton("确认退出", destructive: true, filled: true);
+        var confirm = CreateExitButton("确认退出", destructive: true);
         reconsider.Width = confirm.Width = ExitDialogLayout.ButtonWidth(dialog.Width);
         confirm.Click += (_, _) => { result = true; dialog.Close(); };
         buttons.Children.Add(reconsider);
@@ -138,7 +105,7 @@ public partial class MainWindow
     private ExitChoice ShowExitChoice()
     {
         var dialog = CreateExitDialog("退出 JNest",
-            "请选择退出方式。\n仅退出 JNest：恢复客户端独立窗口并保持运行。\n全部退出：结束当前管理的微信与 WhatsApp 进程。", showWarning: false);
+            "请选择退出方式\n仅退出 JNest：恢复客户端独立窗口并保持运行。\n全部退出：结束当前管理的微信与 WhatsApp 进程。", showWarning: false);
         var result = ExitChoice.Cancel;
         var stacked = ExitDialogLayout.StackButtons(dialog.Width);
         var buttons = new StackPanel { Orientation = stacked ? Orientation.Vertical : Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };

@@ -44,7 +44,9 @@ internal static class Program
                 await Run("Toast and second launch use complete tray restore", TrayRestore);
                 await Run("Settings dialog shows save failure and retry result", SettingsDialogFailure);
                 await Run("DND equal endpoints show all-day warning without changing policy", DndAllDayHint);
-                await Run("Status clock has no separators and retains seconds", StatusClock);
+                await Run("Main window uses the 1.618 outer-frame ratio", MainWindowAspectRatio);
+                await Run("Status clock shows equal-spaced date, weekday and seconds", StatusClock);
+                await Run("Exit dialog buttons share the About dialog interaction style", ExitDialogButtonStyle);
                 await Run("Password dialog collapses empty error space", PasswordDialogSpacing);
                 await Run("Detached account removal leaves its process running", DetachedAccountRemoval);
                 await Run("Exit-all queues JNest close after the original Closing event", ExitAllDeferredClose);
@@ -427,6 +429,31 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task MainWindowAspectRatio()
+    {
+        EnsureResources();
+        var window = (Window)Activator.CreateInstance(typeof(App).Assembly.GetType("JuChuang.MainWindow")!)!;
+        try
+        {
+            var sidebar = (System.Windows.Controls.ColumnDefinition)Field(window, "SidebarColumn")!;
+            var client = (FrameworkElement)Field(window, "ClientArea")!;
+            var root = (FrameworkElement)window.Content;
+            root.Measure(new Size(window.Width, window.Height));
+            root.Arrange(new Rect(0, 0, window.Width, window.Height));
+            var outerRatio = window.Width / window.Height;
+            Assert(window.Width == 1285 && window.Height == 842,
+                $"main window dimensions are {window.Width}x{window.Height}, expected 1285x842 DIP");
+            Assert(Math.Abs(outerRatio - (1285.0 / 842.0)) < 0.001,
+                $"main window ratio is {outerRatio:F4}, expected 1.5261");
+            var clientRatio = client.ActualWidth / client.ActualHeight;
+            Assert(clientRatio is > 1.35 and < 1.41,
+                $"native client ratio is {clientRatio:F4}; the 1.526 outer frame did not preserve its workspace bounds");
+            Assert(sidebar.Width.Value == 280, "the account sidebar lost its readable width");
+        }
+        finally { CloseWithoutPrompt(window); }
+        return Task.CompletedTask;
+    }
+
     private static Task StatusClock()
     {
         EnsureResources();
@@ -435,15 +462,23 @@ internal static class Program
         {
             Call(window, "UpdateLocalClock");
             var date = (TextBlock)Field(window, "LocalDateText")!;
+            var weekday = (TextBlock)Field(window, "LocalWeekdayText")!;
             var time = (TextBlock)Field(window, "LocalTimeText")!;
-            Assert(System.Text.RegularExpressions.Regex.IsMatch(date.Text, @"^\d{1,2}月\d{1,2}日  周[一二三四五六日]$"),
-                "status date or weekday format changed");
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(date.Text, @"^\d{1,2}月\d{1,2}日$"),
+                "status date format changed");
+            Assert(System.Text.RegularExpressions.Regex.IsMatch(weekday.Text, @"^星期[一二三四五六日]$"),
+                "status weekday should use 星期几");
             Assert(System.Text.RegularExpressions.Regex.IsMatch(time.Text, @"^\d{2}:\d{2}:\d{2}$"),
                 "status time omitted seconds");
-            Assert(date.FontSize == time.FontSize && date.FontWeight == time.FontWeight
-                && date.FontFamily.Source == time.FontFamily.Source
-                && date.Foreground.ToString() == time.Foreground.ToString(),
+            Assert(date.FontSize == weekday.FontSize && weekday.FontSize == time.FontSize
+                && date.FontWeight == weekday.FontWeight && weekday.FontWeight == time.FontWeight
+                && date.FontFamily.Source == weekday.FontFamily.Source
+                && weekday.FontFamily.Source == time.FontFamily.Source
+                && date.Foreground.ToString() == weekday.Foreground.ToString()
+                && weekday.Foreground.ToString() == time.Foreground.ToString(),
                 "status clock typography is inconsistent");
+            Assert(weekday.Margin.Left == time.Margin.Left && weekday.Margin.Left == 16,
+                "status clock spacing differs between date, weekday and time");
             Assert(window.FindName("LocalDateTimeSeparatorText") is null,
                 "status clock still contains a separator");
         }
@@ -457,6 +492,13 @@ internal static class Program
         var dialog = new LockPasswordDialog();
         try
         {
+            Assert(dialog.FindName("Heading") is null,
+                "password dialog repeats its title inside the content");
+            var label = (TextBlock)Field(dialog, "NewPasswordLabel")!;
+            Assert(label.Text == "设置锁定密码（至少 6 位）",
+                "first password label is incorrect");
+            Assert(dialog.SizeToContent == SizeToContent.Height,
+                "password dialog height no longer fits its content");
             var error = (TextBlock)Field(dialog, "ErrorText")!;
             Assert(error.Visibility == Visibility.Collapsed,
                 "empty password error reserves space");
@@ -468,6 +510,23 @@ internal static class Program
                 "cleared password error still reserves space");
         }
         finally { dialog.Close(); }
+        return Task.CompletedTask;
+    }
+
+    private static Task ExitDialogButtonStyle()
+    {
+        EnsureResources();
+        var method = typeof(App).Assembly.GetType("JuChuang.MainWindow")!.GetMethod("CreateExitButton",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var normal = (Button)method.Invoke(null, ["仅退出 JNest", false])!;
+        var danger = (Button)method.Invoke(null, ["全部退出", true])!;
+        var shared = (Style)Application.Current.FindResource("JNestDialogButtonStyle");
+        Assert(ReferenceEquals(normal.Style, shared),
+            "normal exit button uses a different template from the About dialog");
+        Assert(ReferenceEquals(danger.Style.BasedOn, shared),
+            "danger exit button uses a different interaction template");
+        Assert(normal.Height == 40 && danger.Height == 40,
+            "exit dialog button height differs from the About dialog");
         return Task.CompletedTask;
     }
 
