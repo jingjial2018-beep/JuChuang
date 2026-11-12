@@ -9,7 +9,7 @@
         <SolidColorBrush x:Key="SidebarSurfaceBrush" Color="#F7F8FA" />
         <SolidColorBrush x:Key="WorkspaceSurfaceBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#17191D" />
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#7A8391" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#596273" />
         <SolidColorBrush x:Key="BorderBrush" Color="#E1E4E8" />
         <SolidColorBrush x:Key="WeChatBrush" Color="#07C160" />
         <SolidColorBrush x:Key="SelectionBrush" Color="#DFECFA" />
