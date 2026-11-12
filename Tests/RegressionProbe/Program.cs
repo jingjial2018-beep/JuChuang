@@ -441,11 +441,13 @@ internal static class Program
             root.Measure(new Size(window.Width, window.Height));
             root.Arrange(new Rect(0, 0, window.Width, window.Height));
             var outerRatio = window.Width / window.Height;
-            Assert(Math.Abs(outerRatio - 1.618) < 0.001,
-                $"main window ratio is {outerRatio:F4}, expected 1.618");
+            Assert(window.Width == 1285 && window.Height == 842,
+                $"main window dimensions are {window.Width}x{window.Height}, expected 1285x842 DIP");
+            Assert(Math.Abs(outerRatio - (1285.0 / 842.0)) < 0.001,
+                $"main window ratio is {outerRatio:F4}, expected 1.5261");
             var clientRatio = client.ActualWidth / client.ActualHeight;
-            Assert(clientRatio is > 1.47 and < 1.49,
-                $"native client ratio is {clientRatio:F4}; the workspace is unexpectedly wide");
+            Assert(clientRatio is > 1.35 and < 1.41,
+                $"native client ratio is {clientRatio:F4}; the 1.526 outer frame did not preserve its workspace bounds");
             Assert(sidebar.Width.Value == 280, "the account sidebar lost its readable width");
         }
         finally { CloseWithoutPrompt(window); }
