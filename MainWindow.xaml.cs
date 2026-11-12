@@ -117,7 +117,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateLocalClock()
     {
         var now = DateTimeOffset.Now;
-        LocalDateText.Text = now.ToString("M月d日  ddd",
+        LocalDateText.Text = now.ToString("M月d日",
+            System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));
+        LocalWeekdayText.Text = now.ToString("dddd",
             System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));
         LocalTimeText.Text = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
     }

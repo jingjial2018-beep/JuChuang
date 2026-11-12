@@ -50,20 +50,6 @@
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Surface" Property="Opacity" Value="0.45"/>
                             </Trigger>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="Tag" Value="Danger"/>
-                                    <Condition Property="IsMouseOver" Value="True"/>
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="Surface" Property="Background" Value="#FFF0F1"/>
-                            </MultiTrigger>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="Tag" Value="Danger"/>
-                                    <Condition Property="IsPressed" Value="True"/>
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="Surface" Property="Background" Value="#FFE3E7"/>
-                            </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -71,10 +57,7 @@
         </Style>
         <Style x:Key="JNestDangerDialogButtonStyle" TargetType="{x:Type Button}"
                BasedOn="{StaticResource JNestDialogButtonStyle}">
-            <Setter Property="Tag" Value="Danger"/>
             <Setter Property="Foreground" Value="#C53946"/>
-            <Setter Property="BorderBrush" Value="#EFCBD0"/>
-            <Setter Property="Background" Value="#FFF9F9"/>
         </Style>
 
         <!-- One PasswordBox template for create/change/confirm/unlock.
