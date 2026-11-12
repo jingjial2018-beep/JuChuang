@@ -1701,7 +1701,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_windowsUnlockRecoveryPending) QueueWindowsSessionUnlockRecovery();
     }
 
-    private void PopOutButton_Click(object sender, RoutedEventArgs e)
+    private async void PopOutButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = SelectedEntry;
         if (entry is null || !IsVerifiedClientWindow(entry))
@@ -1736,6 +1736,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else
         {
+            // A popped-out entry collapses its HwndHost. Let WPF size that host
+            // before AttachWindow measures and clips the native client.
+            WindowHost.Visibility = Visibility.Visible;
+            EmptyState.Visibility = Visibility.Collapsed;
+            await Dispatcher.Yield(DispatcherPriority.Loaded);
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            if (_isClosing || !ReferenceEquals(entry, SelectedEntry)
+                || entry.IsAttached || !IsVerifiedClientWindow(entry))
+            {
+                if (!_isClosing) ShowSelectedEntry();
+                return;
+            }
+            if (!WindowHost.HasUsableWorkspace)
+            {
+                ShowSelectedEntry();
+                ShowTemporaryStatus("工作区尚未就绪，请稍后重试嵌入。", TimeSpan.FromSeconds(8));
+                return;
+            }
             // 用户明确要求重新嵌入时解除保护；若接入失败，后续后台扫描可以继续低频重试。
             _dismissedWindowHandles.Remove(entry.Handle);
             entry.IsManuallyDetached = false;

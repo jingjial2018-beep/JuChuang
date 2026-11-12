@@ -59,6 +59,9 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     public bool IsReady => _hostHandle != IntPtr.Zero;
+    public bool HasUsableWorkspace => _hostHandle != IntPtr.Zero
+        && NativeMethods.GetClientRect(_hostHandle, out var rect)
+        && rect.Width > 64 && rect.Height > 64;
     public bool Contains(IntPtr handle) => _hostedWindows.ContainsKey(handle);
 
     // Observe WPF's per-monitor DPI transition without taking over native
@@ -181,7 +184,8 @@ public sealed class ExternalWindowHost : HwndHost
     public bool AttachWindow(IntPtr handle, bool makeActive, bool disableMaximize = false, bool centerInHost = false)
     {
         if (ReconnectDiagnostics.Active) ReconnectDiagnostics.Write($"host attach request hwnd=0x{handle.ToInt64():X} ready={IsReady} makeActive={makeActive} valid={NativeMethods.IsWindow(handle)}");
-        if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle))
+        if (!IsReady || handle == IntPtr.Zero || !NativeMethods.IsWindow(handle)
+            || (makeActive && !HasUsableWorkspace))
         {
             return false;
         }
@@ -334,7 +338,8 @@ public sealed class ExternalWindowHost : HwndHost
     public bool RecoverAfterSessionUnlock(IntPtr handle)
     {
         if (handle != _currentHandle || _ownerMinimized || _modalDialogSuppressionCount != 0
-            || !_hostedWindows.ContainsKey(handle) || !NativeMethods.IsWindow(handle)) return false;
+            || !HasUsableWorkspace || !_hostedWindows.ContainsKey(handle)
+            || !NativeMethods.IsWindow(handle)) return false;
         // A long Windows session lock can leave the clipped native surface stale.
         // Rebuild only the selected window's region after WPF has laid out the host.
         if (!NativeMethods.SetWindowRgn(handle, IntPtr.Zero, true))

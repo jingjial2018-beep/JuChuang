@@ -248,6 +248,19 @@ internal static class Program
                     WindowStyle = unchecked((int)0x80000000) });
             using var host = new ExternalWindowHost();
             source.RootVisual = host;
+            Assert(!host.HasUsableWorkspace, "one-pixel host was treated as a usable workspace");
+            Assert(!host.AttachWindow(hwnd, true), "one-pixel host attached a visible client");
+            Assert(!host.Contains(hwnd) && NativeMethods.GetWindow(hwnd, NativeMethods.GW_OWNER) == IntPtr.Zero,
+                "failed one-pixel attach changed the client's native ownership");
+            Assert(NativeMethods.SetWindowPos(source.Handle, IntPtr.Zero,
+                -32000, -32000, 1200, 800,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE),
+                "test workspace did not resize");
+            host.UpdateLayout();
+            Assert(host.HasUsableWorkspace, "resized host remained a one-pixel workspace");
+            Assert(host.AttachWindow(hwnd, true), "visible attach failed after workspace layout");
+            Assert(host.DetachWindow(hwnd, bringToFront: false),
+                "client did not detach after a valid visible attach");
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 Assert(host.AttachWindow(hwnd, false), "background attach failed");
