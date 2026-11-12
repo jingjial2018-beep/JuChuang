@@ -514,7 +514,7 @@ internal static class Program
     private static Task ExitDialogButtonStyle()
     {
         EnsureResources();
-        var method = typeof(MainWindow).GetMethod("CreateExitButton",
+        var method = typeof(App).Assembly.GetType("JuChuang.MainWindow")!.GetMethod("CreateExitButton",
             BindingFlags.NonPublic | BindingFlags.Static)!;
         var normal = (Button)method.Invoke(null, ["仅退出 JNest", false])!;
         var danger = (Button)method.Invoke(null, ["全部退出", true])!;
