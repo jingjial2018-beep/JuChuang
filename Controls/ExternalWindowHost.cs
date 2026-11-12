@@ -325,6 +325,7 @@ public sealed class ExternalWindowHost : HwndHost
             if (!redrawn) TraceTransitionFailure(handle, "redraw-failed");
             // Redraw of Qt's top-level HWND can clear a previously valid region.
             RepairSelectedClipIfNeeded(handle);
+            SuppressHostedShadow(handle);
             return redrawn && VerifyHostedWindow(handle, active: true);
         }
         return true;
@@ -587,6 +588,23 @@ public sealed class ExternalWindowHost : HwndHost
             NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED
             | NativeMethods.SWP_SHOWWINDOW | zOrderFlags);
         ApplyClipRegion(_currentHandle, hostRect.Width, hostRect.Height, insets, 0);
+        SuppressHostedShadow(_currentHandle);
+    }
+
+    private static void SuppressHostedShadow(IntPtr handle)
+    {
+        // SetWindowRgn clips the client surface, but DWM can recreate the
+        // top-level window shadow outside that region after sleep/resume.
+        // The original non-client policy is restored by DetachWindow.
+        var policy = NativeMethods.DWMNCRP_DISABLED;
+        var result = NativeMethods.DwmSetWindowAttribute(handle,
+            NativeMethods.DWMWA_NCRENDERING_POLICY, ref policy, sizeof(int));
+        if (result != 0)
+        {
+            NativeMethods.GetWindowThreadProcessId(handle, out var processId);
+            DiagnosticLogService.WriteDebugEvent(
+                () => $"host-shadow-suppression-failed hresult=0x{result:X8}", (int)processId);
+        }
     }
 
     /// <summary>

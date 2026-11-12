@@ -266,6 +266,10 @@ internal static class Program
             Assert(host.ShowOnly(hwnd), "selected client did not reach the host bounds");
             Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) != 0,
                 "selected client lost the host clipping region");
+            Assert(host.RecoverAfterSessionUnlock(hwnd),
+                "session resume did not preserve the selected native window");
+            Assert(NativeMethods.GetWindowRgnBox(hwnd, out _) != 0,
+                "session resume lost the selected client's clipping region");
             Assert(host.DetachWindow(hwnd, bringToFront: false),
                 "selected client did not return to the desktop");
         }

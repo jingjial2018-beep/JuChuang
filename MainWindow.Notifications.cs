@@ -80,6 +80,15 @@ public partial class MainWindow
         if (message == NativeMethods.WM_WTSSESSION_CHANGE
             && wParam.ToInt32() == NativeMethods.WTS_SESSION_UNLOCK)
         {
+            DiagnosticLogService.WriteActivityEvent("session-unlock-observed");
+            QueueWindowsSessionUnlockRecovery();
+            return IntPtr.Zero;
+        }
+        if (message == NativeMethods.WM_POWERBROADCAST
+            && (wParam.ToInt32() == NativeMethods.PBT_APMRESUMEAUTOMATIC
+                || wParam.ToInt32() == NativeMethods.PBT_APMRESUMESUSPEND))
+        {
+            DiagnosticLogService.WriteActivityEvent("power-resume-observed");
             QueueWindowsSessionUnlockRecovery();
             return IntPtr.Zero;
         }
