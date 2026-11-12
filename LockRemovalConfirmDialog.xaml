@@ -4,7 +4,11 @@
         Title="取消锁定密码" Icon="Assets/app.ico"
         Width="470" Height="236" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        Background="White" FontFamily="Microsoft YaHei UI">
+        Background="White" FontFamily="Microsoft YaHei UI"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="Auto">
     <Grid Margin="28,22,28,22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
