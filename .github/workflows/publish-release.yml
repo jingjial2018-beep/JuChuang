@@ -32,10 +32,16 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@v4
+      - name: Use Node.js 24 for release commands
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify Node.js 24
+        run: node -e "if (process.versions.node.split('.')[0] !== '24') process.exit(1)"
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -102,7 +108,7 @@ jobs:
           @("$fwh  $fw", "$sch  $sc") | Set-Content .\artifacts\SHA256SUMS.txt -Encoding ascii
 
       - name: Save tested candidate without publishing a Release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jnest-tested-candidate
           path: |
@@ -120,8 +126,14 @@ jobs:
       contents: write
       checks: read
     steps:
+      - name: Use Node.js 24 for release commands
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify Node.js 24
+        run: node -e "if (process.versions.node.split('.')[0] !== '24') process.exit(1)"
       - name: Download tested candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: jnest-tested-candidate
           path: ./artifacts
