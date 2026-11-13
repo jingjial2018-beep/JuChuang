@@ -26,7 +26,7 @@ JNest 是面向 **Windows 11 x64** 的开源桌面工具。它发现并管理本
 
 ## 下载与使用
 
-从 [最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 获取 Windows x64 压缩包。当前正式版为 [v2.0.4](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.4)；其他正式版见[历史发布列表](https://github.com/jingjial2018-beep/JuChuang/releases)，需要固定回滚版本时可查看 [v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10)。
+从 [最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 获取 Windows x64 压缩包。当前正式版为 [v2.0.4](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.4)。需要查看旧版时，请按实际需要从[历史发布列表](https://github.com/jingjial2018-beep/JuChuang/releases)选择对应版本。
 
 | 发布包 | 运行要求 |
 | --- | --- |
