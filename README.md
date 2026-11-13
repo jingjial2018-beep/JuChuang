@@ -1,288 +1,85 @@
 <p align="center">
-  <img src="Assets/app-logo.png" width="88" alt="JNest Logo">
+  <img src="Assets/app-logo.png" width="80" alt="JNest 图标">
 </p>
 
-<h1 align="center">JNest — Windows 11 微信多开与 WhatsApp 桌面窗口管理器</h1>
+<h1 align="center">JNest · 聚窗</h1>
+
+<p align="center">Windows 11 上的微信 4.x 多开与 WhatsApp 桌面窗口管理器</p>
 
 <p align="center">
-  <strong>JNest</strong> · Windows 11 WeChat Multi-Instance & WhatsApp Desktop Window Manager
+  <a href="https://github.com/jingjial2018-beep/JuChuang/releases/latest">下载最新版</a> ·
+  <a href="https://github.com/jingjial2018-beep/JuChuang/releases">查看历史版本</a> ·
+  <a href="#从源码构建">从源码构建</a>
 </p>
 
-<p align="center">
-  开源 · 本地运行 · 微信 4.x 多窗口管理 · WhatsApp 桌面端接入 · 多账号切换 · 未读角标提醒
-</p>
+![JNest 同时管理微信与 WhatsApp 窗口，账号和聊天内容已模糊处理](docs/images/jnest-window-overview.jpg)
 
-<p align="center">
-  <a href="https://github.com/jingjial2018-beep/JuChuang/releases">下载 JNest / Downloads</a> ·
-  <a href="#主要功能">功能介绍</a> ·
-  <a href="#常见问题-faq">常见问题 / FAQ</a> ·
-  <a href="#隐私边界">隐私说明</a>
-</p>
-
-## JNest 是什么？（项目简介）
-
-**JNest（聚窗）**是一款面向 **Windows 11 x64** 的开源、本地运行的 **微信多开与 WhatsApp 桌面窗口管理器**（WeChat multi-instance and WhatsApp desktop window manager）。它可以发现、启动并统一管理本机已经安装的多个微信 4.x 窗口和 WhatsApp 桌面客户端，将多个原生窗口集中到一个工作台，方便多账号切换、窗口接入、弹出与关闭。
-
-JNest 适合需要在一台 Windows 电脑上同时管理多个微信账号或微信与 WhatsApp 桌面窗口的用户。它是**窗口管理工具**，不是新的聊天客户端、云同步服务或聊天机器人；账号登录、消息收发和聊天界面仍由微信、WhatsApp 的官方桌面程序负责。
-
-JNest 使用 Windows WPF/Win32 机制托管窗口，并在本地识别客户端的未读角标用于提醒。**不会向第三方服务器上传聊天数据，不读取聊天消息正文，不注入微信 DLL，也不 Hook 微信内部聊天 API。**部分微信账号昵称/头像识别会按下方[隐私边界](#隐私边界)所述，只读访问本机账号元数据。
-
-**正式版下载：** [GitHub 最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest)（Windows 11 x64）。历史回滚基线：[v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10)。
-
-**已发布正式版基线：** [v2.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.3)。本源码分支准备 **v2.0.4**；正式版发布状态始终以 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 为准。
-
-> **源码与开发基线：** 仓库默认分支为 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，本分支从正式版 v2.0.3 对应的 stable 提交建立。历史回滚可使用固定的 [`v1.0.10` Git Tag](https://github.com/jingjial2018-beep/JuChuang/tree/v1.0.10)；后续功能开发从 `stable` 新建分支，不要使用仅供历史保存的旧 `main`。
-
-## 软件界面
-
-### 微信多账号统一管理
-
-在同一界面中管理多个微信窗口，并集中查看账号状态与未读提醒。
-
-![JNest微信多账号统一管理界面](docs/images/wechat-multi-account.png)
-
-### WhatsApp 桌面客户端接入
-
-将 WhatsApp 桌面客户端接入 JNest，在账号列表中统一切换和查看提醒。
-
-![JNest WhatsApp 桌面客户端接入界面](docs/images/whatsapp-window-management.png)
-
-### 工作区密码锁
-
-使用仅在当前 JNest 进程会话内有效的独立密码锁定工作区，支持密码验证与解锁；完整退出或异常终止后，旧密码和锁定状态不再沿用。锁定的是 JNest 工作区界面，不等同于锁定微信或 WhatsApp 官方客户端本身；已启动的客户端进程可继续运行。
+JNest 是面向 **Windows 11 x64** 的开源桌面工具。它发现并管理本机已安装的微信 4.x 和 WhatsApp 桌面客户端，将原生窗口集中在一个工作区，方便同时使用多个微信账号、切换窗口和查看未读提醒。登录、聊天和消息收发仍由各客户端完成。
 
 ## 主要功能
 
-- 同时管理多个微信 4.x 窗口和 WhatsApp 桌面客户端。
-- 自动扫描并接入已经打开的客户端窗口。
-- 从 JNest 中启动新的微信实例或 WhatsApp。
-- 已有微信运行时，优先通过短时 Mutex DACL 调整 + CreateProcessW 创建独立微信进程，并直接绑定返回 PID。
-- 在左侧账号列表中快速切换窗口；左键选择账号，右键不会触发账号切换。支持账号卡片拖动排序。
-- 一键将客户端弹出为原生独立窗口，也可重新接入。
-- 嵌入后固定客户端位置，防止从容器内部拖动脱离。
-- 关闭指定客户端时先确认，并校验 HWND、PID 与进程启动时间后结束该客户端进程；其他独立客户端进程不主动结束。
-- 自动读取本地微信版本号。
-- 在可可靠匹配账号时显示微信昵称和头像；正式版账号列表不提供右键功能菜单。
-- 识别微信与 WhatsApp 聊天入口的未读角标，在账号头像上显示数字或红点。
-- 支持 Windows 托盘提示、提示音和任务栏提醒。
-- 可用仅在当前进程会话有效的独立密码锁定 JNest 工作区；密码设置、锁定与解锁从侧边栏操作，锁定并非客户端账号登录密码保护。
-- 设置页支持开机自启、通知及免打扰时段；当前字体为微软雅黑 UI。
-- 使用 Windows 11 风格的平面分区界面，并尽量保持客户端原生颜色与渲染效果。
-
-## 退出方式
-
-- **退出单个客户端：** 弹窗提供“我再想想”和“确认退出”。确认后仅针对经过身份校验的目标进程提出退出请求；进程结束可能丢失未保存内容。
-- **退出 JNest：** 提供“仅退出 JNest”和“全部退出”。前者恢复被托管客户端的独立窗口并保留客户端运行；后者结束当前受管理的微信与 WhatsApp 客户端进程，不再额外弹出第二次确认。
-- 退出弹窗采用与“关于 / 设置”一致的受保护模态显示流程；账号右键菜单已取消。
-
-## 系统要求
-
-| 项目 | 要求 |
-| --- | --- |
-| 操作系统 | Windows 11 x64 |
-| 微信 | 微信 4.x；主要测试版本为 4.2.0.5 |
-| WhatsApp | Windows 桌面客户端 |
-| 轻量版运行库 | v2.0.4 需要 .NET 10 Desktop Runtime x64；完整版自带运行时 |
-| 权限 | 建议 JNest 与客户端均以普通用户权限运行 |
-
-如果客户端以管理员身份运行，JNest 也需要使用相同权限，否则 Windows 可能阻止跨进程窗口操作。
+- **微信 4.x 多开：** 发现已运行的微信窗口，也可从 JNest 启动新的微信实例。
+- **统一管理：** 将微信和 WhatsApp 桌面窗口接入工作区，在左侧账号列表中切换、排序；需要时可将窗口弹出并重新接入。
+- **本地未读提醒：** 根据客户端界面的聊天角标显示数字或红点，配合提示音、任务栏与托盘提示。识别结果取决于客户端版本和界面状态。
+- **工作区密码锁：** 锁定 JNest 界面；密码和锁定状态只在当前进程会话内有效。它不会锁定微信或 WhatsApp 客户端本身。
+- **日常设置：** 支持开机自启、通知和免打扰时段。
 
 ## 下载与使用
 
-请从 [最新正式版入口](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 下载 Windows x64 压缩包；此源码目标版本为 v2.0.4。旧 Beta / RC 测试包并非当前稳定发行渠道；不要从不明来源获取修改版程序。
+从 [最新正式版](https://github.com/jingjial2018-beep/JuChuang/releases/latest) 获取 Windows x64 压缩包。当前正式版为 [v2.0.4](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.4)；其他正式版见[历史发布列表](https://github.com/jingjial2018-beep/JuChuang/releases)，需要固定回滚版本时可查看 [v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10)。
 
-| 发布包 | 适用场景 |
+| 发布包 | 运行要求 |
 | --- | --- |
-| `JNest-v2.0.4-FrameworkDependent-win-x64.zip` | 体积小；电脑需已安装 .NET 10 Desktop Runtime x64 |
-| `JNest-v2.0.4-SelfContained-win-x64.zip` | 体积较大；无需单独安装 .NET 运行库，普通用户优先选择 |
+| [SelfContained](https://github.com/jingjial2018-beep/JuChuang/releases/download/v2.0.4/JNest-v2.0.4-SelfContained-win-x64.zip) | 自带 .NET 运行时，普通用户优先选择 |
+| [FrameworkDependent](https://github.com/jingjial2018-beep/JuChuang/releases/download/v2.0.4/JNest-v2.0.4-FrameworkDependent-win-x64.zip) | 需预先安装 .NET 10 Desktop Runtime x64 |
 
-下载后可用 SHA-256 验证文件完整性（请对下载到本机的 ZIP 计算哈希）：
+解压后运行 `JNest.exe`，打开本机微信或 WhatsApp 桌面客户端，JNest 会扫描并接入主窗口。通过左侧列表切换账号，通过窗口菜单添加、接入或弹出客户端。两个 ZIP 的 SHA-256 校验值见 [v2.0.4 发布说明](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.4)。
 
-```powershell
-Get-FileHash .\JNest-v2.0.4-SelfContained-win-x64.zip -Algorithm SHA256
-```
+JNest 建议与客户端以相同的普通用户权限运行；若客户端以管理员身份运行，跨进程窗口操作也可能要求 JNest 使用相同权限。发布包尚未进行商业代码签名，首次运行若出现 Windows SmartScreen 提示，请核对下载来源和发布说明中的哈希。
 
-两种 ZIP 的 SHA-256 校验值见对应版本的 Release 发布说明。
+## 隐私与技术边界
 
-使用步骤：
+JNest 使用 WPF 和 Win32 在本机管理客户端窗口，不提供聊天云同步服务，也不负责账号登录或消息收发。它不注入微信 DLL，不 Hook 微信内部聊天 API。
 
-1. 解压下载的压缩包。
-2. 双击 `JNest.exe`。
-3. 打开本地微信或 WhatsApp，JNest 会自动扫描并接入主窗口。
-4. 使用标题栏菜单添加客户端、全部接入或弹出当前窗口。
-5. 在左侧账号列表切换客户端。关闭账号时通过对应的关闭入口打开确认弹窗；左侧账号右键不再弹出菜单。
+**未读提醒**通过在内存中截取客户端窗口画面，并分析导航栏的聊天角标区域实现。整窗画面可能短暂包含聊天内容，但截图不写入磁盘，识别逻辑不解析消息正文或会话数据库。客户端界面变化、硬件加速或远程桌面环境可能使角标无法识别。
 
-当前发布包未进行商业代码签名，Windows SmartScreen 可能在首次运行时显示提示。先确认文件来自本仓库 Releases、文件哈希与发布说明一致；不要仅因为看到提示就忽略安全风险。
+**微信昵称与头像**的识别需要访问本机账号资料：程序可能只读读取微信进程内存中的数据库密钥，解密 `contact.db` 的临时副本，并仅查询当前账号的本人资料行；必要时还会读取本地头像缓存或头像数据库。临时副本可能包含联系人资料，正常读取后会删除；异常退出时可能残留，后续启动或读取时会尝试清理。程序不查询消息、会话或朋友圈数据库，不通过网络下载头像。若资料识别失败，会回退到通用名称和默认图标，窗口管理仍可使用。
 
-## 常见问题 / FAQ
+完整的权限、临时文件与清理说明请阅读[隐私边界与实现细节](#隐私边界与实现细节)。
 
-### JNest 支持 Windows 10、macOS 或 Linux 吗？
+## 系统要求与已知限制
 
-目前**仅面向 Windows 11 x64**，未宣称支持 Windows 10、macOS 或 Linux。
-
-### JNest 能同时运行和管理多个微信账号吗？
-
-JNest 支持在 Windows 11 上管理多个**微信 4.x 桌面窗口**，并提供新实例启动、自动发现、集中切换、弹出窗口等功能。能否启动或接入特定版本取决于微信客户端版本和 Windows 窗口机制；并不保证对未来所有版本均兼容。
-
-### JNest 能管理 WhatsApp 吗？
-
-支持接入**已安装的 WhatsApp Windows 桌面客户端窗口**，并与微信窗口一起集中切换。它不是 WhatsApp Web 包装器，也不取代官方客户端。
-
-### JNest 可以显示未读消息数量吗？
-
-支持基于**本机客户端界面角标**显示数字或红点，并提供任务栏提示和提示音。准确性取决于客户端界面渲染、版本及 Windows 状态；它不读取聊天正文或会话数据库。
-
-### JNest 是否安全？会上传聊天内容吗？
-
-JNest 作为本地窗口管理器运行，不提供聊天云同步，不向第三方服务器上传聊天数据。为识别微信昵称和头像，程序可在本地按[隐私边界](#隐私边界)所述只读访问部分账号元数据；请阅读源码、许可证和隐私说明后自行评估使用风险。
-
-### JNest 是微信或 WhatsApp 官方软件吗？
-
-不是。**JNest 是独立开源项目**，与腾讯、微信、WhatsApp 或 Meta 没有官方关联、授权或合作关系。
-
-### Where can I download JNest for Windows 11?
-
-Get the official builds from [JNest GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases). JNest is an open-source Windows 11 desktop window manager for multiple WeChat 4.x windows and the WhatsApp desktop client. It does not replace the official messaging apps.
-
-## 未读消息提示
-
-JNest 不会读取聊天数据库来统计未读消息。当前实现先通过 Windows `PrintWindow` 在内存中截取客户端整窗画面，再只分析左侧导航栏的聊天角标区域；截图不写入磁盘：
-
-- Windows 注意请求会触发对应账号的即时检测。微信主窗口的名称或状态变化也会通过进程外 WinEvent 触发检测；事件仅作为扫描线索，不直接代表新消息。
-- 只有角标从已知无未读变为有未读，或高置信度未读数字增长时，JNest 才发出声音并闪烁任务栏；首次启动同步历史未读不会提醒。
-- 程序启动后会立即校准；JNest 位于前台时每 4 秒复查所有账号。处于后台时每轮只轮流扫描一个微信账号，返回 JNest 后立即补做全量校准。
-- 发现未读后立即更新账号角标；只要任一账号仍有未读，JNest 任务栏图标会持续显示一个红色标记，直到角标清除。
-- 角标消失需要连续两次确认，避免客户端重绘时误清零。
-- 高置信度结果显示数字，超过 99 显示 `99+`；无法可靠识别时显示红点。
-- WhatsApp 会区分聊天角标与通话角标，通话、状态和归档提醒不会计入聊天未读数。
-
-Windows 不提供可按微信 PID 可靠订阅的跨进程托盘图标修改事件；纯托盘活动不会直接触发扫描。JNest 使用 Shell 注意请求、后台轮询及返回前台时的校准补漏。若截图不可用，本地诊断日志会记录降级状态；发出任务栏闪烁请求时也会记录。Windows 的“显示任务栏应用闪烁”设置可能抑制闪动，持续未读标记可作为补充。整个过程不向微信注入 DLL、不 Hook 微信 API，也不更改微信配置。
-
-客户端界面升级后，角标的位置、颜色或字体可能改变。出现识别异常时，请在 Issue 中附上客户端版本、Windows 缩放比例和已遮挡聊天内容的界面截图。
-
-## 隐私边界
-
-JNest 在本机运行，不提供云端服务，也不读取或上传消息正文。
-
-为了区分多个微信账号，程序可能执行以下只读操作：
-
-- 读取微信进程路径和文件版本。
-- 将微信进程与本地账号目录进行匹配。
-- 以只读方式（`PROCESS_VM_READ`）读取对应微信进程的内存，定位当前账号 `contact.db` 的 SQLCipher 解密密钥。该操作只针对微信进程，不写入、不注入；部分安全软件可能会对“读取其他进程内存”的行为给出提示。
-- 用该密钥解密 `contact.db` 的临时副本，只查询当前账号自己的昵称与头像元数据。需要说明的是，临时副本是整个 `contact.db` 的解密结果（其中可能包含联系人信息），程序只查询本人资料行，不读取其他内容。
-- 从该账号 `temp/head_image` 与共享 `all_users/head_imgs` 中查找本地头像缓存。
-- 当明文头像缓存尚未生成时，可只读解密当前账号的 `db_storage/head_image/head_image.db`，仅提取当前账号自己的头像 BLOB。
-
-程序不会查询消息、会话、朋友圈等数据库，不会通过网络下载头像。数据库密钥只保存在内存中，读取结束后清零，不写入磁盘。临时解密副本存放在 `%LOCALAPPDATA%\JuChuang\tmp\profile`：读取前必须确认目录权限仅允许当前用户与 SYSTEM，权限无法收紧时停止资料读取。正常读取结束后会删除临时副本；异常退出后的残留由后续启动或读取时的清理机制处理（遵循文件占用和安全时间窗口，不保证立即删除）。未读角标识别只分析整窗内存截图中的导航栏区域，不解析聊天内容。
-
-## 界面与窗口托管说明
-
-JNest 通过 Win32 和 WPF 管理外部客户端窗口。嵌入状态下会同步客户端的位置、尺寸、可见区域和激活状态；弹出时恢复客户端原生窗口样式。
-
-微信图片、视频、文件预览和内置网页等辅助窗口不会作为账号主窗口接入。若客户端更新后改变窗口类名、渲染结构或安全策略，可能需要同步更新发现与托管规则。
+- 仅面向 Windows 11 x64；需要本机安装微信 4.x 或 WhatsApp Windows 桌面客户端。
+- 客户端升级可能改变窗口结构、账号资料格式或角标样式，影响接入和未读识别。未来版本兼容性不作保证。
+- 固定 100% 和 200% DPI 缩放下的冷启动已验证；运行中改变显示缩放比例可能造成窗口边框错位。
+- JNest 是独立开源项目，与腾讯、微信、WhatsApp 或 Meta 没有官方关联。
 
 ## 从源码构建
 
-准备环境：
-
-- Windows 11 x64
-- .NET 10 SDK
-- Visual Studio 2022（可选，需安装 .NET 桌面开发组件）
-
-复现 v2.0.3 正式版时，使用 .NET 10 SDK 并在仓库本地副本中检出**固定 Tag**（不会因后续开发而移动）：
+需要 Windows 11 x64 和 .NET 10 SDK。仓库的开发基线是 [`stable`](https://github.com/jingjial2018-beep/JuChuang/tree/stable)，协作约定见 [AGENTS.md](AGENTS.md)。
 
 ```powershell
-git switch --detach v2.0.3
 dotnet build .\JuChuang.csproj -c Release
-```
-
-参与后续开发时，应从最新 `stable` 创建新分支，不要在 `main` 或归档分支上继续开发。有关仓库约束见 [AGENTS.md](AGENTS.md)。
-
-运行回归测试：
-
-```powershell
 dotnet run --project .\Tests\ArchitectureProbe\JuChuang.ArchitectureProbe.csproj -c Release
 dotnet run --project .\Tests\BadgeProbe\JuChuang.BadgeProbe.csproj -c Release
 dotnet run --project .\Tests\RegressionProbe\JuChuang.RegressionProbe.csproj -c Release
 .\Tests\ValidateSettingsTypography.ps1
 ```
 
-启动不接管本地客户端的界面预览模式：
+不接管本地客户端的界面预览模式：
 
 ```powershell
 dotnet run --project .\JuChuang.csproj -- --preview
 ```
 
-生成轻量版：
+更多版本变化见 [Releases](https://github.com/jingjial2018-beep/JuChuang/releases) 和 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
 
-```powershell
-dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
-  --self-contained false `
-  -p:PublishSingleFile=true `
-  -p:PublishReadyToRun=true
-```
+## 隐私边界与实现细节
 
-生成免运行库版：
+微信资料识别会将进程与本地账号目录匹配，以 `PROCESS_VM_READ` 只读获取当前账号 `contact.db` 的 SQLCipher 密钥。临时解密副本位于 `%LOCALAPPDATA%\JuChuang\tmp\profile`；读取前会检查目录权限，不能收紧到当前用户与 SYSTEM 时停止资料读取。密钥只保留在内存中，使用后清零，不写入磁盘。正常完成后删除临时副本；异常退出后的清理由后续运行处理，不能保证立即删除。头像可来自当前账号的 `temp/head_image`、共享 `all_users/head_imgs`，或只读解密的 `db_storage/head_image/head_image.db`。
 
-```powershell
-dotnet publish .\JuChuang.csproj -c Release -r win-x64 `
-  --self-contained true `
-  -p:PublishSingleFile=true `
-  -p:PublishReadyToRun=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true
-```
+窗口托管依赖 Windows 桌面窗口机制。微信图片、视频、文件预览和内置网页等辅助窗口不会作为账号主窗口接入。未读角标只在本机分析，不向第三方服务器上传聊天数据。
 
-## 项目结构
+## 许可证与声明
 
-```text
-JuChuang/
-├─ Assets/                    应用图标与客户端图标
-├─ Controls/                  外部窗口托管控件
-├─ docs/images/               GitHub 项目介绍截图
-├─ Models/                    客户端窗口与界面状态模型
-├─ Services/                  窗口发现、启动、资料读取和角标识别
-├─ Tests/BadgeProbe/          未读角标识别回归测试
-├─ Tests/ArchitectureProbe/   账号/窗口架构回归测试
-├─ MainWindow*.cs             主窗口、通知、托盘和角标调度
-├─ MainWindow.xaml            主界面
-└─ JuChuang.csproj            .NET 项目文件
-```
-
-## 版本记录
-
-| 正式版 | 主要变化 |
-| --- | --- |
-| [v2.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.3) | 优化侧栏视觉、未读角标和窗口接入状态。 |
-| [v2.0.2](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.2) | 完善账号列表行为、密码锁与本地隐私保护。 |
-| [v2.0.0](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v2.0.0) | 修正微信 4.2.0.5 主界面在固定 100% / 200% 缩放下被误判为登录小窗的问题；保留真正登录窗居中。 |
-| [v1.0.10 Final](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.10) | 精简设置页、完善诊断日志、全部退出完成状态复核。 |
-| [v1.0.9](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.9) | 锁屏密码与锁定状态仅在当前会话内有效；加入两处提示并清理旧版锁文件。 |
-| [v1.0.8](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.8) | 修复锁定、托盘恢复、后台接入和窗口发现；完善保存失败反馈及重试。 |
-| [v1.0.7](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.7) | 保留微软雅黑 UI，统一设置页字号、说明文字与按钮排版。 |
-| [v1.0.6](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.6) | 修正账号列表右键误切换；延续密码锁与模态窗口改进。 |
-| [v1.0.5](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.5) | 优化设置页与托盘菜单交互。 |
-| [v1.0.4](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.4) | 完善设置页、通知免打扰、菜单图标和星期显示。 |
-| [v1.0.3](https://github.com/jingjial2018-beep/JuChuang/releases/tag/v1.0.3) | 完善客户端退出与 JNest 退出方式。 |
-
-完整的正式版发布说明见 [GitHub Releases](https://github.com/jingjial2018-beep/JuChuang/releases)。更早的版本和 Beta / RC 实验过程可参考 [历史 README（v1.0.7 Tag）](https://github.com/jingjial2018-beep/JuChuang/blob/v1.0.7/README.md#版本记录)与 [历史发布记录](RELEASE_NOTES.md)。历史说明中的实验功能和限制不一定适用于当前稳定版。
-
-## 已知限制
-
-- 当前仅面向 Windows 11 x64。
-- 固定 100% 和 200% DPI 缩放冷启动已验证；**运行中改变 Windows 显示缩放比例不在本版兼容承诺内**，可能造成原生微信窗口边框错位。
-- 客户端升级可能改变窗口结构、昵称资料格式或角标样式。
-- 跨进程窗口托管依赖 Windows 桌面窗口机制，部分特殊版本可能拒绝接入。
-- 硬件加速窗口在少数显卡驱动或远程桌面环境中可能出现截图失败，此时未读提示会回退为红点或不显示。
-- 微信本地资料结构变化时，昵称和头像会安全回退到通用名称与默认图标，不影响窗口管理。
-
-## 开源许可证
-
-Copyright 2026 JINGJIA LI
-
-本项目采用 [Apache License 2.0](LICENSE) 授权。你可以使用、修改、分发和商用本项目，但必须遵守许可证中的版权声明保留、修改说明等条件。
-
-## 第三方说明与免责声明
-
-微信账号资料的只读解析参考了第三方公开研究，详情见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
-
-本项目是非官方桌面工具，与腾讯、微信、WhatsApp 或 Meta 无隶属、授权或合作关系。使用者应自行遵守客户端服务条款、当地法律和所在组织的信息安全要求。
+Copyright 2026 JINGJIA LI。项目采用 [Apache License 2.0](LICENSE)。第三方研究引用见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。使用时请遵守客户端服务条款、当地法律及所在组织的安全要求。
